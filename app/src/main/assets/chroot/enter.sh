@@ -62,11 +62,20 @@ while IFS= read -r kv; do [ -n "$kv" ] && set -- "$@" "$kv"; done <<ENVEOF
 $GUEST_ENV
 ENVEOF
 
+# su hands us the terminal without making it our controlling tty, so bash would run without
+# job control (no Ctrl+C/Ctrl+Z). setsid -c starts a session that owns the terminal.
+SETSID=
+[ -x "$R/usr/bin/setsid" ] && SETSID="/usr/bin/setsid -c"
+# Start in $HOME; expanded by the guest shell, not this one.
+START='cd "$HOME" 2>/dev/null; exec '
+
 if [ "$RUN_AS_ROOT" = 1 ]; then
-  exec chroot "$R" /usr/bin/env -i "$@" /bin/sh -c "exec $CMD"
+  exec chroot "$R" $SETSID /usr/bin/env -i "$@" /bin/sh -c "$START$CMD"
 fi
 mkdir -p "$R/home/user"; chown 1000:1000 "$R/home/user"
+# Supplementary groups: Android's network groups when network is granted, none otherwise.
+if [ -n "$NET_GROUPS" ]; then GROUP_ARG="--groups=$NET_GROUPS"; else GROUP_ARG=--clear-groups; fi
 # setpriv is in util-linux (essential on Debian). --no-new-privs keeps setuid binaries inert.
-exec chroot "$R" /usr/bin/setpriv --reuid=1000 --regid=1000 \
-  ${NET_GROUPS:+--groups=$NET_GROUPS} ${NET_GROUPS:---clear-groups} --no-new-privs --inh-caps=-all \
-  /usr/bin/env -i "$@" /bin/sh -c "exec $CMD"
+exec chroot "$R" $SETSID /usr/bin/setpriv --reuid=1000 --regid=1000 \
+  "$GROUP_ARG" --no-new-privs --inh-caps=-all \
+  /usr/bin/env -i "$@" /bin/sh -c "$START$CMD"
