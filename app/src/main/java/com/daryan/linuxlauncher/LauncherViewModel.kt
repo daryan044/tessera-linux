@@ -1,0 +1,128 @@
+// Copyright (C) 2026 Daryan
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package com.daryan.linuxlauncher
+
+import android.app.Application
+import android.util.Log
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.daryan.linuxlauncher.container.ContainerBackend
+import com.daryan.linuxlauncher.container.Distro
+import com.daryan.linuxlauncher.container.HostProbe
+import com.daryan.linuxlauncher.container.HostStatus
+import com.daryan.linuxlauncher.container.InstallState
+import com.daryan.linuxlauncher.container.PermissionManifest
+import com.daryan.linuxlauncher.container.RunningSession
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+enum class BackendMode(val label: String) { PROOT("PRoot"), CHROOT("Chroot (root)") }
+
+/** A launcher tab: either a category from the manifests or one the user made. */
+data class LauncherTab(val title: String, val apps: List<PermissionManifest>, val custom: Boolean)
+
+class LauncherViewModel(app: Application) : AndroidViewModel(app) {
+    private val container = (app as LauncherApplication).container
+    val paths = container.paths
+    private val probe = HostProbe(paths)
+    val tabStore = TabStore(app)
+    val sessions = container.sessions
+    val installState: StateFlow<InstallState> = container.installer.state
+
+    val apps: List<PermissionManifest> = loadApps(app)
+
+    private val _status = MutableStateFlow<HostStatus?>(null)
+    val status: StateFlow<HostStatus?> = _status
+
+    private val _mode = MutableStateFlow(BackendMode.PROOT)
+    val mode: StateFlow<BackendMode> = _mode
+
+    private val _messages = Channel<String>(Channel.BUFFERED)
+    val messages = _messages.receiveAsFlow()
+
+    init {
+        refresh()
+        // Re-probe once an install finishes so Setup and the launch buttons update.
+        viewModelScope.launch {
+            installState.collect { if (it == InstallState.Done) refresh() }
+        }
+    }
+
+    fun install(distro: Distro = Distro.DEBIAN) = container.installer.start(distro)
+
+    fun cancelInstall() = container.installer.cancel()
+
+    fun tabs(custom: List<CustomTab>): List<LauncherTab> = buildList {
+        add(LauncherTab("All", apps, custom = false))
+        apps.map { it.category }.distinct().sorted().forEach { cat ->
+            add(LauncherTab(cat, apps.filter { it.category == cat }, custom = false))
+        }
+        custom.forEach { tab ->
+            add(LauncherTab(tab.name, apps.filter { it.id in tab.appIds }, custom = true))
+        }
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            _status.value = null
+            val s = withContext(Dispatchers.IO) { probe.probe() }
+            _status.value = s
+            if (s.su == null && _mode.value == BackendMode.CHROOT) _mode.value = BackendMode.PROOT
+        }
+    }
+
+    fun setMode(mode: BackendMode) {
+        _mode.value = mode
+    }
+
+    fun backend(mode: BackendMode = _mode.value): ContainerBackend? = when (mode) {
+        BackendMode.PROOT -> container.proot()
+        BackendMode.CHROOT -> _status.value?.su?.let { container.chroot(it) }
+    }
+
+    /** Why [mode] cannot launch apps yet, or null when it can. */
+    fun blocker(status: HostStatus?, mode: BackendMode): String? = when {
+        status == null -> "Checking the system"
+        mode == BackendMode.PROOT && !status.prootBinary -> "PRoot isn't bundled in this build yet"
+        mode == BackendMode.PROOT && !status.prootRootfs -> "No Linux system installed yet"
+        mode == BackendMode.CHROOT && status.su == null -> "Root access not found"
+        else -> null
+    }
+
+    fun launch(app: PermissionManifest, onLaunched: (RunningSession) -> Unit) {
+        viewModelScope.launch {
+            val backend = backend()
+            val problem = blocker(_status.value, _mode.value)
+            if (backend == null || problem != null) {
+                _messages.send(problem ?: "Backend unavailable")
+                return@launch
+            }
+            // Main thread: TerminalSession binds to the caller's Looper. Spawning is a quick fork.
+            runCatching { sessions.launch(app, backend) }
+                .onSuccess(onLaunched)
+                .onFailure { _messages.send("Couldn't start ${app.name}: ${it.message}") }
+        }
+    }
+
+    private fun loadApps(app: Application): List<PermissionManifest> {
+        val assets = app.assets
+        return assets.list("apps").orEmpty().filter { it.endsWith(".json") }.mapNotNull { file ->
+            val manifest = runCatching {
+                PermissionManifest.parse(assets.open("apps/$file").reader().use { it.readText() })
+            }.onFailure { Log.w(TAG, "skipping apps/$file", it) }.getOrNull()
+            val errors = manifest?.validate().orEmpty()
+            if (errors.isNotEmpty()) Log.w(TAG, "skipping apps/$file: $errors")
+            manifest?.takeIf { errors.isEmpty() }
+        }.sortedBy { it.name.lowercase() }
+    }
+
+    private companion object {
+        const val TAG = "Launcher"
+    }
+}

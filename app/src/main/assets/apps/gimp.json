@@ -1,0 +1,16 @@
+{
+  "id": "gimp",
+  "name": "GIMP",
+  "description": "Image editor with your Pictures folder and no network.",
+  "category": "Graphics",
+  "icon": "palette",
+  "gui": true,
+  "exec": ["/usr/bin/gimp"],
+  "permissions": {
+    "display": true,
+    "devices": ["/dev/dri/renderD128"],
+    "filesystem": [
+      { "path": "/storage/emulated/0/Pictures", "mountAt": "/home/user/Pictures" }
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "root-shell",
+  "name": "Root shell",
+  "description": "Debian as root, for apt install and system changes. Under PRoot this is a fake root: it can't touch Android.",
+  "category": "System",
+  "icon": "terminal",
+  "exec": ["/bin/bash", "-l"],
+  "permissions": {
+    "network": true,
+    "root": true
+  }
+}

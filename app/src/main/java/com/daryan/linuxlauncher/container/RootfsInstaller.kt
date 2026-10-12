@@ -1,0 +1,181 @@
+// Copyright (C) 2026 Daryan
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package com.daryan.linuxlauncher.container
+
+import android.os.Build
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
+import java.io.File
+import java.io.IOException
+
+sealed interface InstallState {
+    val running: Boolean get() = false
+
+    data object Idle : InstallState
+    data object Resolving : InstallState { override val running = true }
+    data class Downloading(val done: Long, val total: Long) : InstallState { override val running = true }
+    data object Extracting : InstallState { override val running = true }
+    data object Configuring : InstallState { override val running = true }
+    data object Done : InstallState
+    data class Failed(val message: String) : InstallState
+}
+
+/**
+ * Installs a distro's rootfs into app storage for PRoot mode:
+ * download (digest-checked) -> extract through PRoot -> [RootfsSetup] -> marker file.
+ */
+class RootfsInstaller(
+    private val paths: ContainerPaths,
+    private val registry: OciRegistry,
+    private val scope: CoroutineScope,
+    private val uid: Int,
+    private val gid: Int,
+) {
+    private val _state = MutableStateFlow<InstallState>(InstallState.Idle)
+    val state: StateFlow<InstallState> = _state
+    private var job: Job? = null
+
+    fun start(distro: Distro) {
+        if (_state.value.running) return
+        job = scope.launch(Dispatchers.IO) {
+            _state.value = try {
+                install(distro)
+                InstallState.Done
+            } catch (e: CancellationException) {
+                InstallState.Idle
+            } catch (e: Exception) {
+                InstallState.Failed(e.message ?: e.javaClass.simpleName)
+            }
+        }
+    }
+
+    fun cancel() {
+        job?.cancel()
+    }
+
+    private suspend fun install(distro: Distro) {
+        _state.value = InstallState.Resolving
+        val layer = registry.resolve(distro, Platform.forAbi(Build.SUPPORTED_ABIS.first()))
+
+        // Kept across failed attempts: a verified tarball doesn't need downloading again.
+        val tarball = File(paths.cacheDir, "rootfs-${layer.digest.substringAfter(':').take(16)}.tar.gz")
+        if (tarball.length() != layer.size) {
+            _state.value = InstallState.Downloading(0, layer.size)
+            registry.download(distro, layer, tarball) { _state.value = InstallState.Downloading(it, layer.size) }
+        }
+
+        // Extract straight into place: link2symlink records absolute paths, so the tree can't be
+        // moved afterwards. The marker file written last is what makes it count as installed.
+        _state.value = InstallState.Extracting
+        val root = paths.prootRootfs
+        root.deleteRecursively()
+        root.mkdirs()
+        runProot("--link2symlink", "-0", "/system/bin/tar", "-xzf", tarball.path, "-C", root.path)
+
+        _state.value = InstallState.Configuring
+        RootfsSetup.configure(root, uid, gid)
+        FakeProc.write(paths.fakeProcDir)
+        File(root, ContainerPaths.INSTALLED_MARKER).writeText("${distro.name} ${layer.digest}\n")
+        tarball.delete()
+    }
+
+    private suspend fun runProot(vararg args: String) = runInterruptible {
+        val proc = ProcessBuilder(listOf(paths.proot.path) + args)
+            .redirectErrorStream(true)
+            .apply {
+                environment()["PROOT_LOADER"] = paths.prootLoader.path
+                environment()["PROOT_LOADER_32"] = paths.prootLoader32.path
+                environment()["PROOT_TMP_DIR"] = paths.cacheDir.path
+            }
+            .start()
+        try {
+            val output = proc.inputStream.bufferedReader().readLines()
+            val code = proc.waitFor()
+            if (code != 0) {
+                throw IOException("extract failed ($code): " + output.takeLast(3).joinToString(" / "))
+            }
+        } finally {
+            proc.destroy()
+        }
+    }
+}
+
+/** First-boot configuration of a freshly extracted rootfs. Plain file edits, no guest code runs. */
+object RootfsSetup {
+    fun configure(root: File, uid: Int, gid: Int) {
+        val etc = File(root, "etc").apply { mkdirs() }
+
+        // Android has no /etc/resolv.conf, and image ones may be symlinks into /run.
+        replace(File(etc, "resolv.conf"), "nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
+        replace(File(etc, "hosts"), "127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n")
+
+        // apt drops privileges to _apt for downloads, which PRoot's fake root can't do.
+        File(etc, "apt/apt.conf.d").takeIf { it.isDirectory }?.let {
+            File(it, "99launcher").writeText("APT::Sandbox::User \"root\";\n")
+        }
+
+        // Non-root sessions run as the app's real uid; give it a name and a home.
+        val shell = if (File(root, "bin/bash").exists()) "/bin/bash" else "/bin/sh"
+        appendLineIfMissing(File(etc, "passwd"), "user:", "user:x:$uid:$gid:User:/home/user:$shell")
+        appendLineIfMissing(File(etc, "group"), "user:", "user:x:$gid:")
+        val appId = uid % 100_000
+        // Supplementary groups Android gives every app; named so `id` and bash stay quiet.
+        for ((name, id) in listOf(
+            "aid_inet" to 3003, "aid_net_raw" to 3004, "aid_everybody" to 9997,
+            "aid_${appId}_cache" to 20_000 + appId, "aid_${appId}_all" to 50_000 + appId,
+        )) {
+            appendLineIfMissing(File(etc, "group"), "$name:", "$name:x:$id:user")
+        }
+        File(root, "home/user").mkdirs()
+        File(root, "root").mkdirs()
+    }
+
+    private fun replace(f: File, content: String) {
+        f.delete() // drops a dangling symlink rather than writing through it
+        f.writeText(content)
+    }
+
+    private fun appendLineIfMissing(f: File, prefix: String, line: String) {
+        val existing = if (f.exists()) f.readLines() else emptyList()
+        if (existing.none { it.startsWith(prefix) }) {
+            f.writeText((existing + line).joinToString("\n", postfix = "\n"))
+        }
+    }
+}
+
+/**
+ * Stand-ins for /proc files Android's SELinux policy hides from apps. Without them htop, top,
+ * uptime and friends fail. Bound over the real paths by [ProotBackend].
+ */
+object FakeProc {
+    val NAMES = listOf("stat", "loadavg", "uptime", "version", "vmstat", "filesystems", "sys/kernel/cap_last_cap")
+
+    fun write(dir: File, cpus: Int = Runtime.getRuntime().availableProcessors(), kernel: String = System.getProperty("os.version") ?: "6.1.0") {
+        fun put(name: String, text: String) = File(dir, name).apply { parentFile?.mkdirs() }.writeText(text)
+        put("stat", buildString {
+            append("cpu  ${cpus * 1000} 0 ${cpus * 500} ${cpus * 90000} 0 0 0 0 0 0\n")
+            repeat(cpus) { append("cpu$it 1000 0 500 90000 0 0 0 0 0 0\n") }
+            append("intr 0\nctxt 0\nbtime ${System.currentTimeMillis() / 1000}\n")
+            append("processes 0\nprocs_running 1\nprocs_blocked 0\nsoftirq 0 0 0 0 0 0 0 0 0 0 0\n")
+        })
+        put("loadavg", "0.12 0.07 0.02 2/165 765\n")
+        put("uptime", "1000.00 900.00\n")
+        put("version", "Linux version $kernel (launcher@android) #1 SMP PREEMPT\n")
+        put("vmstat", listOf(
+            "nr_free_pages 100000", "nr_inactive_anon 0", "nr_active_anon 0", "nr_inactive_file 0",
+            "nr_active_file 0", "nr_dirty 0", "nr_writeback 0", "pgpgin 0", "pgpgout 0",
+            "pswpin 0", "pswpout 0", "pgfault 0", "pgmajfault 0",
+        ).joinToString("\n", postfix = "\n"))
+        put("filesystems", listOf(
+            "nodev\tsysfs", "nodev\ttmpfs", "nodev\tproc", "nodev\tdevpts", "\text4", "\tf2fs", "\tvfat",
+        ).joinToString("\n", postfix = "\n"))
+        put("sys/kernel/cap_last_cap", "40\n")
+    }
+}

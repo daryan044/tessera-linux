@@ -1,0 +1,178 @@
+// Copyright (C) 2026 Daryan
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package com.daryan.linuxlauncher.container
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.ParcelFileDescriptor
+import android.util.Log
+import com.termux.terminal.TerminalSession
+import com.termux.terminal.TerminalSessionClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+
+data class RunningSession(
+    val session: Session,
+    val app: PermissionManifest,
+    val backend: String,
+    val pid: Int,
+    /** Interactive sessions (command-line apps). Null for GUI apps, which get a plain pty. */
+    val terminal: TerminalSession? = null,
+    /** Pty output tail for GUI apps; terminal sessions read their screen instead. */
+    val output: String = "",
+    val title: String? = null,
+    val exitCode: Int? = null,
+    /** Bumped on every screen change so card previews recompose. */
+    val revision: Int = 0,
+) {
+    val running get() = exitCode == null
+
+    /** Last lines currently on screen, for the session card. */
+    fun preview(lines: Int = 8): String = terminal?.emulator?.screen?.transcriptText
+        ?.lines()?.dropLastWhile { it.isBlank() }?.takeLast(lines)?.joinToString("\n")
+        ?: output
+}
+
+/** Owns launched processes; lives in [com.daryan.linuxlauncher.LauncherContainer]. */
+class SessionManager(
+    private val context: Context,
+    private val scope: CoroutineScope,
+    private val paths: ContainerPaths,
+) {
+    private val nextId = AtomicInteger(1)
+    private val _sessions = MutableStateFlow<List<RunningSession>>(emptyList())
+    val sessions: StateFlow<List<RunningSession>> = _sessions
+
+    /** Called when a session's screen changes; set by whichever terminal view shows it. */
+    private val screenListeners = ConcurrentHashMap<String, () -> Unit>()
+
+    fun setScreenListener(id: String, listener: (() -> Unit)?) {
+        if (listener == null) screenListeners.remove(id) else screenListeners[id] = listener
+    }
+
+    /** Must be called on the main thread: TerminalSession binds to the caller's Looper. */
+    @Throws(IOException::class)
+    fun launch(app: PermissionManifest, backend: ContainerBackend): RunningSession {
+        val n = nextId.getAndIncrement()
+        val session = Session(id = "s$n", display = if (app.permissions.display) n else null)
+        paths.sessionTmp(session).mkdirs()
+        if (app.permissions.display) paths.x11SocketDir(session).mkdirs()
+        val spec = backend.buildLaunch(app, session)
+
+        val running = if (app.gui) launchPty(app, backend, session, spec) else launchTerminal(app, backend, session, spec)
+        _sessions.update { it + running }
+        return running
+    }
+
+    private fun launchTerminal(app: PermissionManifest, backend: ContainerBackend, session: Session, spec: LaunchSpec): RunningSession {
+        val terminal = TerminalSession(
+            spec.executable,
+            spec.cwd,
+            spec.argv.toTypedArray(),
+            spec.env.map { (k, v) -> "$k=$v" }.toTypedArray(),
+            TRANSCRIPT_ROWS,
+            Client(session.id),
+        )
+        // Start the process now rather than when a view first attaches; the view resizes it.
+        terminal.initializeEmulator(80, 24, 12, 24)
+        return RunningSession(session, app, backend.name, terminal.pid, terminal = terminal)
+    }
+
+    private fun launchPty(app: PermissionManifest, backend: ContainerBackend, session: Session, spec: LaunchSpec): RunningSession {
+        val pid = IntArray(1)
+        val fd = Pty.spawn(spec, rows = 24, cols = 80, pidOut = pid)
+        scope.launch(Dispatchers.IO) {
+            ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.adoptFd(fd)).use { input ->
+                val buf = ByteArray(4096)
+                try {
+                    while (true) {
+                        val r = input.read(buf)
+                        if (r < 0) break
+                        val chunk = String(buf, 0, r)
+                        update(session.id) { it.copy(output = (it.output + chunk).takeLast(MAX_OUTPUT)) }
+                    }
+                } catch (_: IOException) {
+                    // EIO once the child side closes; normal end of stream for a pty.
+                }
+            }
+        }
+        scope.launch(Dispatchers.IO) {
+            val code = Pty.waitFor(pid[0])
+            update(session.id) { it.copy(exitCode = code) }
+        }
+        return RunningSession(session, app, backend.name, pid[0])
+    }
+
+    fun stop(id: String) {
+        val s = _sessions.value.firstOrNull { it.session.id == id && it.running } ?: return
+        // SIGKILL to proot; --kill-on-exit takes its tracees down with it.
+        s.terminal?.finishIfRunning() ?: android.os.Process.killProcess(s.pid)
+    }
+
+    fun stopAll() = _sessions.value.filter { it.running }.forEach { stop(it.session.id) }
+
+    fun dismiss(id: String) {
+        stop(id)
+        screenListeners.remove(id)
+        _sessions.update { list -> list.filterNot { it.session.id == id } }
+    }
+
+    private fun update(id: String, f: (RunningSession) -> RunningSession) =
+        _sessions.update { list -> list.map { if (it.session.id == id) f(it) else it } }
+
+    /** Bridges one TerminalSession's callbacks into [sessions]. Runs on the main thread. */
+    private inner class Client(private val id: String) : TerminalSessionClient {
+        override fun onTextChanged(changedSession: TerminalSession) {
+            screenListeners[id]?.invoke()
+            update(id) { it.copy(revision = it.revision + 1) }
+        }
+
+        override fun onTitleChanged(changedSession: TerminalSession) =
+            update(id) { it.copy(title = changedSession.title) }
+
+        override fun onSessionFinished(finishedSession: TerminalSession) {
+            screenListeners[id]?.invoke()
+            update(id) { it.copy(exitCode = finishedSession.exitStatus) }
+        }
+
+        override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {
+            context.getSystemService(ClipboardManager::class.java)
+                .setPrimaryClip(ClipData.newPlainText("Terminal", text ?: return))
+        }
+
+        override fun onPasteTextFromClipboard(session: TerminalSession?) {
+            val clip = context.getSystemService(ClipboardManager::class.java).primaryClip ?: return
+            val text = clip.getItemAt(0)?.coerceToText(context)?.toString() ?: return
+            session?.emulator?.paste(text)
+        }
+
+        override fun onBell(session: TerminalSession) {}
+        override fun onColorsChanged(session: TerminalSession) = onTextChanged(session)
+        override fun onTerminalCursorStateChange(state: Boolean) {
+            screenListeners[id]?.invoke()
+        }
+        override fun getTerminalCursorStyle(): Int? = null
+
+        override fun logError(tag: String?, message: String?) { Log.e(tag, message.orEmpty()) }
+        override fun logWarn(tag: String?, message: String?) { Log.w(tag, message.orEmpty()) }
+        override fun logInfo(tag: String?, message: String?) { Log.i(tag, message.orEmpty()) }
+        override fun logDebug(tag: String?, message: String?) { Log.d(tag, message.orEmpty()) }
+        override fun logVerbose(tag: String?, message: String?) { Log.v(tag, message.orEmpty()) }
+        override fun logStackTraceWithMessage(tag: String?, message: String?, e: Exception?) { Log.e(tag, message, e) }
+        override fun logStackTrace(tag: String?, e: Exception?) { Log.e(tag, "", e) }
+    }
+
+    private companion object {
+        const val MAX_OUTPUT = 16 * 1024
+        const val TRANSCRIPT_ROWS = 5000
+    }
+}

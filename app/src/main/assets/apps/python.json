@@ -1,0 +1,13 @@
+{
+  "id": "python",
+  "name": "Python",
+  "description": "Offline Python REPL with read-only access to Documents.",
+  "category": "Development",
+  "icon": "code",
+  "exec": ["/usr/bin/python3"],
+  "permissions": {
+    "filesystem": [
+      { "path": "/storage/emulated/0/Documents", "mountAt": "/home/user/Documents", "readOnly": true }
+    ]
+  }
+}

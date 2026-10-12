@@ -1,0 +1,17 @@
+{
+  "id": "firefox-esr",
+  "name": "Firefox",
+  "description": "Desktop Firefox in its own window and display.",
+  "category": "Internet",
+  "icon": "globe",
+  "gui": true,
+  "exec": ["/usr/bin/firefox-esr"],
+  "permissions": {
+    "network": true,
+    "display": true,
+    "audio": true,
+    "filesystem": [
+      { "path": "/storage/emulated/0/Download", "mountAt": "/home/user/Downloads" }
+    ]
+  }
+}

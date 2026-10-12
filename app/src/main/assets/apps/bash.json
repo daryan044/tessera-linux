@@ -1,0 +1,14 @@
+{
+  "id": "bash",
+  "name": "Terminal",
+  "description": "A Debian shell with your Downloads folder and internet access.",
+  "category": "System",
+  "icon": "terminal",
+  "exec": ["/bin/bash", "-l"],
+  "permissions": {
+    "network": true,
+    "filesystem": [
+      { "path": "/storage/emulated/0/Download", "mountAt": "/home/user/Downloads" }
+    ]
+  }
+}
