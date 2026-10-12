@@ -33,7 +33,7 @@ class ChrootBackend(
             // Android only lets members of AID_INET (3003) open sockets; grant it with network.
             "NET_GROUPS" to if (p.network) "3003,3004" else "",
             "GUEST_ENV" to guestEnv(app, session).map { (k, v) -> "$k=$v" }.joinToString("\n"),
-            "CMD" to app.exec.joinToString(" ") { shellQuote(it) },
+            "CMD" to guestCommand(app).joinToString(" ") { shellQuote(it) },
         )
         val unshare = if (p.network) "unshare -m" else "unshare -m -n"
         val script = buildString {

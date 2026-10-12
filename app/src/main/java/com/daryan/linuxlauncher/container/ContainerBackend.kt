@@ -70,6 +70,20 @@ data class ContainerPaths(
     }
 }
 
+/**
+ * What actually runs in the container. GUI apps get matchbox-window-manager next to them when
+ * it's installed: one app per display, kept fullscreen, without title bars. The manager is
+ * stopped when the app exits so the session (and its window) ends with the app.
+ */
+internal fun guestCommand(app: PermissionManifest): List<String> =
+    if (!app.gui) app.exec
+    else listOf("/bin/sh", "-c", GUI_WRAPPER, "launch") + app.exec
+
+private const val GUI_WRAPPER =
+    "if command -v matchbox-window-manager >/dev/null 2>&1; then " +
+        "matchbox-window-manager -use_titlebar no -use_cursor no & wm=\$!; fi; " +
+        "\"\$@\"; status=\$?; [ -n \"\$wm\" ] && kill \$wm 2>/dev/null; exit \$status"
+
 interface ContainerBackend {
     val name: String
     fun enforcement(capability: Capability, app: PermissionManifest): Enforcement

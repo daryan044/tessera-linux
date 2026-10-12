@@ -6,6 +6,7 @@ package com.daryan.linuxlauncher
 import android.app.Application
 import android.os.Process
 import com.termux.x11.LorieApp
+import kotlin.math.roundToInt
 import com.daryan.linuxlauncher.container.ChrootBackend
 import com.daryan.linuxlauncher.container.FakeProc
 import com.daryan.linuxlauncher.container.HostProbe
@@ -28,8 +29,30 @@ class LauncherApplication : LorieApp() {
         private set
 
     override fun onCreate() {
+        applyX11Defaults()
         super.onCreate()
         container = LauncherContainer(this)
+    }
+
+    /**
+     * Termux:X11 defaults suit a desktop-in-a-phone; ours open one app per window. Applied once,
+     * before LorieApp reads them, so changes made in the X11 window's settings stick.
+     */
+    private fun applyX11Defaults() {
+        val prefs = getSharedPreferences("${packageName}_preferences", MODE_PRIVATE)
+        if (prefs.getBoolean(X11_DEFAULTS_APPLIED, false)) return
+        // Aim for roughly desktop-sized UI: 3.5x density -> 250%, i.e. 1440x3000 shown as 576x1200.
+        val scale = ((resources.displayMetrics.density / 1.4f * 10).roundToInt() * 10).coerceIn(100, 300)
+        prefs.edit()
+            .putString("displayResolutionMode", "scaled")
+            .putInt("displayScale", scale)
+            .putString("touchMode", "3") // direct touch: tap where you want to click
+            .putBoolean(X11_DEFAULTS_APPLIED, true)
+            .apply()
+    }
+
+    private companion object {
+        const val X11_DEFAULTS_APPLIED = "linuxlauncher_x11_defaults"
     }
 }
 

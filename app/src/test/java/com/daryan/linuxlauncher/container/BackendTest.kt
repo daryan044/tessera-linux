@@ -74,7 +74,8 @@ class BackendTest {
     @Test fun `chroot quotes the command so arguments survive the shell`() {
         val script = ChrootBackend(paths, "su").buildLaunch(firefox, session).argv[2]
         // Two layers: argv joined into CMD for `sh -c`, then CMD quoted again for `export`.
-        val cmd = "/usr/bin/firefox-esr --new-window 'it'\\''s'"
+        val cmd = guestCommand(firefox).joinToString(" ") { shellQuote(it) }
+        assertTrue(cmd.endsWith("/usr/bin/firefox-esr --new-window 'it'\\''s'"))
         assertTrue(script.contains("export CMD=${shellQuote(cmd)};"))
     }
 
@@ -83,6 +84,14 @@ class BackendTest {
         val rootApp = offline.copy(permissions = Permissions(root = true))
         assertEquals(Enforcement.ENFORCED, chroot.enforcement(Capability.NETWORK, offline))
         assertEquals(Enforcement.ADVISORY, chroot.enforcement(Capability.NETWORK, rootApp))
+    }
+
+    @Test fun `gui apps run next to a window manager, terminal apps run bare`() {
+        val gui = guestCommand(firefox)
+        assertEquals(listOf("/bin/sh", "-c"), gui.take(2))
+        assertTrue("matchbox-window-manager" in gui[2])
+        assertEquals(listOf("launch") + firefox.exec, gui.drop(3))
+        assertEquals(offline.exec, guestCommand(offline))
     }
 
     @Test fun `shellQuote round-trips awkward strings`() {

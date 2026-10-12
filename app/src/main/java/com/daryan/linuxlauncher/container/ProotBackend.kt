@@ -55,7 +55,7 @@ class ProotBackend(
             add("/usr/bin/env")
             add("-i")
             addAll(guestEnv(app, session).map { (k, v) -> "$k=$v" })
-            addAll(app.exec)
+            addAll(guestCommand(app))
         }
         val hostEnv = buildMap {
             put("PROOT_TMP_DIR", paths.cacheDir.invariantSeparatorsPath)
