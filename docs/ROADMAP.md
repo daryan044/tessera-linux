@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of 2026-10-12. ✅ done and verified on a device · 🟡 partly done or built but untested · ⬜ not started.
+Status as of 2026-10-12 (evening). ✅ done and verified on a device · 🟡 partly done or built but untested · ⬜ not started.
 
 Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 
@@ -27,6 +27,8 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | 2.5 | GUI apps in chroot mode | 🟡 | Built and wired (socket permissions for uid 1000); not run on a device yet |
 | 2.6 | Audio | ⬜ | PulseAudio socket is reserved in the manifests (`audio`), no server yet |
 | 2.7 | Clipboard between Android and X apps | ⬜ | |
+| 2.8 | Firefox | ✅ | Runs under PRoot with a private /dev/shm and its sandbox off; touch scrolling via XInput2 |
+| 2.9 | Recents integration | ✅ | Every running app (GUI and terminal) has its own card, "<App> (Linux)" with its icon; closing the card stops it ("Killed by user") |
 
 ## Phase 3: Launcher
 
