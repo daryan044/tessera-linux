@@ -49,6 +49,18 @@ class StoreRegistry(private val appsDir: File, private val catalog: StoreCatalog
         refreshInstalled(store)
     }
 
+    /** Whether [id] is a launcher entry the store added (as opposed to a bundled one). */
+    fun isStoreApp(id: String) = _userApps.value.any { it.id == id }
+
+    /** Removes a store app's launcher entry by its id. */
+    suspend fun unregister(id: String, store: ConfigStore?) = withContext(Dispatchers.IO) {
+        val m = _userApps.value.firstOrNull { it.id == id }
+        File(appsDir, "$id.json").delete()
+        m?.iconFile?.let { File(it).delete() }
+        _userApps.update { list -> list.filterNot { it.id == id } }
+        refreshInstalled(store)
+    }
+
     suspend fun unregister(app: StoreApp, store: ConfigStore?) = withContext(Dispatchers.IO) {
         val id = idFor(app)
         File(appsDir, "$id.json").delete()

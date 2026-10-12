@@ -124,6 +124,7 @@ fun AppsPager(
     pagerState: PagerState,
     padding: PaddingValues,
     onOpen: (PermissionManifest) -> Unit,
+    onLongPress: (PermissionManifest) -> Unit,
 ) {
     HorizontalPager(pagerState, Modifier.fillMaxSize(), key = { tabs[it].title }) { page ->
         val tab = tabs[page]
@@ -146,7 +147,7 @@ fun AppsPager(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 itemsIndexed(tab.apps, key = { _, app -> app.id }) { index, app ->
-                    AppTile(app, index, onClick = { onOpen(app) })
+                    AppTile(app, index, onClick = { onOpen(app) }, onLongPress = { onLongPress(app) })
                 }
             }
         }
@@ -154,7 +155,8 @@ fun AppsPager(
 }
 
 @Composable
-private fun AppTile(app: PermissionManifest, index: Int, onClick: () -> Unit) {
+private fun AppTile(app: PermissionManifest, index: Int, onClick: () -> Unit, onLongPress: () -> Unit) {
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val motion = MaterialTheme.motionScheme
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -179,7 +181,15 @@ private fun AppTile(app: PermissionManifest, index: Int, onClick: () -> Unit) {
                 translationY = (1f - appear.value) * 48.dp.toPx()
             }
             .clip(MaterialTheme.shapes.large)
-            .clickable(interaction, ripple(), onClick = onClick)
+            .combinedClickable(
+                interactionSource = interaction,
+                indication = ripple(),
+                onClick = onClick,
+                onLongClick = {
+                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    onLongPress()
+                },
+            )
             .padding(vertical = 14.dp, horizontal = 4.dp),
     ) {
         Box(

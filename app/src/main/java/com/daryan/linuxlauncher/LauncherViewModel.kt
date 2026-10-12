@@ -182,6 +182,21 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
+    /**
+     * Queues removing a launcher app's packages. Store apps also leave the launcher; bundled
+     * ones stay, offering Install again. False when there's nothing to remove.
+     */
+    fun uninstall(app: PermissionManifest): Boolean {
+        if (app.packages.isEmpty()) return false
+        val backend = backend() ?: return false
+        val store = configStore(_status.value, _mode.value)
+        val fromStore = container.registry.isStoreApp(app.id)
+        container.queue.enqueue(app.name, app.packages, QueueAction.REMOVE, app.iconFile, backend) {
+            if (fromStore) container.registry.unregister(app.id, store) else container.registry.refreshInstalled(store)
+        }
+        return true
+    }
+
     fun cancelJob(id: Int) = container.queue.cancel(id)
 
     fun clearFinishedJobs() = container.queue.clearFinished()

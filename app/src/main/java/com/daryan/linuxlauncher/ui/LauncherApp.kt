@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -104,6 +105,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var showQueue by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
     var logSession by remember { mutableStateOf<String?>(null) }
+    var uninstallApp by remember { mutableStateOf<PermissionManifest?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     val queue by vm.queue.collectAsStateWithLifecycle()
     val catalog by vm.catalog.collectAsStateWithLifecycle()
@@ -264,7 +266,17 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             label = "destination",
         ) { d ->
             when (d) {
-                Destination.Apps -> AppsPager(tabs, pagerState, padding, onOpen = { openApp = it })
+                Destination.Apps -> AppsPager(
+                    tabs, pagerState, padding,
+                    onOpen = { openApp = it },
+                    onLongPress = { app ->
+                        if (app.packages.isEmpty()) {
+                            scope.launch { snackbar.showSnackbar("${app.name} is part of the Linux system and can't be uninstalled") }
+                        } else {
+                            uninstallApp = app
+                        }
+                    },
+                )
                 Destination.Store -> StoreScreen(
                     catalog = catalog,
                     installed = installedPackages,
@@ -359,6 +371,28 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 }
             },
             onDismiss = { openStoreApp = null },
+        )
+    }
+
+    uninstallApp?.let { app ->
+        AlertDialog(
+            onDismissRequest = { uninstallApp = null },
+            icon = { AppGlyph(app, 28.dp, MaterialTheme.colorScheme.onSurface) },
+            title = { Text("Uninstall ${app.name}?") },
+            text = {
+                Text(
+                    "Removes ${app.packages.joinToString()} from Linux. " +
+                        "Its settings in your home folder stay, in case you install it again.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val ok = vm.uninstall(app)
+                    uninstallApp = null
+                    scope.launch { snackbar.showSnackbar(if (ok) "Removing ${app.name}" else "Install Linux first") }
+                }) { Text("Uninstall") }
+            },
+            dismissButton = { TextButton(onClick = { uninstallApp = null }) { Text("Cancel") } },
         )
     }
 
