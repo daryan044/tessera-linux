@@ -71,6 +71,9 @@ data class ContainerPaths(
     }
 }
 
+/** Environment variable naming the session a guest process belongs to; see [ProcessTree.inSession]. */
+const val SESSION_ENV = "LAUNCHER_SESSION"
+
 /** Packages every GUI app gets with it; see [guestCommand]. */
 val GUI_HELPER_PACKAGES = listOf("matchbox-window-manager", "dbus-x11", "at-spi2-core", "python3-pyatspi", "pulseaudio", "python3-xlib")
 

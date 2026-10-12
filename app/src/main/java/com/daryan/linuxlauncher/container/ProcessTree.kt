@@ -46,6 +46,28 @@ object ProcessTree {
 
     fun killLeftovers(selfPid: Int, uid: Int) = leftovers(selfPid, uid).forEach { android.os.Process.sendSignal(it, SIGKILL) }
 
+    /**
+     * Processes started for session [sessionId], found by the [SESSION_ENV] they inherit, so
+     * daemons that detached from the session's tree are found too.
+     */
+    fun inSession(sessionId: String, proc: File = File("/proc")): List<Int> {
+        val marker = "$SESSION_ENV=$sessionId".toByteArray()
+        return proc.listFiles { f -> f.name.all(Char::isDigit) }.orEmpty().mapNotNull { dir ->
+            val env = runCatching { File(dir, "environ").readBytes() }.getOrNull() ?: return@mapNotNull null
+            dir.name.toInt().takeIf { env.split(0).any { it.contentEquals(marker) } }
+        }
+    }
+
+    fun killSession(sessionId: String) = inSession(sessionId).forEach { android.os.Process.sendSignal(it, SIGKILL) }
+
+    private fun ByteArray.split(sep: Byte): List<ByteArray> {
+        val out = mutableListOf<ByteArray>()
+        var start = 0
+        for (i in indices) if (this[i] == sep) { out += copyOfRange(start, i); start = i + 1 }
+        if (start < size) out += copyOfRange(start, size)
+        return out
+    }
+
     private fun descendantsOf(root: Int, parents: Map<Int, Int>): Set<Int> {
         val children = parents.entries.groupBy({ it.value }, { it.key })
         val out = mutableSetOf<Int>()

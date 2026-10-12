@@ -91,6 +91,9 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
     put("LANG", "C.UTF-8")
     put("TERM", session.term)
     put("TMPDIR", "/tmp")
+    // Inherited by everything the session starts, daemons that detach from its process tree
+    // included (D-Bus, the accessibility bus), so ending the session can find them all.
+    put(SESSION_ENV, session.id)
     if (p.display && session.display != null) {
         put("DISPLAY", ":${session.display}")
         // Termux:X11 sends real multi-touch events; Firefox only uses them (finger scrolling,

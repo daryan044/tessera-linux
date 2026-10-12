@@ -61,9 +61,12 @@ class LauncherApplication : LorieApp() {
         override fun onActivityResumed(activity: Activity) {
             // Terminal windows brand themselves once their session is known.
             if (activity.javaClass.name != X11Server.TAGGED_WINDOW) return
-            // Windows of their own brand themselves with their X window's title.
-            if (X11Server.windowId(activity.intent?.data) != null) return
-            sessionOf(activity)?.let { brandForRecents(activity, it, container) }
+            // On every resume: Recents takes the icon from what's set while the window is in
+            // front; set only during startup, MIUI keeps the launcher's own icon instead.
+            val session = sessionOf(activity) ?: return
+            val windowId = X11Server.windowId(activity.intent?.data)
+            val title = windowId?.let { id -> session.windows.windows.firstOrNull { it.id == id }?.title?.takeIf(String::isNotBlank) }
+            brandForRecents(activity, session, container, title)
         }
 
         override fun onActivityDestroyed(activity: Activity) {

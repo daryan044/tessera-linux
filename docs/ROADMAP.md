@@ -26,7 +26,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | 2.4 | Fullscreen, readable size | ✅ | matchbox-window-manager per display; scaled resolution from screen density; direct touch |
 | 2.5 | GUI apps in chroot mode | 🟡 | Built and wired (socket permissions for uid 1000); not run on a device yet |
 | 2.6 | Audio | ✅ | Apps with `audio` get their own PulseAudio in the session; its pipe sink feeds an Android AudioTrack (AudioPipe). Confirmed on the device |
-| 2.7 | Clipboard between Android and X apps | 🟡 | Termux:X11's clipboard sync, fixed in our fork for clips with several types (browsers) and for text copied before the window opened. Android → X confirmed on the device; X → Android not yet |
+| 2.7 | Clipboard between Android and X apps | ✅ | Termux:X11's clipboard sync, fixed in our fork for clips with several types (browsers) and for text copied before the window opened. Confirmed both ways on the device |
 | 2.8 | Firefox | ✅ | Runs under PRoot with a private /dev/shm and its sandbox off; touch scrolling via XInput2 |
 | 2.9 | Recents integration | ✅ | Every running app (GUI and terminal) has its own card, "<App> (Linux)" with its icon; closing the card stops it ("Killed by user") |
 | 2.10 | Keyboard for text fields | ✅ | A focus watcher on the accessibility bus (AT-SPI) reports text fields; the window shows Android's keyboard after a tap into one and hides it after a tap elsewhere. Confirmed on the device |
@@ -69,5 +69,3 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 - An app's installed state can't be checked in chroot mode (the app can't read that rootfs), so Install is only offered in PRoot mode.
 - Session ids restart at `s1` with each app process; stale session directories are cleared at startup.
 - Builds need WSL (or Linux) once for the X server's native library.
-- Stopping a GUI app can leave its session D-Bus and accessibility-bus daemons running (they detach from the app's process tree); they're cleared when the launcher restarts.
-- A window of its own shows a generic icon in Recents rather than its app's.

@@ -164,6 +164,8 @@ class SessionManager(
                 windowReports.remove(session.id)?.stopWatching()
                 windowTasks.remove(session.id)
                 audio?.stop()
+                // The app is gone; its session's detached daemons go with it.
+                ProcessTree.killSession(session.id)
                 servers.remove(session.id)?.destroy()
                 withContext(Dispatchers.Main + NonCancellable) { x11.closeWindow(session) }
             }
@@ -208,6 +210,8 @@ class SessionManager(
             // Still starting its X server: stopping the server ends the launch.
             else -> servers.remove(id)?.destroy()
         }
+        // And what detached from the tree on the way (D-Bus and accessibility-bus daemons).
+        ProcessTree.killSession(id)
     }
 
     fun stopAll() = _sessions.value.filter { it.running }.forEach { stop(it.session.id) }
@@ -274,6 +278,7 @@ class SessionManager(
         override fun onSessionFinished(finishedSession: TerminalSession) {
             screenListeners[id]?.invoke()
             update(id) { it.copy(exitCode = finishedSession.exitStatus) }
+            ProcessTree.killSession(id)
         }
 
         override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {
