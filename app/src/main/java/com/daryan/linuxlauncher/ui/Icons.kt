@@ -64,6 +64,21 @@ object LauncherIcons {
         curveTo(9f, 4.8f, 10.3f, 3.5f, 12f, 3.5f)
         curveTo(13.7f, 3.5f, 15f, 4.8f, 15f, 6.5f); lineTo(15f, 8f)
     }
+    val Keyboard = outline("Keyboard") {
+        roundRect(2.5f, 6f, 21.5f, 18f, 2.5f)
+        moveTo(6f, 9.5f); lineTo(6.01f, 9.5f)
+        moveTo(9.5f, 9.5f); lineTo(9.51f, 9.5f)
+        moveTo(13f, 9.5f); lineTo(13.01f, 9.5f)
+        moveTo(16.5f, 9.5f); lineTo(16.51f, 9.5f)
+        moveTo(6f, 12.5f); lineTo(6.01f, 12.5f)
+        moveTo(18f, 12.5f); lineTo(18.01f, 12.5f)
+        moveTo(8f, 15f); lineTo(16f, 15f)
+    }
+    val Mouse = outline("Mouse") {
+        roundRect(6f, 3f, 18f, 21f, 6f)
+        moveTo(12f, 3f); lineTo(12f, 10f)
+        moveTo(6f, 10f); lineTo(18f, 10f)
+    }
     val Folder = outline("Folder") {
         moveTo(3.5f, 7f)
         curveTo(3.5f, 5.9f, 4.4f, 5f, 5.5f, 5f)

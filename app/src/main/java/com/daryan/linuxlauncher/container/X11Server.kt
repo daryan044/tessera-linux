@@ -96,8 +96,8 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
     }
 
     companion object {
-        // By name: referencing MainActivity's class would drag AppCompat onto our classpath.
-        const val TAGGED_WINDOW = "com.termux.x11.MainActivity\$MainActivityTagged"
+        /** Our window class (a Termux:X11 tagged window with Material 3 controls on top). */
+        const val TAGGED_WINDOW = "com.daryan.linuxlauncher.X11Window"
         private const val ACTION_STOP = "com.termux.x11.ACTION_STOP"
 
         /** Identifies a session's Termux:X11 window (its `-tag` and document data). */

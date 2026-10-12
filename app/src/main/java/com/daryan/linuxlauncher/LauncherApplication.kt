@@ -86,19 +86,26 @@ class LauncherApplication : LorieApp() {
      */
     private fun applyX11Defaults() {
         val prefs = getSharedPreferences("${packageName}_preferences", MODE_PRIVATE)
-        if (prefs.getBoolean(X11_DEFAULTS_APPLIED, false)) return
-        // Aim for roughly desktop-sized UI: 3.5x density -> 250%, i.e. 1440x3000 shown as 576x1200.
-        val scale = ((resources.displayMetrics.density / 1.4f * 10).roundToInt() * 10).coerceIn(100, 300)
-        prefs.edit()
-            .putString("displayResolutionMode", "scaled")
-            .putInt("displayScale", scale)
-            .putString("touchMode", "3") // direct touch: tap where you want to click
-            .putBoolean(X11_DEFAULTS_APPLIED, true)
-            .apply()
+        val applied = prefs.getInt(X11_DEFAULTS_VERSION, if (prefs.getBoolean(X11_DEFAULTS_APPLIED, false)) 1 else 0)
+        val edit = prefs.edit()
+        if (applied < 1) {
+            // Aim for roughly desktop-sized UI: 3.5x density -> 250%, i.e. 1440x3000 shown as 576x1200.
+            val scale = ((resources.displayMetrics.density / 1.4f * 10).roundToInt() * 10).coerceIn(100, 300)
+            edit.putString("displayResolutionMode", "scaled")
+                .putInt("displayScale", scale)
+                .putString("touchMode", "3") // direct touch: tap where you want to click
+        }
+        if (applied < 2) {
+            // Our swipe-in panel replaces Termux:X11's extra-keys bar.
+            edit.putBoolean("showAdditionalKbd", false)
+        }
+        edit.putInt(X11_DEFAULTS_VERSION, CURRENT_X11_DEFAULTS).apply()
     }
 
     private companion object {
-        const val X11_DEFAULTS_APPLIED = "linuxlauncher_x11_defaults"
+        const val X11_DEFAULTS_APPLIED = "linuxlauncher_x11_defaults" // version 1, before versioning
+        const val X11_DEFAULTS_VERSION = "linuxlauncher_x11_defaults_version"
+        const val CURRENT_X11_DEFAULTS = 2
     }
 }
 
@@ -115,6 +122,9 @@ class LauncherContainer(private val app: Application) {
     val installer = RootfsInstaller(paths, OciRegistry(), scope, Process.myUid(), Process.myUid())
 
     val queue = InstallQueue(scope, paths)
+
+    /** An app whose sheet the launcher should open (set from an X11 window's Permissions tile). */
+    val showAppRequests = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
     val busy: StateFlow<Boolean> = combine(installer.state, sessions.sessions, queue.jobs) { install, list, jobs ->
         install.running || list.any { it.exitCode == null } || jobs.any { it.active }

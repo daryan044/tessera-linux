@@ -43,7 +43,7 @@ android {
     }
 
     // xkb keyboard data for the X server, staged by scripts/x11/build-native.sh.
-    sourceSets.getByName("main").assets.srcDir(rootProject.file("build/x11/assets"))
+    sourceSets.getByName("main").assets.directories.add(rootProject.file("build/x11/assets").path)
 
     packaging {
         // proot & friends ship as lib*.so and must exist as real files in nativeLibraryDir
@@ -58,6 +58,7 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
 

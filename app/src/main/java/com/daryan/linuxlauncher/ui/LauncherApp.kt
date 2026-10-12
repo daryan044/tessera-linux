@@ -123,6 +123,14 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         pendingLaunch = null
     }
 
+    // An X11 window's Permissions tile asks for an app's sheet.
+    val requestedApp by vm.showAppRequests.collectAsStateWithLifecycle()
+    LaunchedEffect(requestedApp, apps) {
+        val id = requestedApp ?: return@LaunchedEffect
+        apps.firstOrNull { it.id == id }?.let { openApp = it; destination = Destination.Apps }
+        vm.showAppRequests.value = null
+    }
+
     // The store loads (or refreshes its week-old cache) when first opened.
     LaunchedEffect(destination, status) {
         if (destination == Destination.Store && status != null) vm.openStore()

@@ -7,6 +7,8 @@ composeBom = "2026.09.00"
 material3 = "1.5.0-beta01"
 activityCompose = "1.13.0"
 coreKtx = "1.19.1"
+# Termux:X11's window is an AppCompatActivity; 1.3+ wires up what Compose overlays need.
+appcompat = "1.7.1"
 lifecycle = "2.11.0"
 serialization = "1.11.0"
 haze = "2.0.1"
@@ -15,6 +17,7 @@ junit = "4.13.2"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }

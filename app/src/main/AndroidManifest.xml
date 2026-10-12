@@ -31,6 +31,20 @@
             </intent-filter>
         </activity>
 
+        <!-- A GUI app's window: Termux:X11's tagged window plus our controls. Same document
+             settings as Termux:X11's own, so each app is a separate card in Recents. -->
+        <activity
+            android:name=".X11Window"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@style/LorieAppTheme"
+            android:documentLaunchMode="intoExisting"
+            android:autoRemoveFromRecents="true"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="stateHidden|adjustNothing"
+            android:configChanges="fontScale|orientation|screenSize|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|screenLayout|touchscreen|uiMode|smallestScreenSize|density" />
+
         <!-- One task per terminal session, so each gets its own card in Recents. -->
         <activity
             android:name=".TerminalActivity"

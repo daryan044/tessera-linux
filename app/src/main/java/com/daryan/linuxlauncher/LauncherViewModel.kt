@@ -156,6 +156,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun storeIcon(app: StoreApp) = container.catalog.iconFile(app)
 
     val queue: StateFlow<List<QueueJob>> = container.queue.jobs
+    val showAppRequests = container.showAppRequests
 
     /**
      * Queues a store app's install; it runs in the background after any before it, and its
