@@ -30,7 +30,10 @@ class InstallQueueTest {
         val s = InstallQueue.script(job)
         assertTrue(s.indexOf("apt-get update") < s.indexOf("apt-get install"))
         assertTrue("-o APT::Status-Fd=1" in s)
-        assertTrue(s.endsWith("vlc matchbox-window-manager"))
+        assertTrue("--no-install-recommends -o APT::Status-Fd=1 -o Dpkg::Use-Pty=0 -o Dpkg::Progress-Fancy=0 vlc matchbox-window-manager ||" in s)
+        // A failed install finishes pending package setup and tries once more.
+        assertTrue(s.indexOf("dpkg --configure -a") > s.indexOf("apt-get install"))
+        assertTrue(s.endsWith("vlc matchbox-window-manager; }"))
         val remove = InstallQueue.script(job.copy(action = QueueAction.REMOVE, packages = listOf("vlc")))
         assertTrue("apt-get update" !in remove && "apt-get remove -y" in remove)
     }

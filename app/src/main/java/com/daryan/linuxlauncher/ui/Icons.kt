@@ -36,6 +36,18 @@ object LauncherIcons {
         roundRect(4f, 13.5f, 10.5f, 20f, 2f)
         roundRect(13.5f, 13.5f, 20f, 20f, 2f)
     }
+    val History = outline("History") {
+        // A clock face whose rim turns into a back arrow at the left.
+        moveTo(4.5f, 12f)
+        arcTo(8f, 8f, 0f, true, true, 6.8f, 17.6f)
+        moveTo(2.5f, 9.5f); lineTo(4.5f, 12f); lineTo(7f, 10f)
+        moveTo(12.5f, 8f); lineTo(12.5f, 12.5f); lineTo(15.5f, 14.5f)
+    }
+    val Pin = outline("Pin") {
+        moveTo(9f, 4f); lineTo(15f, 4f)
+        moveTo(10f, 4f); lineTo(10f, 10f); lineTo(7f, 14f); lineTo(17f, 14f); lineTo(14f, 10f); lineTo(14f, 4f)
+        moveTo(12f, 14f); lineTo(12f, 20.5f)
+    }
     val Monitor = outline("Monitor") {
         moveTo(4f, 20f); lineTo(20f, 20f)
         moveTo(7f, 16f); lineTo(7f, 11f)

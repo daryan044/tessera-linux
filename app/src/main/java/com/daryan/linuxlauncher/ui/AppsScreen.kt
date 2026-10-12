@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,7 +36,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -46,7 +52,9 @@ import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -124,7 +132,11 @@ fun AppsPager(
     pagerState: PagerState,
     padding: PaddingValues,
     onOpen: (PermissionManifest) -> Unit,
-    onLongPress: (PermissionManifest) -> Unit,
+    pinned: List<String>,
+    favorites: List<String>,
+    onTogglePin: (PermissionManifest) -> Unit,
+    onToggleFavorite: (PermissionManifest) -> Unit,
+    onUninstall: (PermissionManifest) -> Unit,
 ) {
     HorizontalPager(pagerState, Modifier.fillMaxSize(), key = { tabs[it].title }) { page ->
         val tab = tabs[page]
@@ -147,15 +159,36 @@ fun AppsPager(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 itemsIndexed(tab.apps, key = { _, app -> app.id }) { index, app ->
-                    AppTile(app, index, onClick = { onOpen(app) }, onLongPress = { onLongPress(app) })
+                    AppTile(
+                        app, index,
+                        pinned = app.id in pinned,
+                        favorite = app.id in favorites,
+                        onClick = { onOpen(app) },
+                        onTogglePin = { onTogglePin(app) },
+                        onToggleFavorite = { onToggleFavorite(app) },
+                        onUninstall = { onUninstall(app) },
+                        modifier = Modifier.animateItem(),
+                    )
                 }
             }
         }
     }
 }
 
+/** One app in the grid. Holding it opens its menu: pin, favorite, uninstall. */
 @Composable
-private fun AppTile(app: PermissionManifest, index: Int, onClick: () -> Unit, onLongPress: () -> Unit) {
+private fun AppTile(
+    app: PermissionManifest,
+    index: Int,
+    pinned: Boolean,
+    favorite: Boolean,
+    onClick: () -> Unit,
+    onTogglePin: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onUninstall: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var menu by remember { mutableStateOf(false) }
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val motion = MaterialTheme.motionScheme
     val interaction = remember { MutableInteractionSource() }
@@ -171,9 +204,11 @@ private fun AppTile(app: PermissionManifest, index: Int, onClick: () -> Unit, on
     }
 
     val (container, onContainer) = appColors(app)
+    Box(modifier) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
+            .fillMaxWidth()
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -187,7 +222,7 @@ private fun AppTile(app: PermissionManifest, index: Int, onClick: () -> Unit, on
                 onClick = onClick,
                 onLongClick = {
                     haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                    onLongPress()
+                    menu = true
                 },
             )
             .padding(vertical = 14.dp, horizontal = 4.dp),
@@ -202,7 +237,16 @@ private fun AppTile(app: PermissionManifest, index: Int, onClick: () -> Unit, on
         ) {
             AppGlyph(app, 30.dp, onContainer, Modifier.graphicsLayer { rotationZ = -spin })
         }
-        Spacer(Modifier.height(10.dp))
+        if (pinned || favorite) {
+            Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                val tint = MaterialTheme.colorScheme.primary
+                if (pinned) Icon(LauncherIcons.Pin, "Pinned", Modifier.size(14.dp), tint = tint)
+                if (favorite) Icon(Icons.Rounded.Star, "Favorite", Modifier.size(14.dp), tint = tint)
+            }
+            Spacer(Modifier.height(2.dp))
+        } else {
+            Spacer(Modifier.height(10.dp))
+        }
         Text(
             app.name,
             style = MaterialTheme.typography.labelLarge,
@@ -215,6 +259,30 @@ private fun AppTile(app: PermissionManifest, index: Int, onClick: () -> Unit, on
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+    DropdownMenu(
+        expanded = menu,
+        onDismissRequest = { menu = false },
+        shape = MaterialTheme.shapes.large,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        DropdownMenuItem(
+            text = { Text(if (pinned) "Unpin" else "Pin to top") },
+            leadingIcon = { Icon(LauncherIcons.Pin, null) },
+            onClick = { menu = false; onTogglePin() },
+        )
+        DropdownMenuItem(
+            text = { Text(if (favorite) "Remove from favorites" else "Add to favorites") },
+            leadingIcon = { Icon(Icons.Rounded.Star, null) },
+            onClick = { menu = false; onToggleFavorite() },
+        )
+        HorizontalDivider()
+        DropdownMenuItem(
+            text = { Text("Uninstall") },
+            leadingIcon = { Icon(Icons.Rounded.Delete, null) },
+            onClick = { menu = false; onUninstall() },
+        )
+    }
     }
 }
 

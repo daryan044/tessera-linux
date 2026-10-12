@@ -128,15 +128,23 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
             val parser = AptProgress()
             val tail = ArrayDeque<String>()
             val log = StringBuilder()
+            var state: JobState = JobState.Running(null, "Starting")
+            var published = 0L
             ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.adoptFd(fd)).bufferedReader().use { r ->
                 try {
                     r.lineSequence().forEach { raw ->
                         val line = raw.trimEnd('\r')
-                        parser.feed(line)?.let { (p, msg) -> set(job.id, JobState.Running(p, msg), log) }
+                        parser.feed(line)?.let { (p, msg) -> state = JobState.Running(p, msg) }
                         if (line.isNotBlank() && !line.startsWith("dlstatus:") && !line.startsWith("pmstatus:") && !line.startsWith("##phase")) {
                             tail.addLast(line); if (tail.size > 3) tail.removeFirst()
                             log.append(line).append('\n')
                             if (log.length > MAX_LOG) log.delete(0, log.length - MAX_LOG)
+                        }
+                        // Live output for the Installs page, a few times a second rather than per line.
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (now - published >= LOG_PUBLISH_MS) {
+                            set(job.id, state, log)
+                            published = now
                         }
                     }
                 } catch (_: IOException) {
@@ -172,6 +180,7 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
 
     companion object {
         private const val MAX_LOG = 64 * 1024
+        private const val LOG_PUBLISH_MS = 250L
 
         /** apt in two phases with machine-readable progress; markers tell [AptProgress] which. */
         fun script(job: QueueJob): String {
@@ -181,9 +190,12 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
                 QueueAction.INSTALL -> "apt-get install -y --no-install-recommends $opts $pkgs"
                 QueueAction.REMOVE -> "apt-get remove -y $opts $pkgs"
             }
+            // A package setup step that was interrupted (or stumbled) leaves dpkg half done and
+            // apt failing; finish what's pending and try once more before calling it failed.
+            val retry = "{ echo 'Finishing interrupted package setup and trying again'; dpkg --configure -a; $main; }"
             return "export DEBIAN_FRONTEND=noninteractive; " +
                 (if (job.action == QueueAction.INSTALL) "echo '##phase update'; apt-get update $opts || exit \$?; " else "") +
-                "echo '##phase main'; $main"
+                "echo '##phase main'; $main || $retry"
         }
     }
 }

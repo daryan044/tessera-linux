@@ -45,6 +45,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -211,6 +212,9 @@ private fun JobLogSheet(job: QueueJob, onDismiss: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(12.dp))
+            val scroll = rememberScrollState(Int.MAX_VALUE)
+            // While it runs, follow the output like a terminal does.
+            LaunchedEffect(text) { if (job.active) scroll.animateScrollTo(scroll.maxValue) }
             SelectionContainer {
                 Text(
                     text,
@@ -221,7 +225,7 @@ private fun JobLogSheet(job: QueueJob, onDismiss: () -> Unit) {
                         .heightIn(max = 480.dp)
                         .clip(MaterialTheme.shapes.medium)
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                        .verticalScroll(rememberScrollState(Int.MAX_VALUE))
+                        .verticalScroll(scroll)
                         .padding(12.dp),
                 )
             }

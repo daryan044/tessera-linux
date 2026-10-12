@@ -42,6 +42,8 @@ enum class BackendMode(val label: String) { PROOT("PRoot"), CHROOT("Chroot (root
 /** A launcher tab: either a category from the manifests or one the user made. */
 data class LauncherTab(val title: String, val apps: List<PermissionManifest>, val custom: Boolean)
 
+const val FAVORITES_TAB = "Favorites"
+
 class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as LauncherApplication).container
     val paths = container.paths
@@ -85,13 +87,29 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancelInstall() = container.installer.cancel()
 
-    fun tabs(apps: List<PermissionManifest>, custom: List<CustomTab>): List<LauncherTab> = buildList {
-        add(LauncherTab("All", apps, custom = false))
-        apps.map { it.category }.distinct().sorted().forEach { cat ->
-            add(LauncherTab(cat, apps.filter { it.category == cat }, custom = false))
-        }
-        custom.forEach { tab ->
-            add(LauncherTab(tab.name, apps.filter { it.id in tab.appIds }, custom = true))
+    /**
+     * All, then Favorites (once there are any), the categories and the user's own tabs. Pinned
+     * apps lead every tab, in the order they were pinned.
+     */
+    fun tabs(
+        apps: List<PermissionManifest>,
+        custom: List<CustomTab>,
+        pinned: List<String> = emptyList(),
+        favorites: List<String> = emptyList(),
+    ): List<LauncherTab> {
+        val byId = apps.associateBy { it.id }
+        val pins = pinned.mapNotNull { byId[it] }
+        fun arranged(list: List<PermissionManifest>) = pins.filter { it in list } + list.filterNot { it.id in pinned }
+        return buildList {
+            add(LauncherTab("All", arranged(apps), custom = false))
+            val favs = favorites.mapNotNull { byId[it] }
+            if (favs.isNotEmpty()) add(LauncherTab(FAVORITES_TAB, arranged(favs), custom = false))
+            apps.map { it.category }.distinct().sorted().forEach { cat ->
+                add(LauncherTab(cat, arranged(apps.filter { it.category == cat }), custom = false))
+            }
+            custom.forEach { tab ->
+                add(LauncherTab(tab.name, arranged(apps.filter { it.id in tab.appIds }), custom = true))
+            }
         }
     }
 

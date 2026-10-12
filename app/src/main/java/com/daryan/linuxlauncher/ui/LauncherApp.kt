@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -92,7 +93,9 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val sessions by vm.sessions.sessions.collectAsStateWithLifecycle()
     val install by vm.installState.collectAsStateWithLifecycle()
     val apps by vm.apps.collectAsStateWithLifecycle()
-    val tabs = remember(apps, customTabs) { vm.tabs(apps, customTabs) }
+    val pinned by vm.tabStore.pinned.collectAsStateWithLifecycle()
+    val favorites by vm.tabStore.favorites.collectAsStateWithLifecycle()
+    val tabs = remember(apps, customTabs, pinned, favorites) { vm.tabs(apps, customTabs, pinned, favorites) }
 
     var destination by rememberSaveable { mutableStateOf(Destination.Apps) }
     var openApp by remember { mutableStateOf<PermissionManifest?>(null) }
@@ -195,14 +198,26 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     containerColor = Color.Transparent,
                     scrolledContainerColor = Color.Transparent,
                 )
+                // The Store's history: every install and removal, with apt's output.
+                val actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
+                    if (destination == Destination.Store) {
+                        val active = queue.count { it.active }
+                        IconButton(onClick = { showQueue = true }) {
+                            BadgedBox(badge = { if (active > 0) Badge { Text("$active") } }) {
+                                Icon(LauncherIcons.History, "Recent installs")
+                            }
+                        }
+                    }
+                }
                 // The large flexible bar would eat half a landscape screen; go compact there.
                 if (shortScreen) {
-                    TopAppBar(title = title, subtitle = subtitle, navigationIcon = menuButton, colors = barColors)
+                    TopAppBar(title = title, subtitle = subtitle, navigationIcon = menuButton, actions = actions, colors = barColors)
                 } else {
                     LargeFlexibleTopAppBar(
                         title = title,
                         subtitle = subtitle,
                         navigationIcon = menuButton,
+                        actions = actions,
                         colors = barColors,
                         scrollBehavior = scrollBehavior,
                     )
@@ -255,7 +270,11 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 Destination.Apps -> AppsPager(
                     tabs, pagerState, padding,
                     onOpen = { openApp = it },
-                    onLongPress = { app ->
+                    pinned = pinned,
+                    favorites = favorites,
+                    onTogglePin = { vm.tabStore.togglePinned(it.id) },
+                    onToggleFavorite = { vm.tabStore.toggleFavorite(it.id) },
+                    onUninstall = { app ->
                         if (app.packages.isEmpty()) {
                             scope.launch { snackbar.showSnackbar("${app.name} is part of the Linux system and can't be uninstalled") }
                         } else {
