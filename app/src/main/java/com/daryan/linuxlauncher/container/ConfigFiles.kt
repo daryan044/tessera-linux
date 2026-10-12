@@ -8,20 +8,23 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 
+/** Which form edits a file; [TEXT] files only have the text view. */
+enum class ConfigKind { SHELL, ENVIRONMENT, SOURCES, RESOLV, HOSTS, TEXT }
+
 /** A config file inside the container, as listed in the side menu. Paths are guest paths. */
-data class ConfigFile(val group: String, val title: String, val path: String, val hint: String)
+data class ConfigFile(val group: String, val title: String, val path: String, val hint: String, val kind: ConfigKind)
 
 object ConfigCatalog {
     val files = listOf(
-        ConfigFile("Shell", "Root's .bashrc", "/root/.bashrc", "Runs for every root shell (Root shell, installs)"),
-        ConfigFile("Shell", "User's .bashrc", "/home/user/.bashrc", "Runs for every shell of the normal user"),
-        ConfigFile("Shell", "System bashrc", "/etc/bash.bashrc", "Runs for every interactive bash, before ~/.bashrc"),
-        ConfigFile("Shell", "Login profile", "/etc/profile", "Runs for login shells; sets PATH and the prompt"),
-        ConfigFile("Shell", "Environment", "/etc/environment", "KEY=value variables for every session"),
-        ConfigFile("Packages", "Package sources", "/etc/apt/sources.list.d/debian.sources", "Repositories apt installs from"),
-        ConfigFile("Packages", "apt settings", "/etc/apt/apt.conf.d/99launcher", "apt options set by the launcher"),
-        ConfigFile("Network", "DNS servers", "/etc/resolv.conf", "Name servers used inside the container"),
-        ConfigFile("Network", "Hosts", "/etc/hosts", "Static host names"),
+        ConfigFile("Shell", "Root's .bashrc", "/root/.bashrc", "Runs for every root shell (Root shell, installs)", ConfigKind.SHELL),
+        ConfigFile("Shell", "User's .bashrc", "/home/user/.bashrc", "Runs for every shell of the normal user", ConfigKind.SHELL),
+        ConfigFile("Shell", "System bashrc", "/etc/bash.bashrc", "Runs for every interactive bash, before ~/.bashrc", ConfigKind.SHELL),
+        ConfigFile("Shell", "Login profile", "/etc/profile", "Runs for login shells; sets PATH and the prompt", ConfigKind.SHELL),
+        ConfigFile("Shell", "Environment", "/etc/environment", "KEY=value variables for every session", ConfigKind.ENVIRONMENT),
+        ConfigFile("Packages", "Package sources", "/etc/apt/sources.list.d/debian.sources", "Repositories apt installs from", ConfigKind.SOURCES),
+        ConfigFile("Packages", "apt settings", "/etc/apt/apt.conf.d/99launcher", "apt options set by the launcher", ConfigKind.TEXT),
+        ConfigFile("Network", "DNS servers", "/etc/resolv.conf", "Name servers used inside the container", ConfigKind.RESOLV),
+        ConfigFile("Network", "Hosts", "/etc/hosts", "Static host names", ConfigKind.HOSTS),
     )
 }
 

@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,6 +50,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daryan.linuxlauncher.container.ConfigFile
+import com.daryan.linuxlauncher.container.ConfigKind
 import com.daryan.linuxlauncher.container.ConfigStore
 import kotlinx.coroutines.launch
 
@@ -61,6 +63,8 @@ fun ConfigEditor(file: ConfigFile, store: ConfigStore, engine: String, onClose: 
     var error by remember(file) { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
+    // Forms first; the app bar button flips to the file's text and back. Both edit `text`.
+    var showText by remember(file) { mutableStateOf(file.kind == ConfigKind.TEXT) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val dirty = loaded && text != (original ?: "")
@@ -86,9 +90,19 @@ fun ConfigEditor(file: ConfigFile, store: ConfigStore, engine: String, onClose: 
                     IconButton(onClick = close) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
                 },
                 actions = {
+                    if (file.kind != ConfigKind.TEXT) {
+                        IconButton(onClick = { showText = !showText }) {
+                            if (showText) Icon(Icons.Rounded.Edit, "Show form")
+                            else Icon(LauncherIcons.Code, "Show file text")
+                        }
+                    }
                     Button(
                         enabled = dirty && !saving && error == null,
                         onClick = {
+                            formProblem(file.kind, text)?.takeIf { !showText }?.let { problem ->
+                                scope.launch { snackbar.showSnackbar(problem) }
+                                return@Button
+                            }
                             saving = true
                             scope.launch {
                                 runCatching { store.write(file.path, text) }
@@ -114,6 +128,17 @@ fun ConfigEditor(file: ConfigFile, store: ConfigStore, engine: String, onClose: 
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(24.dp),
                 )
+                !showText -> {
+                    if (original == null) {
+                        Text(
+                            "This file doesn't exist yet; saving creates it.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+                    ConfigForm(file.kind, text, onText = { text = it }, modifier = Modifier.fillMaxSize())
+                }
                 else -> {
                     Text(
                         if (original == null) "${file.hint}. This file doesn't exist yet; saving creates it."
