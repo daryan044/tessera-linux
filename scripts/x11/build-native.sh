@@ -46,6 +46,6 @@ rm -rf "$ASSETS" && mkdir -p "$ASSETS"
 TMP=$(mktemp -d)
 (cd "$TMP" && apt-get download xkb-data >/dev/null && dpkg-deb -x xkb-data_*.deb root)
 cp -rL "$TMP/root/usr/share/X11/xkb" "$ASSETS/xkb"  # -L: assets have no symlinks
-dpkg-deb -f "$TMP"/xkb-data_*.deb Version > "$ASSETS/xkb/.version"
+dpkg-deb -f "$TMP"/xkb-data_*.deb Version > "$ASSETS/xkb/VERSION"  # no leading dot: aapt drops dotfiles from assets
 rm -rf "$TMP"
 du -sh "$ASSETS/xkb"

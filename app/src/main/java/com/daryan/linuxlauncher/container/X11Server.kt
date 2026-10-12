@@ -74,9 +74,9 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
     private fun installXkb(): File {
         val dir = File(paths.filesDir, "xkb")
         val bundled = runCatching {
-            context.assets.open("xkb/.version").bufferedReader().use { it.readText().trim() }
+            context.assets.open("xkb/VERSION").bufferedReader().use { it.readText().trim() }
         }.getOrNull() ?: throw IOException("this build has no xkb data; run scripts/x11/build-native.sh")
-        val marker = File(dir, ".version")
+        val marker = File(dir, "VERSION")
         if (marker.takeIf { it.exists() }?.readText()?.trim() == bundled) return dir
 
         dir.deleteRecursively()

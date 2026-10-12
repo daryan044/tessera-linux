@@ -58,6 +58,6 @@ class LauncherContainer(private val app: Application) {
         }
     }
 
-    fun proot() = ProotBackend(paths, FakeProc.NAMES)
+    fun proot() = ProotBackend(paths, FakeProc.NAMES, appId = Process.myUid() to Process.myUid())
     fun chroot(su: String) = ChrootBackend(paths, su)
 }

@@ -44,6 +44,14 @@ class BackendTest {
         assertEquals("/app/lib/libproot-loader.so", spec.env["PROOT_LOADER"])
     }
 
+    @Test fun `non-root proot sessions emulate set-id calls as the app user`() {
+        val proot = ProotBackend(paths, exists = { true }, appId = 10484 to 10484)
+        assertTrue("--change-id=10484:10484" in proot.buildLaunch(offline, session).argv)
+        val root = proot.buildLaunch(offline.copy(permissions = Permissions(root = true)), session).argv
+        assertTrue("--root-id" in root)
+        assertFalse(root.any { it.startsWith("--change-id") })
+    }
+
     @Test fun `proot cannot withhold network and says so`() {
         val proot = ProotBackend(paths, exists = { true })
         assertEquals(Enforcement.UNAVAILABLE, proot.enforcement(Capability.NETWORK, offline))

@@ -4,6 +4,7 @@
 package com.daryan.linuxlauncher
 
 import android.app.Application
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -40,7 +41,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     private val _status = MutableStateFlow<HostStatus?>(null)
     val status: StateFlow<HostStatus?> = _status
 
-    private val _mode = MutableStateFlow(BackendMode.PROOT)
+    private val prefs = app.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+    private val _mode = MutableStateFlow(
+        runCatching { BackendMode.valueOf(prefs.getString(KEY_MODE, null)!!) }.getOrDefault(BackendMode.PROOT),
+    )
     val mode: StateFlow<BackendMode> = _mode
 
     private val _messages = Channel<String>(Channel.BUFFERED)
@@ -79,6 +83,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setMode(mode: BackendMode) {
         _mode.value = mode
+        prefs.edit().putString(KEY_MODE, mode.name).apply()
     }
 
     fun backend(mode: BackendMode = _mode.value): ContainerBackend? = when (mode) {
@@ -124,5 +129,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val TAG = "Launcher"
+        const val KEY_MODE = "backend_mode"
     }
 }

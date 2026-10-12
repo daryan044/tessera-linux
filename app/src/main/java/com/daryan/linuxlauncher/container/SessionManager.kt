@@ -55,6 +55,11 @@ class SessionManager(
     val sessions: StateFlow<List<RunningSession>> = _sessions
 
     private val x11 = X11Server(context, paths)
+
+    init {
+        // Nothing from a previous process is still running; its session dirs are just litter.
+        java.io.File(paths.cacheDir, "sessions").deleteRecursively()
+    }
     /** Running X servers, by session id. */
     private val servers = ConcurrentHashMap<String, Process>()
 
@@ -70,7 +75,11 @@ class SessionManager(
     fun launch(app: PermissionManifest, backend: ContainerBackend): RunningSession {
         val n = nextId.getAndIncrement()
         val session = Session(id = "s$n", display = if (app.permissions.display) n else null)
-        paths.sessionTmp(session).mkdirs()
+        // Ids restart with the process, so a previous run's s1 may have left a dead X socket here.
+        paths.sessionTmp(session).apply {
+            deleteRecursively()
+            mkdirs()
+        }
         if (app.permissions.display) paths.x11SocketDir(session).mkdirs()
         val spec = backend.buildLaunch(app, session)
 
@@ -108,6 +117,8 @@ class SessionManager(
                 launch { readOutput(session.id, fd) }
                 val code = Pty.waitFor(pid[0])
                 update(session.id) { it.copy(exitCode = code) }
+                val tail = _sessions.value.firstOrNull { it.session.id == session.id }?.output?.takeLast(600)
+                Log.i(TAG, "GUI session ${session.id} (${app.id}) exited $code: $tail")
             } catch (e: Exception) {
                 Log.w(TAG, "GUI session ${session.id} failed", e)
                 update(session.id) { it.copy(output = "Couldn't start: ${e.message}", exitCode = -1) }

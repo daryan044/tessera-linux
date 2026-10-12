@@ -15,6 +15,8 @@ class ProotBackend(
     private val fakeProc: List<String> = emptyList(),
     /** PRoot fails on a binding whose host path is missing, so missing grants are skipped. */
     private val exists: (String) -> Boolean = { File(it).exists() },
+    /** The app's uid/gid. Non-root sessions run as it, with PRoot emulating set*id calls. */
+    private val appId: Pair<Int, Int>? = null,
 ) : ContainerBackend {
     override val name = "PRoot"
 
@@ -33,6 +35,9 @@ class ProotBackend(
             // SELinux blocks hard links in app storage; dpkg and tar need them.
             add("--link2symlink")
             if (p.root) add("--root-id")
+            // Android's app seccomp filter rejects setuid()/setgid(), even to the current ids,
+            // and programs like xterm refuse to run when dropping privileges fails.
+            else appId?.let { (uid, gid) -> add("--change-id=$uid:$gid") }
             add("--rootfs=${paths.prootRootfs.invariantSeparatorsPath}")
             add("--cwd=${if (p.root) "/root" else "/home/user"}")
             bind("/dev")
