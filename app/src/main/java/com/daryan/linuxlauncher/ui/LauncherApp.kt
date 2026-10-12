@@ -69,6 +69,7 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import com.daryan.linuxlauncher.BackendMode
 import com.daryan.linuxlauncher.LauncherViewModel
+import com.daryan.linuxlauncher.TerminalActivity
 import com.daryan.linuxlauncher.container.ConfigFile
 import com.daryan.linuxlauncher.container.PermissionManifest
 import kotlinx.coroutines.launch
@@ -94,14 +95,13 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var removingTab by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
-    var openTerminal by rememberSaveable { mutableStateOf<String?>(null) }
     var openConfig by remember { mutableStateOf<ConfigFile?>(null) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val launchApp: (PermissionManifest) -> Unit = { app ->
         vm.launch(app) { started ->
             openApp = null
             destination = Destination.Sessions
-            if (started.terminal != null) openTerminal = started.session.id
+            if (started.terminal != null) TerminalActivity.open(context, started.session.id)
         }
     }
     // Apps granted shared-storage folders need Android's storage permission first. Launch
@@ -229,7 +229,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     padding,
                     onOpen = { id ->
                         // Terminal apps open in-app; GUI apps live in their own X11 window.
-                        if (sessions.any { it.session.id == id && it.terminal != null }) openTerminal = id
+                        if (sessions.any { it.session.id == id && it.terminal != null }) TerminalActivity.open(context, id)
                         else vm.sessions.showWindow(id)
                     },
                     onStop = vm.sessions::stop,
@@ -250,27 +250,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     }
     }
 
-    // Terminal slides up over the launcher, like a full-screen sheet.
-    val terminalSession = sessions.firstOrNull { it.session.id == openTerminal && it.terminal != null }
-    AnimatedVisibility(
-        visible = terminalSession != null,
-        enter = slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()),
-        exit = slideOutVertically(motion.fastSpatialSpec()) { it } + fadeOut(motion.fastEffectsSpec()),
-    ) {
-        // Keep showing the last session while the exit animation runs.
-        val shown = remember { mutableStateOf(terminalSession) }
-        if (terminalSession != null) shown.value = terminalSession
-        shown.value?.let { s ->
-            TerminalScreen(
-                session = s,
-                onBack = { openTerminal = null },
-                onStop = { vm.sessions.stop(s.session.id) },
-                setScreenListener = vm.sessions::setScreenListener,
-            )
-        }
-    }
-
-    // Config editor slides up the same way.
+    // Config editor slides up over the launcher, like a full-screen sheet.
     val editing = openConfig
     AnimatedVisibility(
         visible = editing != null && store != null,
@@ -310,7 +290,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 vm.install(app) { started ->
                     openApp = null
                     destination = Destination.Sessions
-                    openTerminal = started.session.id
+                    TerminalActivity.open(context, started.session.id)
                 }
             },
             onDismiss = { openApp = null },

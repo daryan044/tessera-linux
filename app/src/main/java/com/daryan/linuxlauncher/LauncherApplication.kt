@@ -3,7 +3,9 @@
 
 package com.daryan.linuxlauncher
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
 import android.os.Process
 import com.termux.x11.LorieApp
 import kotlin.math.roundToInt
@@ -14,6 +16,7 @@ import com.daryan.linuxlauncher.container.OciRegistry
 import com.daryan.linuxlauncher.container.ProotBackend
 import com.daryan.linuxlauncher.container.RootfsInstaller
 import com.daryan.linuxlauncher.container.SessionManager
+import com.daryan.linuxlauncher.container.X11Server
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,6 +35,24 @@ class LauncherApplication : LorieApp() {
         applyX11Defaults()
         super.onCreate()
         container = LauncherContainer(this)
+        registerActivityLifecycleCallbacks(X11WindowBranding())
+    }
+
+    /** Termux:X11 windows don't know which app they show; label them for Recents ourselves. */
+    private inner class X11WindowBranding : ActivityLifecycleCallbacks {
+        override fun onActivityResumed(activity: Activity) {
+            if (activity.javaClass.name != X11Server.TAGGED_WINDOW) return
+            val data = activity.intent?.data ?: return
+            val tag = data.host ?: data.toString()
+            container.sessions.forWindowTag(tag)?.let { brandForRecents(activity, it, container) }
+        }
+
+        override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+        override fun onActivityStarted(activity: Activity) {}
+        override fun onActivityPaused(activity: Activity) {}
+        override fun onActivityStopped(activity: Activity) {}
+        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+        override fun onActivityDestroyed(activity: Activity) {}
     }
 
     /**

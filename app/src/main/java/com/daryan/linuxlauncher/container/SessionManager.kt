@@ -150,6 +150,12 @@ class SessionManager(
         }
     }
 
+    /** The session shown by the X11 window tagged [tag], if any. */
+    fun forWindowTag(tag: String?): RunningSession? =
+        _sessions.value.firstOrNull { X11Server.windowTag(it.session) == tag }
+
+    fun byId(id: String?): RunningSession? = _sessions.value.firstOrNull { it.session.id == id }
+
     /** Brings a GUI session's window back to the front. */
     fun showWindow(id: String) {
         _sessions.value.firstOrNull { it.session.id == id && it.terminal == null }?.let { x11.showWindow(it.session) }

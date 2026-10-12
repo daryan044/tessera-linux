@@ -31,6 +31,16 @@
             </intent-filter>
         </activity>
 
+        <!-- One task per terminal session, so each gets its own card in Recents. -->
+        <activity
+            android:name=".TerminalActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:documentLaunchMode="intoExisting"
+            android:autoRemoveFromRecents="true"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density" />
+
         <service
             android:name=".ContainerService"
             android:exported="false" />

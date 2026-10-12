@@ -32,7 +32,7 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
 
         val proc = ProcessBuilder(
             "/system/bin/app_process", "/", CmdEntryPoint::class.java.name,
-            ":$display", "-tag", tag(session),
+            ":$display", "-tag", windowTag(session),
         ).redirectErrorStream(true).apply {
             environment()["CLASSPATH"] = context.applicationInfo.sourceDir
             // We extract native libs (PRoot needs that), so lorie can't dlopen from the APK.
@@ -58,7 +58,7 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
     fun showWindow(session: Session) {
         context.startActivity(
             Intent().setClassName(context, TAGGED_WINDOW)
-                .setData(Uri.parse("termux-x11-window://${tag(session)}"))
+                .setData(Uri.parse("termux-x11-window://${windowTag(session)}"))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
@@ -66,7 +66,7 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
     /** Closes the session's window; the server itself is stopped by destroying its process. */
     fun closeWindow(session: Session) {
         (context.applicationContext as? LorieApp)?.onBroadcastReceive(
-            Intent(ACTION_STOP).putExtra(CmdEntryPoint.EXTRA_DOCUMENT_TAG, tag(session)),
+            Intent(ACTION_STOP).putExtra(CmdEntryPoint.EXTRA_DOCUMENT_TAG, windowTag(session)),
         )
     }
 
@@ -95,11 +95,12 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
         children.forEach { copyAssetDir("$asset/$it", File(dest, it)) }
     }
 
-    private fun tag(session: Session) = "linux-${session.id}"
-
-    private companion object {
+    companion object {
         // By name: referencing MainActivity's class would drag AppCompat onto our classpath.
         const val TAGGED_WINDOW = "com.termux.x11.MainActivity\$MainActivityTagged"
-        const val ACTION_STOP = "com.termux.x11.ACTION_STOP"
+        private const val ACTION_STOP = "com.termux.x11.ACTION_STOP"
+
+        /** Identifies a session's Termux:X11 window (its `-tag` and document data). */
+        fun windowTag(session: Session) = "linux-${session.id}"
     }
 }

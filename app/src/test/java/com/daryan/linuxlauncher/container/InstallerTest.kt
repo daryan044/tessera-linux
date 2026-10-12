@@ -89,6 +89,15 @@ class RootfsSetupTest {
         assertTrue(File(src, "debian.sources").readText().contains("Suites: trixie trixie-updates"))
     }
 
+    @Test fun `icon names come from the command, then the id and packages`() {
+        val app = PermissionManifest(
+            id = "firefox-esr", name = "Firefox", exec = listOf("/usr/bin/firefox-esr"), packages = listOf("firefox-esr"),
+        )
+        assertEquals("firefox-esr", AppIcons.candidateNames(app).first())
+        val python = PermissionManifest(id = "python", name = "Python", exec = listOf("/usr/bin/python3"), packages = listOf("python3"))
+        assertEquals(listOf("python3", "python", "python3"), AppIcons.candidateNames(python))
+    }
+
     @Test fun `alpine without bash gets sh`() {
         val root = tmp.newFolder("alpine")
         RootfsSetup.configure(root, 10001, 10001)
