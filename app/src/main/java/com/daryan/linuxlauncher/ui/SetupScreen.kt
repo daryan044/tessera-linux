@@ -5,6 +5,7 @@
 
 package com.daryan.linuxlauncher.ui
 
+import com.daryan.linuxlauncher.container.PhantomLimit
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.os.Build
@@ -68,6 +69,7 @@ fun SetupScreen(
     onRefresh: () -> Unit,
     onInstall: () -> Unit,
     onCancelInstall: () -> Unit,
+    onLiftPhantomLimit: () -> Unit,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(
@@ -142,7 +144,7 @@ fun SetupScreen(
         }
         if (status.phantomProcessLimit) {
             item {
-                PhantomProcessItem()
+                PhantomProcessItem(rooted = status.su != null, onLift = onLiftPhantomLimit)
             }
         }
         item {
@@ -231,20 +233,20 @@ private fun InstallControls(
 }
 
 @Composable
-private fun PhantomProcessItem() {
+private fun PhantomProcessItem(rooted: Boolean, onLift: () -> Unit) {
     val context = LocalContext.current
-    // Android 14 added a user-facing switch; 12 and 13 only have the device_config knob.
-    val command = if (Build.VERSION.SDK_INT >= 34) {
-        "adb shell settings put global settings_enable_monitor_phantom_procs false"
-    } else {
-        "adb shell \"/system/bin/device_config set_sync_disabled_for_tests persistent; " +
-            "/system/bin/device_config put activity_manager max_phantom_processes 2147483647\""
-    }
+    val command = "adb shell \"" + PhantomLimit.COMMANDS.joinToString("; ") + "\""
     SetupItem(
         state = ItemState.Warn,
         title = "Background process limit",
-        body = "Android 12+ kills apps that run more than 32 processes, which a busy Linux system does. Run this once from a computer:",
+        body = if (rooted) "Android 12+ kills apps that run more than 32 processes, which a busy Linux system does. With root, this can be lifted here."
+        else "Android 12+ kills apps that run more than 32 processes, which a busy Linux system does. Run this once from a computer:",
     ) {
+        if (rooted) {
+            Spacer(Modifier.height(10.dp))
+            Button(onClick = onLift) { Text("Lift it") }
+            return@SetupItem
+        }
         Spacer(Modifier.height(10.dp))
         Text(
             command,

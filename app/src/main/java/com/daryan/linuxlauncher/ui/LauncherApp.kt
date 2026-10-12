@@ -330,6 +330,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     onRefresh = vm::refresh,
                     onInstall = { vm.install() },
                     onCancelInstall = vm::cancelInstall,
+                    onLiftPhantomLimit = vm::liftPhantomLimit,
                 )
             }
         }

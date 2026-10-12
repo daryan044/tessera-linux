@@ -29,6 +29,7 @@ import com.daryan.linuxlauncher.container.HostStatus
 import com.daryan.linuxlauncher.container.InstallState
 import com.daryan.linuxlauncher.container.PackageInstall
 import com.daryan.linuxlauncher.container.PermissionManifest
+import com.daryan.linuxlauncher.container.PhantomLimit
 import com.daryan.linuxlauncher.container.Permissions
 import com.daryan.linuxlauncher.container.RunningSession
 import kotlinx.coroutines.Dispatchers
@@ -120,6 +121,16 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancelInstall() = container.installer.cancel()
 
+    /** Lifts Android's background process limit through su, then checks again. */
+    fun liftPhantomLimit() {
+        val su = _status.value?.su ?: return
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) { PhantomLimit.lift(su) }
+            if (!ok) _messages.send("Couldn't change it; was root access refused?")
+            refresh()
+        }
+    }
+
     /**
      * All, then Favorites (once there are any), the categories and the user's own tabs. Pinned
      * apps lead every tab, in the order they were pinned.
@@ -151,7 +162,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun refresh() {
         viewModelScope.launch {
             _status.value = null
-            val s = withContext(Dispatchers.IO) { probe.probe() }
+            val s = withContext(Dispatchers.IO) {
+                probe.probe().let { it.copy(phantomProcessLimit = PhantomLimit.lifted(getApplication(), it.su) != true) }
+            }
             _status.value = s
             if (s.su == null && _mode.value == BackendMode.CHROOT) _mode.value = BackendMode.PROOT
             addMissingGuiHelpers()

@@ -14,7 +14,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | 1.3 | PRoot engine and mounts | ✅ | Per-app permission manifests; only granted folders and devices are bound |
 | 1.3b | Chroot engine (root) | ✅ | Private mount namespace, minimal /dev, uid 1000, job control, network namespace when network is denied (verified) |
 | 1.4 | Terminal, foreground service | ✅ | Termux terminal-view, extra keys, pinch zoom; service keeps sessions and network alive in the background |
-| 1.5 | Background process limit (Android 12+) | 🟡 | Setup shows the adb command to lift it; nothing automatic yet |
+| 1.5 | Background process limit (Android 12+) | ✅ | Setup reads the real setting (Android 14+ directly, 12–13 through su) and only warns while it's on. With root, Lift it applies the fix; without, it shows the adb command |
 
 ## Phase 2: Display (GUI apps)
 
@@ -61,7 +61,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | | Item | Status | Notes |
 |---|---|---|---|
 | 5.1 | GPU acceleration (VirGL / Zink) | ⬜ | X11 apps currently render in software |
-| 5.2 | Phantom process killer safeguards | 🟡 | Foreground service plus adb instructions; no automatic fix |
+| 5.2 | Phantom process killer safeguards | ✅ | Foreground service, plus lifting the limit from Setup (one tap with root, an adb command without) |
 | 5.3 | Open source release | 🟡 | Public GitHub repo, GPL-3.0, copyright headers, third-party credits. No CI, no signed release, not on F-Droid yet |
 
 ## Known issues
