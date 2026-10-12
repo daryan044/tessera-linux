@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -128,6 +130,49 @@ private fun SessionCard(
                     .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                     .padding(12.dp),
             )
+        }
+    }
+}
+
+/** Everything a session printed, for apps that stopped: selectable, with Copy. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun SessionLogSheet(s: RunningSession, onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val text = s.output.replace(ANSI, "").trim().ifEmpty { "${s.app.name} printed nothing." }
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = androidx.compose.material3.rememberBottomSheetState(
+            initialValue = androidx.compose.material3.SheetValue.Hidden,
+            enabledValues = setOf(androidx.compose.material3.SheetValue.Hidden, androidx.compose.material3.SheetValue.Expanded),
+        ),
+    ) {
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(s.app.name, style = MaterialTheme.typography.headlineSmall)
+                    Text("${s.statusLabel} · ${s.backend}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                FilledTonalButton(onClick = {
+                    context.getSystemService(android.content.ClipboardManager::class.java)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("${s.app.name} log", "${s.app.name}: ${s.statusLabel}\n$text"))
+                }) { Text("Copy") }
+            }
+            Spacer(Modifier.height(12.dp))
+            androidx.compose.foundation.text.selection.SelectionContainer {
+                Text(
+                    text,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 480.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                        .padding(12.dp),
+                )
+            }
         }
     }
 }

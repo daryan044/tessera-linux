@@ -103,6 +103,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var openStoreApp by remember { mutableStateOf<StoreApp?>(null) }
     var showQueue by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
+    var logSession by remember { mutableStateOf<String?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     val queue by vm.queue.collectAsStateWithLifecycle()
     val catalog by vm.catalog.collectAsStateWithLifecycle()
@@ -277,8 +278,13 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     padding,
                     onOpen = { id ->
                         // Terminal apps open in-app; GUI apps live in their own X11 window.
-                        if (sessions.any { it.session.id == id && it.terminal != null }) TerminalActivity.open(context, id)
-                        else vm.sessions.showWindow(id)
+                        val s = sessions.firstOrNull { it.session.id == id }
+                        when {
+                            s?.terminal != null -> TerminalActivity.open(context, id)
+                            s?.running == true -> vm.sessions.showWindow(id)
+                            // A GUI app that stopped: show what it printed.
+                            else -> logSession = id
+                        }
                     },
                     onStop = vm.sessions::stop,
                     onDismiss = vm.sessions::dismiss,
@@ -354,6 +360,10 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             },
             onDismiss = { openStoreApp = null },
         )
+    }
+
+    sessions.firstOrNull { it.session.id == logSession }?.let { s ->
+        SessionLogSheet(s, onDismiss = { logSession = null })
     }
 
     if (showQueue) {
