@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (C) 2026 Daryan
+# Copyright (C) 2026 Daryan Kamaran Karim
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Builds PRoot and its loaders for Android with the NDK and installs them into
 # app/src/main/jniLibs/<abi>/ as libproot.so, libproot-loader.so and libproot-loader32.so.

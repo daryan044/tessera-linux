@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Daryan
+// Copyright (C) 2026 Daryan Kamaran Karim
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 package com.daryan.linuxlauncher.store
@@ -128,9 +128,11 @@ object Dep11 {
             val t = line.trim()
             when {
                 t.startsWith("- name:") -> name = t.removePrefix("- name:").trim()
-                t.startsWith("width:") && name != null -> {
+                t.startsWith("width:") -> {
+                    val n = name ?: continue
                     val w = t.removePrefix("width:").trim().toIntOrNull() ?: 0
-                    if (best == null || w > best!!.second) best = name!! to w
+                    val current = best
+                    if (current == null || w > current.second) best = n to w
                 }
             }
         }

@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Daryan
+// Copyright (C) 2026 Daryan Kamaran Karim
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 package com.daryan.linuxlauncher.ui
@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +32,8 @@ fun SideMenu(
     unavailable: String?,
     onOpenFile: (ConfigFile) -> Unit,
     onDisplaySettings: () -> Unit,
+    onAbout: () -> Unit,
+    onSettings: () -> Unit,
 ) {
     ModalDrawerSheet {
         Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -47,6 +50,8 @@ fun SideMenu(
                 modifier = Modifier.padding(start = 28.dp, end = 28.dp, bottom = 12.dp),
             )
 
+            Item("Settings", "Everything in one place", Icons.Rounded.Settings, enabled = true, onClick = onSettings)
+
             ConfigCatalog.files.groupBy { it.group }.forEach { (group, files) ->
                 GroupLabel(group)
                 files.forEach { f ->
@@ -56,6 +61,9 @@ fun SideMenu(
 
             GroupLabel("Display")
             Item("X11 display settings", "Resolution, touch mode, keyboard", Icons.Rounded.Settings, enabled = true, onClick = onDisplaySettings)
+
+            GroupLabel("Linux Launcher")
+            Item("About", "Version, creator and licenses", Icons.Rounded.Info, enabled = true, onClick = onAbout)
             Spacer(Modifier.height(24.dp))
         }
     }

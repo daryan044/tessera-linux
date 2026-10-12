@@ -70,7 +70,7 @@ where the Linux system lives. This rules out Google Play; distribute through Git
 
 ## License
 
-Copyright (C) 2026 Daryan
+Copyright (C) 2026 Daryan Kamaran Karim
 
 This program is free software: you can redistribute it and/or modify it under the terms of the
 GNU General Public License as published by the Free Software Foundation, either version 3 of the

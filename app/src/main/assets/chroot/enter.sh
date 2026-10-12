@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Daryan
+# Copyright (C) 2026 Daryan Kamaran Karim
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Runs as root inside a fresh mount namespace (and network namespace when network is denied),
 # started by ChrootBackend via:  su -c 'export ...; exec unshare -m [-n] sh enter.sh'

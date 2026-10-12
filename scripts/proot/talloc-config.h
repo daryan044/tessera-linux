@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Daryan
+// Copyright (C) 2026 Daryan Kamaran Karim
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 /* Stand-in for the config.h that talloc's waf configure step generates. Describes Android's

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (C) 2026 Daryan
+# Copyright (C) 2026 Daryan Kamaran Karim
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Builds Termux:X11's X server (libXlorie.so) for every ABI and copies it to

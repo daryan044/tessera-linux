@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
-// Copyright (C) 2026 Daryan
+// Copyright (C) 2026 Daryan Kamaran Karim
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 package com.daryan.linuxlauncher.ui
@@ -102,6 +102,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var openConfig by remember { mutableStateOf<ConfigFile?>(null) }
     var openStoreApp by remember { mutableStateOf<StoreApp?>(null) }
     var showQueue by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     val queue by vm.queue.collectAsStateWithLifecycle()
     val catalog by vm.catalog.collectAsStateWithLifecycle()
     val installedPackages by vm.installedPackages.collectAsStateWithLifecycle()
@@ -154,6 +156,14 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 onOpenFile = {
                     scope.launch { drawerState.close() }
                     openConfig = it
+                },
+                onAbout = {
+                    scope.launch { drawerState.close() }
+                    showAbout = true
+                },
+                onSettings = {
+                    scope.launch { drawerState.close() }
+                    showSettings = true
                 },
                 onDisplaySettings = {
                     scope.launch { drawerState.close() }
@@ -280,6 +290,38 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     }
     }
 
+    AnimatedVisibility(
+        visible = showSettings,
+        enter = slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()),
+        exit = slideOutVertically(motion.fastSpatialSpec()) { it } + fadeOut(motion.fastEffectsSpec()),
+    ) {
+        SettingsScreen(
+            status = status,
+            mode = mode,
+            linuxInstall = install,
+            onMode = vm::setMode,
+            onInstallLinux = { vm.install() },
+            filesUnavailable = when {
+                store != null -> null
+                mode == BackendMode.CHROOT -> "Root access is needed to edit the chroot container"
+                else -> "Install Linux to edit its files"
+            },
+            onOpenFile = { openConfig = it },
+            customTabs = customTabs,
+            onAddTab = { addingTab = true },
+            onRemoveTab = { removingTab = it },
+            catalog = catalog,
+            onRefreshCatalog = { vm.openStore(refresh = true) },
+            activeInstalls = queue.count { it.active },
+            onOpenQueue = { showQueue = true },
+            onDisplaySettings = { context.startActivity(Intent().setClassName(context, "com.termux.x11.LoriePreferences")) },
+            runningSessions = running,
+            onStopAll = vm.sessions::stopAll,
+            onAbout = { showAbout = true },
+            onClose = { showSettings = false },
+        )
+    }
+
     openStoreApp?.let { app ->
         // The launcher entry for this package, once it's been installed from here or bundled.
         val entry = apps.firstOrNull { app.pkg in it.packages }
@@ -313,6 +355,14 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onClearFinished = vm::clearFinishedJobs,
             onDismiss = { showQueue = false },
         )
+    }
+
+    AnimatedVisibility(
+        visible = showAbout,
+        enter = slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()),
+        exit = slideOutVertically(motion.fastSpatialSpec()) { it } + fadeOut(motion.fastEffectsSpec()),
+    ) {
+        AboutScreen(onClose = { showAbout = false })
     }
 
     // Config editor slides up over the launcher, like a full-screen sheet.
