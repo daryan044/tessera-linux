@@ -104,6 +104,10 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
         // GTK 3/4 report over AT-SPI by default; Firefox and Qt need asking.
         put("GNOME_ACCESSIBILITY", "1")
         put("QT_LINUX_ACCESSIBILITY_ALWAYS_ON", "1")
+        // Termux:X11 advertises DRI3, but Mesa's DRI3 path then waits forever on a fence the
+        // server never signals: once Mesa is installed (Qt apps pull it in), every GTK app,
+        // Firefox included, hangs at startup with a black window. Mesa's other path works.
+        put("LIBGL_DRI3_DISABLE", "1")
     }
     if (p.audio && p.display && session.display != null) {
         // The session's own PulseAudio, started by guestCommand; see AudioPipe for the rest.
