@@ -13,6 +13,7 @@ import com.daryan.linuxlauncher.container.ChrootBackend
 import com.daryan.linuxlauncher.container.FakeProc
 import com.daryan.linuxlauncher.container.HostProbe
 import com.daryan.linuxlauncher.container.OciRegistry
+import com.daryan.linuxlauncher.container.ProcessTree
 import com.daryan.linuxlauncher.container.ProotBackend
 import com.daryan.linuxlauncher.container.RootfsInstaller
 import com.daryan.linuxlauncher.container.EndReason
@@ -132,6 +133,8 @@ class LauncherContainer(private val app: Application) {
 
     init {
         scope.launch(Dispatchers.IO) {
+            // Whatever a previous run of the app left behind can't be in use any more.
+            ProcessTree.killLeftovers(Process.myPid(), Process.myUid())
             HostProbe.installChrootScript(app, paths)
             // Refreshed every start so btime and the CPU count stay current.
             FakeProc.write(paths.fakeProcDir)

@@ -182,10 +182,10 @@ class SessionManager(
     fun stop(id: String, reason: EndReason = EndReason.STOPPED) {
         val s = _sessions.value.firstOrNull { it.session.id == id && it.running } ?: return
         update(id) { it.copy(endedBy = reason) }
-        // SIGKILL to proot; --kill-on-exit takes its tracees down with it.
+        // The whole tree: killing proot alone leaves its tracees running as orphans.
         when {
-            s.terminal != null -> s.terminal.finishIfRunning()
-            s.pid > 0 -> android.os.Process.killProcess(s.pid)
+            s.terminal != null -> ProcessTree.killTree(s.terminal.pid)
+            s.pid > 0 -> ProcessTree.killTree(s.pid)
             // Still starting its X server: stopping the server ends the launch.
             else -> servers.remove(id)?.destroy()
         }

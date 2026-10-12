@@ -84,7 +84,7 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         val job = _jobs.value.firstOrNull { it.id == id } ?: return
         when (job.state) {
             JobState.Queued -> _jobs.update { list -> list.filterNot { it.id == id } }
-            is JobState.Running -> runningPid.takeIf { it > 0 }?.let { android.os.Process.killProcess(it) }
+            is JobState.Running -> runningPid.takeIf { it > 0 }?.let { com.daryan.linuxlauncher.container.ProcessTree.killTree(it) }
             else -> {}
         }
     }
