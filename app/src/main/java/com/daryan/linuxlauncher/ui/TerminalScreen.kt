@@ -94,7 +94,7 @@ fun TerminalScreen(
             Column(Modifier.weight(1f)) {
                 Text(session.app.name, color = Color.White, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    session.title ?: if (session.running) session.backend else "Exited (${session.exitCode})",
+                    session.title ?: if (session.running) session.backend else session.statusLabel,
                     color = Color.White.copy(alpha = 0.6f),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,

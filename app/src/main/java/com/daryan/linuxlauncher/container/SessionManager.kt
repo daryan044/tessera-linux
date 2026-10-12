@@ -33,15 +33,33 @@ data class RunningSession(
     val output: String = "",
     val title: String? = null,
     val exitCode: Int? = null,
+    /** Why it ended, when the user ended it; null while running or when the app exited itself. */
+    val endedBy: EndReason? = null,
     /** Bumped on every screen change so card previews recompose. */
     val revision: Int = 0,
 ) {
     val running get() = exitCode == null
 
+    /** "Running", "Stopped", "Killed by user" or "Exited (code)". */
+    val statusLabel: String
+        get() = when {
+            running && endedBy != null -> "Stopping"
+            running -> "Running"
+            endedBy != null -> endedBy.label
+            else -> "Exited ($exitCode)"
+        }
+
     /** Last lines currently on screen, for the session card. */
     fun preview(lines: Int = 8): String = terminal?.emulator?.screen?.transcriptText
         ?.lines()?.dropLastWhile { it.isBlank() }?.takeLast(lines)?.joinToString("\n")
         ?: output
+}
+
+enum class EndReason(val label: String) {
+    /** Stop button, notification's Stop all, or dismissing the card. */
+    STOPPED("Stopped"),
+    /** The app's card was swiped away in Recents. */
+    CLOSED_FROM_RECENTS("Killed by user"),
 }
 
 /** Owns launched processes; lives in [com.daryan.linuxlauncher.LauncherContainer]. */
@@ -161,8 +179,9 @@ class SessionManager(
         _sessions.value.firstOrNull { it.session.id == id && it.terminal == null }?.let { x11.showWindow(it.session) }
     }
 
-    fun stop(id: String) {
+    fun stop(id: String, reason: EndReason = EndReason.STOPPED) {
         val s = _sessions.value.firstOrNull { it.session.id == id && it.running } ?: return
+        update(id) { it.copy(endedBy = reason) }
         // SIGKILL to proot; --kill-on-exit takes its tracees down with it.
         when {
             s.terminal != null -> s.terminal.finishIfRunning()

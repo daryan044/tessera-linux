@@ -15,6 +15,8 @@ import com.daryan.linuxlauncher.container.HostProbe
 import com.daryan.linuxlauncher.container.OciRegistry
 import com.daryan.linuxlauncher.container.ProotBackend
 import com.daryan.linuxlauncher.container.RootfsInstaller
+import com.daryan.linuxlauncher.container.EndReason
+import com.daryan.linuxlauncher.container.RunningSession
 import com.daryan.linuxlauncher.container.SessionManager
 import com.daryan.linuxlauncher.container.X11Server
 import kotlinx.coroutines.CoroutineScope
@@ -35,16 +37,37 @@ class LauncherApplication : LorieApp() {
         applyX11Defaults()
         super.onCreate()
         container = LauncherContainer(this)
-        registerActivityLifecycleCallbacks(X11WindowBranding())
+        registerActivityLifecycleCallbacks(SessionWindows())
     }
 
-    /** Termux:X11 windows don't know which app they show; label them for Recents ourselves. */
-    private inner class X11WindowBranding : ActivityLifecycleCallbacks {
+    /**
+     * Ties each session's own window (Termux:X11 or terminal) to the session: labels it for
+     * Recents, and stops the session when its card is swiped away there.
+     */
+    private inner class SessionWindows : ActivityLifecycleCallbacks {
+        private fun sessionOf(activity: Activity): RunningSession? {
+            val data = activity.intent?.data ?: return null
+            return when (activity.javaClass.name) {
+                X11Server.TAGGED_WINDOW -> container.sessions.forWindowTag(data.host ?: data.toString())
+                TerminalActivity::class.java.name -> container.sessions.byId(data.host)
+                else -> null
+            }
+        }
+
         override fun onActivityResumed(activity: Activity) {
+            // Terminal windows brand themselves once their session is known.
             if (activity.javaClass.name != X11Server.TAGGED_WINDOW) return
-            val data = activity.intent?.data ?: return
-            val tag = data.host ?: data.toString()
-            container.sessions.forWindowTag(tag)?.let { brandForRecents(activity, it, container) }
+            sessionOf(activity)?.let { brandForRecents(activity, it, container) }
+        }
+
+        override fun onActivityDestroyed(activity: Activity) {
+            // Finishing without a config change = the window was closed for good. Back only
+            // moves our windows to the background, and when an app exits by itself we close
+            // its window after the session has already ended, so a running session here means
+            // the user closed its card in Recents.
+            if (!activity.isFinishing || activity.isChangingConfigurations) return
+            val session = sessionOf(activity)?.takeIf { it.running } ?: return
+            container.sessions.stop(session.session.id, EndReason.CLOSED_FROM_RECENTS)
         }
 
         override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -52,7 +75,6 @@ class LauncherApplication : LorieApp() {
         override fun onActivityPaused(activity: Activity) {}
         override fun onActivityStopped(activity: Activity) {}
         override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
-        override fun onActivityDestroyed(activity: Activity) {}
     }
 
     /**

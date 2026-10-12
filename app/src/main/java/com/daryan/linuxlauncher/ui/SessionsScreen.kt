@@ -99,7 +99,7 @@ private fun SessionCard(
                     Text(s.app.name, style = MaterialTheme.typography.titleMedium)
                     Text(
                         buildString {
-                            append(if (s.running) "Running" else "Exited (${s.exitCode})")
+                            append(s.statusLabel)
                             append(" · ${s.backend}")
                             s.session.display?.let { append(" · display :$it") }
                         },
