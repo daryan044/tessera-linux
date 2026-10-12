@@ -13,6 +13,7 @@ import com.daryan.linuxlauncher.container.Distro
 import com.daryan.linuxlauncher.container.HostProbe
 import com.daryan.linuxlauncher.container.HostStatus
 import com.daryan.linuxlauncher.container.InstallState
+import com.daryan.linuxlauncher.container.PackageInstall
 import com.daryan.linuxlauncher.container.PermissionManifest
 import com.daryan.linuxlauncher.container.RunningSession
 import kotlinx.coroutines.Dispatchers
@@ -99,6 +100,18 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         mode == BackendMode.CHROOT && status.su == null -> "Root access not found"
         else -> null
     }
+
+    /**
+     * Whether [app] is installed in the container. Null when that can't be checked: chroot
+     * rootfs isn't readable by the app, or the manifest names no packages.
+     */
+    fun installed(app: PermissionManifest, status: HostStatus?, mode: BackendMode): Boolean? =
+        if (mode == BackendMode.PROOT && status?.prootRootfs == true) PackageInstall.isInstalled(app, paths.prootRootfs)
+        else null
+
+    /** Installs [app]'s packages in a root session; [onLaunched] gets that session. */
+    fun install(app: PermissionManifest, onLaunched: (RunningSession) -> Unit) =
+        launch(PackageInstall.installerFor(app), onLaunched)
 
     fun launch(app: PermissionManifest, onLaunched: (RunningSession) -> Unit) {
         viewModelScope.launch {

@@ -13,8 +13,8 @@ The UI says which of the two applies to each permission, per app.
 
 Done: app skeleton, NDK pty spawner, permission model, both backends, launcher UI (1.1), and
 PRoot built from source for Android (1.1b, [docs/native-binaries.md](docs/native-binaries.md)).
-Also done: Debian install (1.2), terminal and foreground service (1.4).
-In progress: GUI apps (phase 2), each with its own Termux:X11 server, display and window.
+Also done: Debian install (1.2), terminal and foreground service (1.4), GUI apps in their own
+fullscreen X11 windows (phase 2). Full status: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Layout
 

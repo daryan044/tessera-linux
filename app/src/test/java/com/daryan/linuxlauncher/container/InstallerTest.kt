@@ -76,6 +76,19 @@ class RootfsSetupTest {
         assertTrue(File(root, "home/user").isDirectory)
     }
 
+    @Test fun `enables contrib and non-free in deb822 sources, once`() {
+        val root = tmp.newFolder("deb")
+        val src = File(root, "etc/apt/sources.list.d").apply { mkdirs() }
+        File(src, "debian.sources").writeText(
+            "Types: deb\nURIs: http://deb.debian.org/debian\nSuites: trixie trixie-updates\nComponents: main\n\n" +
+                "Types: deb\nURIs: http://deb.debian.org/debian-security\nComponents: main contrib\n",
+        )
+        repeat(2) { RootfsSetup.enableAllComponents(File(root, "etc")) }
+        val components = File(src, "debian.sources").readLines().filter { it.startsWith("Components:") }
+        assertEquals(List(2) { "Components: main contrib non-free non-free-firmware" }, components)
+        assertTrue(File(src, "debian.sources").readText().contains("Suites: trixie trixie-updates"))
+    }
+
     @Test fun `alpine without bash gets sh`() {
         val root = tmp.newFolder("alpine")
         RootfsSetup.configure(root, 10001, 10001)

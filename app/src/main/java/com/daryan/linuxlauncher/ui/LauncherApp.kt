@@ -236,6 +236,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             app = app,
             backend = vm.backend(mode) ?: vm.backend(BackendMode.PROOT)!!,
             blocker = blocker,
+            installed = vm.installed(app, status, mode),
             customTabs = customTabs,
             onToggleTab = { vm.tabStore.toggle(it, app.id) },
             onLaunch = {
@@ -249,6 +250,13 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     )
                 } else {
                     launchApp(app)
+                }
+            },
+            onInstall = {
+                vm.install(app) { started ->
+                    openApp = null
+                    destination = Destination.Sessions
+                    openTerminal = started.session.id
                 }
             },
             onDismiss = { openApp = null },

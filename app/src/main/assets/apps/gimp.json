@@ -5,12 +5,22 @@
   "category": "Graphics",
   "icon": "palette",
   "gui": true,
-  "exec": ["/usr/bin/gimp"],
+  "exec": [
+    "/usr/bin/gimp"
+  ],
+  "packages": [
+    "gimp"
+  ],
   "permissions": {
     "display": true,
-    "devices": ["/dev/dri/renderD128"],
+    "devices": [
+      "/dev/dri/renderD128"
+    ],
     "filesystem": [
-      { "path": "/storage/emulated/0/Pictures", "mountAt": "/home/user/Pictures" }
+      {
+        "path": "/storage/emulated/0/Pictures",
+        "mountAt": "/home/user/Pictures"
+      }
     ]
   }
 }

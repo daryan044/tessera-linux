@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Button
@@ -54,9 +55,12 @@ fun AppSheet(
     app: PermissionManifest,
     backend: ContainerBackend,
     blocker: String?,
+    /** False when the app's packages need installing first; null when unknown. */
+    installed: Boolean?,
     customTabs: List<CustomTab>,
     onToggleTab: (String) -> Unit,
     onLaunch: () -> Unit,
+    onInstall: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -138,16 +142,28 @@ fun AppSheet(
             }
 
             Spacer(Modifier.height(28.dp))
+            val needsInstall = installed == false
             Button(
-                onClick = onLaunch,
+                onClick = if (needsInstall) onInstall else onLaunch,
                 enabled = blocker == null,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
             ) {
                 if (blocker == null) {
-                    Icon(Icons.Rounded.PlayArrow, null)
+                    Icon(if (needsInstall) Icons.Rounded.Add else Icons.Rounded.PlayArrow, null)
                     Spacer(Modifier.width(8.dp))
                 }
-                Text(blocker ?: "Open ${app.name}", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    blocker ?: if (needsInstall) "Install ${app.name}" else "Open ${app.name}",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+            if (needsInstall && blocker == null) {
+                Text(
+                    "Installs ${app.packages.joinToString()} with apt, in a terminal you can watch.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
             }
         }
     }

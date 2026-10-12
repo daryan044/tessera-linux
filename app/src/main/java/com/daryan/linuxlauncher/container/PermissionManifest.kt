@@ -23,6 +23,8 @@ data class PermissionManifest(
     val exec: List<String>,
     /** GUI apps get their own X display in their own tab. */
     val gui: Boolean = false,
+    /** Distro packages that provide [exec]; offered for install when it's missing. */
+    val packages: List<String> = emptyList(),
     val permissions: Permissions = Permissions(),
 ) {
     fun validate(): List<String> = buildList {
@@ -30,6 +32,7 @@ data class PermissionManifest(
         if (exec.isEmpty()) add("exec is empty")
         if (gui && !permissions.display) add("gui apps need the display permission")
         permissions.filesystem.forEach { addAll(it.validate()) }
+        packages.forEach { if (!PACKAGE.matches(it)) add("package '$it' is not a valid package name") }
         permissions.devices.forEach {
             if (!it.startsWith("/dev/") || ".." in it) add("device '$it' must be a path under /dev/")
         }
@@ -37,6 +40,8 @@ data class PermissionManifest(
 
     companion object {
         private val ID = Regex("[a-z0-9][a-z0-9._-]{0,63}")
+        /** Debian package names; also keeps them safe to put on an apt command line. */
+        private val PACKAGE = Regex("[a-z0-9][a-z0-9+.-]{0,127}")
         private val json = Json { ignoreUnknownKeys = true }
 
         fun parse(text: String): PermissionManifest = json.decodeFromString(serializer(), text)

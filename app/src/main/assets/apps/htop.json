@@ -4,5 +4,10 @@
   "description": "Process viewer. Needs nothing but its own container.",
   "category": "System",
   "icon": "monitor",
-  "exec": ["/usr/bin/htop"]
+  "exec": [
+    "/usr/bin/htop"
+  ],
+  "packages": [
+    "htop"
+  ]
 }

@@ -5,13 +5,21 @@
   "category": "Internet",
   "icon": "globe",
   "gui": true,
-  "exec": ["/usr/bin/firefox-esr"],
+  "exec": [
+    "/usr/bin/firefox-esr"
+  ],
+  "packages": [
+    "firefox-esr"
+  ],
   "permissions": {
     "network": true,
     "display": true,
     "audio": true,
     "filesystem": [
-      { "path": "/storage/emulated/0/Download", "mountAt": "/home/user/Downloads" }
+      {
+        "path": "/storage/emulated/0/Download",
+        "mountAt": "/home/user/Downloads"
+      }
     ]
   }
 }

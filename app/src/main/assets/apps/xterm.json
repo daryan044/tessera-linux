@@ -5,7 +5,16 @@
   "category": "System",
   "icon": "terminal",
   "gui": true,
-  "exec": ["/usr/bin/xterm", "-fa", "Monospace", "-fs", "11"],
+  "exec": [
+    "/usr/bin/xterm",
+    "-fa",
+    "Monospace",
+    "-fs",
+    "11"
+  ],
+  "packages": [
+    "xterm"
+  ],
   "permissions": {
     "display": true
   }

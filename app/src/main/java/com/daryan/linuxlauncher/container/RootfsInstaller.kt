@@ -120,6 +120,7 @@ object RootfsSetup {
         File(etc, "apt/apt.conf.d").takeIf { it.isDirectory }?.let {
             File(it, "99launcher").writeText("APT::Sandbox::User \"root\";\n")
         }
+        enableAllComponents(etc)
 
         // Non-root sessions run as the app's real uid; give it a name and a home.
         val shell = if (File(root, "bin/bash").exists()) "/bin/bash" else "/bin/sh"
@@ -136,6 +137,25 @@ object RootfsSetup {
         File(root, "home/user").mkdirs()
         File(root, "root").mkdirs()
     }
+
+    /**
+     * Container images ship Debian with only `main` enabled; desktop users expect contrib and
+     * non-free too (fonts, codecs, firmware, unrar, ...). Rewrites deb822 Components lines.
+     */
+    fun enableAllComponents(etc: File) {
+        val sources = File(etc, "apt/sources.list.d").listFiles { f -> f.name.endsWith(".sources") }.orEmpty()
+        for (f in sources) {
+            val lines = f.readLines()
+            val fixed = lines.map { line ->
+                if (!line.startsWith("Components:")) return@map line
+                val have = line.removePrefix("Components:").trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+                "Components: " + (have + DEBIAN_COMPONENTS.filterNot { it in have }).joinToString(" ")
+            }
+            if (fixed != lines) f.writeText(fixed.joinToString("\n", postfix = "\n"))
+        }
+    }
+
+    private val DEBIAN_COMPONENTS = listOf("main", "contrib", "non-free", "non-free-firmware")
 
     private fun replace(f: File, content: String) {
         f.delete() // drops a dangling symlink rather than writing through it

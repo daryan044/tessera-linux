@@ -4,10 +4,19 @@
   "description": "Offline Python REPL with read-only access to Documents.",
   "category": "Development",
   "icon": "code",
-  "exec": ["/usr/bin/python3"],
+  "exec": [
+    "/usr/bin/python3"
+  ],
+  "packages": [
+    "python3"
+  ],
   "permissions": {
     "filesystem": [
-      { "path": "/storage/emulated/0/Documents", "mountAt": "/home/user/Documents", "readOnly": true }
+      {
+        "path": "/storage/emulated/0/Documents",
+        "mountAt": "/home/user/Documents",
+        "readOnly": true
+      }
     ]
   }
 }
