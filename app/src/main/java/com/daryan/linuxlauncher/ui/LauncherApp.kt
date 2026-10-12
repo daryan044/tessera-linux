@@ -28,6 +28,8 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.Badge
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
@@ -76,6 +78,7 @@ import com.daryan.linuxlauncher.container.ConfigFile
 import com.daryan.linuxlauncher.store.CatalogState
 import com.daryan.linuxlauncher.store.StoreApp
 import com.daryan.linuxlauncher.container.PermissionManifest
+import com.daryan.linuxlauncher.Shortcut
 import kotlinx.coroutines.launch
 
 enum class Destination(val label: String, val title: String, val icon: ImageVector) {
@@ -110,6 +113,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var showAbout by remember { mutableStateOf(false) }
     var logSession by remember { mutableStateOf<String?>(null) }
     var uninstallApp by remember { mutableStateOf<PermissionManifest?>(null) }
+    var editingShortcut by remember { mutableStateOf<Shortcut?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     val queue by vm.queue.collectAsStateWithLifecycle()
     val catalog by vm.catalog.collectAsStateWithLifecycle()
@@ -275,8 +279,18 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     favorites = favorites,
                     onTogglePin = { vm.tabStore.togglePinned(it.id) },
                     onToggleFavorite = { vm.tabStore.toggleFavorite(it.id) },
+                    onEditShortcut = { app -> vm.shortcuts.value.firstOrNull { it.id == Shortcut.idOf(app) }?.let { editingShortcut = it } },
+                    onNewShortcut = { editingShortcut = Shortcut(id = "", name = "", command = "") },
                     onUninstall = { app ->
-                        if (app.packages.isEmpty()) {
+                        val shortcut = vm.shortcuts.value.firstOrNull { Shortcut.isShortcut(app) && it.id == Shortcut.idOf(app) }
+                        if (shortcut != null) {
+                            // Just the icon: the packages it needed may serve other things.
+                            vm.deleteShortcut(app)
+                            scope.launch {
+                                val undo = snackbar.showSnackbar("Deleted ${app.name}", actionLabel = "Undo", duration = SnackbarDuration.Short)
+                                if (undo == SnackbarResult.ActionPerformed) vm.saveShortcut(shortcut)
+                            }
+                        } else if (app.packages.isEmpty()) {
                             scope.launch { snackbar.showSnackbar("${app.name} is part of the Linux system and can't be uninstalled") }
                         } else {
                             uninstallApp = app
@@ -373,6 +387,10 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             },
             onDismiss = { openStoreApp = null },
         )
+    }
+
+    editingShortcut?.let { s ->
+        ShortcutDialog(s, onDismiss = { editingShortcut = null }, onSave = { vm.saveShortcut(it); editingShortcut = null })
     }
 
     uninstallApp?.let { app ->

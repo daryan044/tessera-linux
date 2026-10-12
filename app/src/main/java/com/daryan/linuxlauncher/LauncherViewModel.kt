@@ -57,10 +57,25 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /** Apps that ship with the launcher. */
     private val bundled: List<PermissionManifest> = loadApps(app)
 
-    /** Bundled apps plus those installed from the store, as their manifests describe them. */
-    private val manifests: StateFlow<List<PermissionManifest>> = container.registry.userApps
-        .map { user -> bundled + user.filterNot { u -> bundled.any { it.id == u.id } } }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, bundled)
+    /** Bundled apps, those installed from the store and the user's shortcuts, as their manifests describe them. */
+    private val manifests: StateFlow<List<PermissionManifest>> =
+        combine(container.registry.userApps, container.shortcuts.shortcuts) { user, shortcuts ->
+            bundled + user.filterNot { u -> bundled.any { it.id == u.id } } + shortcuts.map(Shortcut::toManifest)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, bundled + container.shortcuts.shortcuts.value.map(Shortcut::toManifest))
+
+    val shortcuts: StateFlow<List<Shortcut>> = container.shortcuts.shortcuts
+
+    /** Adds [shortcut], or saves changes to it; a new one gets an id from its name. */
+    fun saveShortcut(shortcut: Shortcut) {
+        val s = if (shortcut.id.isNotEmpty()) shortcut
+        else shortcut.copy(id = Shortcut.newId(shortcut.name, container.shortcuts.shortcuts.value.map { it.id }))
+        container.shortcuts.save(s)
+    }
+
+    fun deleteShortcut(app: PermissionManifest) {
+        container.shortcuts.delete(Shortcut.idOf(app))
+        container.permissions.reset(app.id)
+    }
 
     /** Every app, with the permissions the user set where they changed any. */
     val apps: StateFlow<List<PermissionManifest>> =
@@ -122,7 +137,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             add(LauncherTab("All", arranged(apps), custom = false))
             val favs = favorites.mapNotNull { byId[it] }
             if (favs.isNotEmpty()) add(LauncherTab(FAVORITES_TAB, arranged(favs), custom = false))
-            apps.map { it.category }.distinct().sorted().forEach { cat ->
+            // Always there, even empty: it's where new shortcuts are made.
+            add(LauncherTab(SHORTCUTS_TAB, arranged(apps.filter { it.category == SHORTCUTS_TAB }), custom = false))
+            apps.map { it.category }.filter { it != SHORTCUTS_TAB }.distinct().sorted().forEach { cat ->
                 add(LauncherTab(cat, arranged(apps.filter { it.category == cat }), custom = false))
             }
             custom.forEach { tab ->
@@ -181,9 +198,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      * Whether [app] is installed in the container. Null when that can't be checked: chroot
      * rootfs isn't readable by the app, or the manifest names no packages.
      */
-    fun installed(app: PermissionManifest, status: HostStatus?, mode: BackendMode): Boolean? =
-        if (mode == BackendMode.PROOT && status?.prootRootfs == true) PackageInstall.isInstalled(app, paths.prootRootfs)
-        else null
+    fun installed(app: PermissionManifest, status: HostStatus?, mode: BackendMode): Boolean? = when {
+        // A shortcut's command is bash; what it needs is its packages.
+        Shortcut.isShortcut(app) ->
+            if (app.packages.isEmpty()) null
+            else container.registry.installed.value?.let { have -> app.packages.all { it in have } }
+        mode == BackendMode.PROOT && status?.prootRootfs == true -> PackageInstall.isInstalled(app, paths.prootRootfs)
+        else -> null
+    }
 
     /**
      * Where the side menu's config files are read and written for [mode], or null when that

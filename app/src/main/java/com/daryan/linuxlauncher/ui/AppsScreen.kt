@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -63,6 +64,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.daryan.linuxlauncher.LauncherTab
+import com.daryan.linuxlauncher.SHORTCUTS_TAB
+import com.daryan.linuxlauncher.Shortcut
 import com.daryan.linuxlauncher.container.PermissionManifest
 import kotlinx.coroutines.delay
 
@@ -137,10 +140,13 @@ fun AppsPager(
     onTogglePin: (PermissionManifest) -> Unit,
     onToggleFavorite: (PermissionManifest) -> Unit,
     onUninstall: (PermissionManifest) -> Unit,
+    onEditShortcut: (PermissionManifest) -> Unit,
+    onNewShortcut: () -> Unit,
 ) {
     HorizontalPager(pagerState, Modifier.fillMaxSize(), key = { tabs[it].title }) { page ->
         val tab = tabs[page]
-        if (tab.apps.isEmpty()) {
+        val shortcuts = tab.title == SHORTCUTS_TAB && !tab.custom
+        if (tab.apps.isEmpty() && !shortcuts) {
             EmptyState(
                 title = "Nothing here yet",
                 body = if (tab.custom) "Open an app and add it to “${tab.title}”." else "No apps in this category.",
@@ -167,8 +173,12 @@ fun AppsPager(
                         onTogglePin = { onTogglePin(app) },
                         onToggleFavorite = { onToggleFavorite(app) },
                         onUninstall = { onUninstall(app) },
+                        onEdit = if (Shortcut.isShortcut(app)) ({ onEditShortcut(app) }) else null,
                         modifier = Modifier.animateItem(),
                     )
+                }
+                if (shortcuts) {
+                    item(key = "new-shortcut") { NewShortcutTile(onNewShortcut, Modifier.animateItem()) }
                 }
             }
         }
@@ -186,6 +196,8 @@ private fun AppTile(
     onTogglePin: () -> Unit,
     onToggleFavorite: () -> Unit,
     onUninstall: () -> Unit,
+    /** For shortcuts: edit it (and Delete replaces Uninstall). */
+    onEdit: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -277,12 +289,38 @@ private fun AppTile(
             onClick = { menu = false; onToggleFavorite() },
         )
         HorizontalDivider()
+        if (onEdit != null) {
+            DropdownMenuItem(
+                text = { Text("Edit") },
+                leadingIcon = { Icon(Icons.Rounded.Edit, null) },
+                onClick = { menu = false; onEdit() },
+            )
+        }
         DropdownMenuItem(
-            text = { Text("Uninstall") },
+            text = { Text(if (onEdit != null) "Delete" else "Uninstall") },
             leadingIcon = { Icon(Icons.Rounded.Delete, null) },
             onClick = { menu = false; onUninstall() },
         )
     }
+    }
+}
+
+/** The last tile in the Shortcuts tab: make a new shortcut. */
+@Composable
+private fun NewShortcutTile(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.clip(MaterialTheme.shapes.large).clickable(onClick = onClick).padding(vertical = 14.dp, horizontal = 4.dp),
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(72.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        ) {
+            Icon(Icons.Rounded.Add, null, Modifier.size(30.dp), tint = MaterialTheme.colorScheme.primary)
+        }
+        Spacer(Modifier.height(10.dp))
+        Text("New shortcut", style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+        Text("A command", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

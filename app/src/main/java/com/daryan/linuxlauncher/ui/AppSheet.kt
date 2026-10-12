@@ -70,9 +70,10 @@ fun AppSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        // Opens part way, like before the permissions became editable; drag up for the rest.
         sheetState = rememberBottomSheetState(
             initialValue = SheetValue.Hidden,
-            enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
+            enabledValues = setOf(SheetValue.Hidden, SheetValue.PartiallyExpanded, SheetValue.Expanded),
         ),
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
@@ -103,6 +104,30 @@ fun AppSheet(
                 }
             }
 
+            Spacer(Modifier.height(24.dp))
+            val needsInstall = installed == false
+            Button(
+                onClick = if (needsInstall) onInstall else onLaunch,
+                enabled = blocker == null,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+            ) {
+                if (blocker == null) {
+                    Icon(if (needsInstall) Icons.Rounded.Add else Icons.Rounded.PlayArrow, null)
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(
+                    blocker ?: if (needsInstall) "Install ${app.name}" else "Open ${app.name}",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+            if (needsInstall && blocker == null) {
+                Text(
+                    "Installs ${app.packages.joinToString()} with apt in the background; follow it under Installs.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
             Spacer(Modifier.height(28.dp))
             Text("Permissions", style = MaterialTheme.typography.titleMedium)
             Text(
@@ -132,30 +157,6 @@ fun AppSheet(
                 }
             }
 
-            Spacer(Modifier.height(28.dp))
-            val needsInstall = installed == false
-            Button(
-                onClick = if (needsInstall) onInstall else onLaunch,
-                enabled = blocker == null,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-            ) {
-                if (blocker == null) {
-                    Icon(if (needsInstall) Icons.Rounded.Add else Icons.Rounded.PlayArrow, null)
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(
-                    blocker ?: if (needsInstall) "Install ${app.name}" else "Open ${app.name}",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-            }
-            if (needsInstall && blocker == null) {
-                Text(
-                    "Installs ${app.packages.joinToString()} with apt, in a terminal you can watch.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
         }
     }
 }

@@ -36,6 +36,16 @@ object LauncherIcons {
         roundRect(4f, 13.5f, 10.5f, 20f, 2f)
         roundRect(13.5f, 13.5f, 20f, 20f, 2f)
     }
+    /** Rays from a centre, like a spark; Claude Code's shortcut. */
+    val Spark = outline("Spark") {
+        for (i in 0 until 8) {
+            val a = Math.toRadians(i * 45.0 + 22.5)
+            val inner = 2.5f
+            val outer = if (i % 2 == 0) 9f else 6.5f
+            moveTo(12f + inner * Math.cos(a).toFloat(), 12f + inner * Math.sin(a).toFloat())
+            lineTo(12f + outer * Math.cos(a).toFloat(), 12f + outer * Math.sin(a).toFloat())
+        }
+    }
     val History = outline("History") {
         // A clock face whose rim turns into a back arrow at the left.
         moveTo(4.5f, 12f)
@@ -128,6 +138,7 @@ fun appIcon(key: String): ImageVector = when (key) {
     "globe" -> LauncherIcons.Globe
     "palette" -> Icons.Rounded.Create
     "folder" -> LauncherIcons.Folder
+    "spark" -> LauncherIcons.Spark
     else -> LauncherIcons.Terminal
 }
 
