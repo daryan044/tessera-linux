@@ -38,6 +38,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | 3.4 | Install apps from the launcher | 🟡 | Manifests list their packages; the app sheet offers Install (apt in a root terminal) when the app is missing. Built, untested on a device. Only checked in PRoot mode |
 | 3.5 | Edit permissions in the UI | ⬜ | Shown per app with enforcement level; changing them needs editing the manifest |
 | 3.6 | Storage permission prompt | ✅ | Asked when an app is granted a folder under /storage |
+| 3.7 | Config editor (side menu) | 🟡 | Hamburger menu: .bashrc (root, user), bash.bashrc, profile, environment, apt sources and settings, resolv.conf, hosts, and Termux:X11's settings. PRoot edits files directly, chroot via su; first save keeps a .bak-launcher. Built, untested on a device |
 
 ## Phase 4: Hardware and root
 

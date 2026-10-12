@@ -6,6 +6,7 @@
 package com.daryan.linuxlauncher.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,7 +26,13 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.Badge
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -62,6 +69,7 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import com.daryan.linuxlauncher.BackendMode
 import com.daryan.linuxlauncher.LauncherViewModel
+import com.daryan.linuxlauncher.container.ConfigFile
 import com.daryan.linuxlauncher.container.PermissionManifest
 import kotlinx.coroutines.launch
 
@@ -87,6 +95,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
 
     val context = LocalContext.current
     var openTerminal by rememberSaveable { mutableStateOf<String?>(null) }
+    var openConfig by remember { mutableStateOf<ConfigFile?>(null) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
     val launchApp: (PermissionManifest) -> Unit = { app ->
         vm.launch(app) { started ->
             openApp = null
@@ -116,6 +126,28 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val config = LocalConfiguration.current
     val shortScreen = config.screenHeightDp < 480
 
+    val store = vm.configStore(status, mode)
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            SideMenu(
+                engine = mode.label,
+                unavailable = when {
+                    store != null -> null
+                    mode == BackendMode.CHROOT -> "Root access is needed to edit the chroot container"
+                    else -> "Install Linux in Setup to edit its configuration"
+                },
+                onOpenFile = {
+                    scope.launch { drawerState.close() }
+                    openConfig = it
+                },
+                onDisplaySettings = {
+                    scope.launch { drawerState.close() }
+                    context.startActivity(Intent().setClassName(context, "com.termux.x11.LoriePreferences"))
+                },
+            )
+        },
+    ) {
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.surface,
@@ -132,17 +164,23 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                         },
                     )
                 }
+                val menuButton = @Composable {
+                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                        Icon(Icons.Rounded.Menu, "Configuration")
+                    }
+                }
                 val barColors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
                     scrolledContainerColor = Color.Transparent,
                 )
                 // The large flexible bar would eat half a landscape screen; go compact there.
                 if (shortScreen) {
-                    TopAppBar(title = title, subtitle = subtitle, colors = barColors)
+                    TopAppBar(title = title, subtitle = subtitle, navigationIcon = menuButton, colors = barColors)
                 } else {
                     LargeFlexibleTopAppBar(
                         title = title,
                         subtitle = subtitle,
+                        navigationIcon = menuButton,
                         colors = barColors,
                         scrollBehavior = scrollBehavior,
                     )
@@ -210,6 +248,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             }
         }
     }
+    }
 
     // Terminal slides up over the launcher, like a full-screen sheet.
     val terminalSession = sessions.firstOrNull { it.session.id == openTerminal && it.terminal != null }
@@ -228,6 +267,21 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 onStop = { vm.sessions.stop(s.session.id) },
                 setScreenListener = vm.sessions::setScreenListener,
             )
+        }
+    }
+
+    // Config editor slides up the same way.
+    val editing = openConfig
+    AnimatedVisibility(
+        visible = editing != null && store != null,
+        enter = slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()),
+        exit = slideOutVertically(motion.fastSpatialSpec()) { it } + fadeOut(motion.fastEffectsSpec()),
+    ) {
+        val shown = remember { mutableStateOf(editing) }
+        if (editing != null) shown.value = editing
+        val file = shown.value
+        if (file != null && store != null) {
+            ConfigEditor(file, store, engine = mode.label, onClose = { openConfig = null })
         }
     }
 

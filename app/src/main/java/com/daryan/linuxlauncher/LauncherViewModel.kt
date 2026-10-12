@@ -8,7 +8,10 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.daryan.linuxlauncher.container.ConfigStore
 import com.daryan.linuxlauncher.container.ContainerBackend
+import com.daryan.linuxlauncher.container.DirectConfigStore
+import com.daryan.linuxlauncher.container.SuConfigStore
 import com.daryan.linuxlauncher.container.Distro
 import com.daryan.linuxlauncher.container.HostProbe
 import com.daryan.linuxlauncher.container.HostStatus
@@ -108,6 +111,17 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun installed(app: PermissionManifest, status: HostStatus?, mode: BackendMode): Boolean? =
         if (mode == BackendMode.PROOT && status?.prootRootfs == true) PackageInstall.isInstalled(app, paths.prootRootfs)
         else null
+
+    /**
+     * Where the side menu's config files are read and written for [mode], or null when that
+     * container isn't available (PRoot rootfs not installed, or no root for chroot).
+     */
+    fun configStore(status: HostStatus?, mode: BackendMode): ConfigStore? = when {
+        status == null -> null
+        mode == BackendMode.PROOT && status.prootRootfs -> DirectConfigStore(paths.prootRootfs)
+        mode == BackendMode.CHROOT && status.su != null -> SuConfigStore(status.su, paths.chrootRootfs.path)
+        else -> null
+    }
 
     /** Installs [app]'s packages in a root session; [onLaunched] gets that session. */
     fun install(app: PermissionManifest, onLaunched: (RunningSession) -> Unit) =
