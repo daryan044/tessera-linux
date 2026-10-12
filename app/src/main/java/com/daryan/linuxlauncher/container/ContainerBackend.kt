@@ -60,21 +60,19 @@ data class ContainerPaths(
     fun x11SocketDir(session: Session) = File(sessionTmp(session), ".X11-unix")
     /** Private /dev/shm per session; Android has none, and browsers' IPC needs one. */
     fun sessionShm(session: Session) = File(cacheDir, "sessions/${session.id}/shm")
-    val pulseSocket get() = File(filesDir, "pulse/native")
     /** Stand-ins for /proc files Android hides from apps; see [FakeProc]. */
     val fakeProcDir get() = File(filesDir, "proc")
 
     companion object {
         // Debian's default PATH, including the games directories.
         const val GUEST_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games"
-        const val PULSE_GUEST = "/run/pulse/native"
         /** Written last by [RootfsInstaller]; a rootfs without it is incomplete. */
         const val INSTALLED_MARKER = ".launcher-installed"
     }
 }
 
 /** Packages every GUI app gets with it; see [guestCommand]. */
-val GUI_HELPER_PACKAGES = listOf("matchbox-window-manager", "dbus-x11", "at-spi2-core", "python3-pyatspi")
+val GUI_HELPER_PACKAGES = listOf("matchbox-window-manager", "dbus-x11", "at-spi2-core", "python3-pyatspi", "pulseaudio")
 
 /**
  * Where the focus watcher reports to, as the guest sees it. /tmp/.X11-unix is the session's
@@ -82,13 +80,17 @@ val GUI_HELPER_PACKAGES = listOf("matchbox-window-manager", "dbus-x11", "at-spi2
  */
 const val FOCUS_FILE_GUEST = "/tmp/.X11-unix/launcher-focus"
 const val FOCUS_FILE_NAME = "launcher-focus"
+/** The FIFO the session's PulseAudio plays into, in the same directory; see AudioPipe. */
+const val AUDIO_FIFO_NAME = "launcher-audio"
+const val AUDIO_RATE = 48000
 
 /**
  * What actually runs in the container. GUI apps get, when installed:
  * - matchbox-window-manager: one app per display, kept fullscreen, without title bars;
  * - a session D-Bus, which also carries the accessibility bus (AT-SPI);
  * - [FOCUS_WATCHER], which reports whether the focused widget takes text, so the window can
- *   show Android's keyboard for text fields the way a native app does.
+ *   show Android's keyboard for text fields the way a native app does;
+ * - with the audio permission, PulseAudio playing into a FIFO the app reads (AudioPipe).
  * The helpers are stopped when the app exits so the session (and its window) ends with it.
  */
 internal fun guestCommand(app: PermissionManifest): List<String> =
@@ -103,11 +105,20 @@ fi
 if [ -n "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && [ -d /usr/lib/python3/dist-packages/pyatspi ]; then
   python3 -c "${'$'}watcher" "${'$'}out" & fw=${'$'}!
 fi
+if [ -n "${'$'}LAUNCHER_AUDIO" ] && command -v pulseaudio >/dev/null 2>&1; then
+  mkdir -p "${'$'}PULSE_RUNTIME_PATH"
+  pulseaudio -n --daemonize=no --exit-idle-time=-1 --disable-shm=yes \
+    --load="module-native-protocol-unix auth-anonymous=1" \
+    --load="module-pipe-sink file=/tmp/.X11-unix/$AUDIO_FIFO_NAME format=s16le rate=$AUDIO_RATE channels=2 sink_name=android" \
+    --load="module-suspend-on-idle timeout=2" >/dev/null 2>&1 & pa=${'$'}!
+  # Apps that find no server at startup stay silent, so give it a moment.
+  for i in 1 2 3 4 5 6 7 8 9 10; do [ -S "${'$'}PULSE_RUNTIME_PATH/native" ] && break; sleep 0.2; done
+fi
 if command -v matchbox-window-manager >/dev/null 2>&1; then
   matchbox-window-manager -use_titlebar no -use_cursor no & wm=${'$'}!
 fi
 "${'$'}@"; status=${'$'}?
-kill ${'$'}wm ${'$'}fw ${'$'}bus 2>/dev/null
+kill ${'$'}wm ${'$'}fw ${'$'}pa ${'$'}bus 2>/dev/null
 exit ${'$'}status
 """
 

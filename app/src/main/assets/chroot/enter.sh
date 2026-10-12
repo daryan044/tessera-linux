@@ -3,7 +3,7 @@
 # Runs as root inside a fresh mount namespace (and network namespace when network is denied),
 # started by ChrootBackend via:  su -c 'export ...; exec unshare -m [-n] sh enter.sh'
 #
-# Inputs (env): R, BINDS, DEVICES, X11_DIR, PULSE, RUN_AS_ROOT, NET_GROUPS, GUEST_ENV, CMD
+# Inputs (env): R, BINDS, DEVICES, X11_DIR, RUN_AS_ROOT, NET_GROUPS, GUEST_ENV, CMD
 # Derived from termux-linux-layer/linux. Mounts made here vanish with the namespace; never
 # mount or unmount in the global namespace, Android's mounts are shared and changes propagate.
 set -e
@@ -48,9 +48,6 @@ done
 
 if [ -n "$X11_DIR" ]; then
   mkdir -p "$R/tmp/.X11-unix"; mount --bind "$X11_DIR" "$R/tmp/.X11-unix"
-fi
-if [ -n "$PULSE" ] && [ -e "$PULSE" ]; then
-  mkdir -p "$R/run/pulse"; touch "$R/run/pulse/native"; mount --bind "$PULSE" "$R/run/pulse/native"
 fi
 
 printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > "$R/run/resolv.conf"

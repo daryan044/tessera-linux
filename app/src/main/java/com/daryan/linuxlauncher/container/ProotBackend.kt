@@ -50,8 +50,6 @@ class ProotBackend(
             // proot has no read-only binds; FsGrant.readOnly is advisory here.
             p.filesystem.filter { exists(it.path) }.forEach { bind(it.path, it.mountAt) }
             p.devices.filter(exists).forEach { bind(it) }
-            val pulse = paths.pulseSocket.invariantSeparatorsPath
-            if (p.audio && exists(pulse)) bind(pulse, ContainerPaths.PULSE_GUEST)
 
             add("/usr/bin/env")
             add("-i")
@@ -107,5 +105,10 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
         put("GNOME_ACCESSIBILITY", "1")
         put("QT_LINUX_ACCESSIBILITY_ALWAYS_ON", "1")
     }
-    if (p.audio) put("PULSE_SERVER", "unix:${ContainerPaths.PULSE_GUEST}")
+    if (p.audio && p.display && session.display != null) {
+        // The session's own PulseAudio, started by guestCommand; see AudioPipe for the rest.
+        put("LAUNCHER_AUDIO", "1")
+        put("PULSE_RUNTIME_PATH", "/tmp/pulse")
+        put("PULSE_SERVER", "unix:/tmp/pulse/native")
+    }
 }

@@ -117,7 +117,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         container.registry.refreshInstalled(store)
         val installed = container.registry.installed.value ?: return
         if ("matchbox-window-manager" !in installed || GUI_HELPER_PACKAGES.all { it in installed }) return
-        container.queue.enqueue("Keyboard helper", GUI_HELPER_PACKAGES, QueueAction.INSTALL, null, backend) {
+        container.queue.enqueue("Sound and keyboard helpers", GUI_HELPER_PACKAGES, QueueAction.INSTALL, null, backend) {
             container.registry.refreshInstalled(store)
         }
     }

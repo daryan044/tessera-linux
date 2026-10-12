@@ -25,7 +25,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | 2.3 | Per-app display socket | ✅ | Each GUI app gets its own X server and `:N` socket in its private /tmp |
 | 2.4 | Fullscreen, readable size | ✅ | matchbox-window-manager per display; scaled resolution from screen density; direct touch |
 | 2.5 | GUI apps in chroot mode | 🟡 | Built and wired (socket permissions for uid 1000); not run on a device yet |
-| 2.6 | Audio | ⬜ | PulseAudio socket is reserved in the manifests (`audio`), no server yet |
+| 2.6 | Audio | 🟡 | Apps with `audio` get their own PulseAudio in the session; its pipe sink feeds an Android AudioTrack (AudioPipe). Built; not yet confirmed on a device |
 | 2.7 | Clipboard between Android and X apps | ⬜ | |
 | 2.8 | Firefox | ✅ | Runs under PRoot with a private /dev/shm and its sandbox off; touch scrolling via XInput2 |
 | 2.9 | Recents integration | ✅ | Every running app (GUI and terminal) has its own card, "<App> (Linux)" with its icon; closing the card stops it ("Killed by user") |

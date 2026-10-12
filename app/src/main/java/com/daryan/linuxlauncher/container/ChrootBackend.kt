@@ -28,7 +28,6 @@ class ChrootBackend(
             },
             "DEVICES" to p.devices.joinToString("\n"),
             "X11_DIR" to if (p.display) paths.x11SocketDir(session).invariantSeparatorsPath else "",
-            "PULSE" to if (p.audio) paths.pulseSocket.invariantSeparatorsPath else "",
             "RUN_AS_ROOT" to if (p.root) "1" else "0",
             // Android only lets members of AID_INET (3003) open sockets; grant it with network.
             "NET_GROUPS" to if (p.network) "3003,3004" else "",

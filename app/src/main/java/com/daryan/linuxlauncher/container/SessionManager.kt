@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -131,9 +132,11 @@ class SessionManager(
      * with DISPLAY pointing at it. Everything after the server start happens off the main thread.
      */
     private fun launchGui(app: PermissionManifest, backend: ContainerBackend, session: Session, spec: LaunchSpec): RunningSession {
+        val audio = if (app.permissions.audio) AudioPipe(File(paths.x11SocketDir(session), AUDIO_FIFO_NAME)) else null
         scope.launch(Dispatchers.IO) {
             try {
                 servers[session.id] = x11.start(session)
+                audio?.let { launch { it.run() } }
                 withContext(Dispatchers.Main) { x11.showWindow(session) }
                 val pid = IntArray(1)
                 val fd = Pty.spawn(spec, rows = 24, cols = 80, pidOut = pid)
@@ -147,6 +150,7 @@ class SessionManager(
                 Log.w(TAG, "GUI session ${session.id} failed", e)
                 update(session.id) { it.copy(output = "Couldn't start: ${e.message}", exitCode = -1) }
             } finally {
+                audio?.stop()
                 servers.remove(session.id)?.destroy()
                 withContext(Dispatchers.Main + NonCancellable) { x11.closeWindow(session) }
             }
