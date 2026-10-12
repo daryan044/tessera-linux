@@ -94,6 +94,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val install by vm.installState.collectAsStateWithLifecycle()
     val apps by vm.apps.collectAsStateWithLifecycle()
     val pinned by vm.tabStore.pinned.collectAsStateWithLifecycle()
+    val permissionOverrides by vm.permissionOverrides.collectAsStateWithLifecycle()
     val favorites by vm.tabStore.favorites.collectAsStateWithLifecycle()
     val tabs = remember(apps, customTabs, pinned, favorites) { vm.tabs(apps, customTabs, pinned, favorites) }
 
@@ -437,7 +438,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         }
     }
 
-    openApp?.let { app ->
+    // Looked up by id so the sheet follows permission changes made in it.
+    apps.firstOrNull { it.id == openApp?.id }?.let { app ->
         AppSheet(
             app = app,
             backend = vm.backend(mode) ?: vm.backend(BackendMode.PROOT)!!,
@@ -465,6 +467,9 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 }
             },
             onDismiss = { openApp = null },
+            permissionsChanged = app.id in permissionOverrides,
+            onPermissions = { vm.setPermissions(app, it) },
+            onResetPermissions = { vm.resetPermissions(app.id) },
         )
     }
 

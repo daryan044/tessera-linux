@@ -127,6 +127,8 @@ class LauncherContainer(private val app: Application) {
     val installer = RootfsInstaller(paths, OciRegistry(), scope, Process.myUid(), Process.myUid())
 
     val queue = InstallQueue(scope, paths)
+    /** Permissions the user changed in an app's sheet; applied over its manifest. */
+    val permissions = com.daryan.linuxlauncher.container.PermissionOverrides(java.io.File(app.filesDir, "permissions.json"))
     /** Whether this run already looked for GUI helper packages missing from the container. */
     @Volatile var guiHelpersChecked = false
 

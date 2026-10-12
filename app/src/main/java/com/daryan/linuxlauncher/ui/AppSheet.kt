@@ -48,6 +48,7 @@ import com.daryan.linuxlauncher.container.Capability
 import com.daryan.linuxlauncher.container.ContainerBackend
 import com.daryan.linuxlauncher.container.Enforcement
 import com.daryan.linuxlauncher.container.PermissionManifest
+import com.daryan.linuxlauncher.container.Permissions
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -62,6 +63,10 @@ fun AppSheet(
     onLaunch: () -> Unit,
     onInstall: () -> Unit,
     onDismiss: () -> Unit,
+    /** Whether the user changed this app's permissions. */
+    permissionsChanged: Boolean,
+    onPermissions: (Permissions) -> List<String>,
+    onResetPermissions: () -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -106,21 +111,7 @@ fun AppSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
-            Surface(
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
-                Column {
-                    Capability.entries.forEachIndexed { i, cap ->
-                        if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerLow)
-                        PermissionRow(
-                            title = cap.label,
-                            detail = describe(cap, app),
-                            enforcement = if (restricts(cap, app)) backend.enforcement(cap, app) else null,
-                        )
-                    }
-                }
-            }
+            PermissionEditor(app, backend, permissionsChanged, onPermissions, onResetPermissions)
 
             if (customTabs.isNotEmpty()) {
                 Spacer(Modifier.height(24.dp))
@@ -170,28 +161,7 @@ fun AppSheet(
 }
 
 @Composable
-private fun PermissionRow(title: String, detail: String, enforcement: Enforcement?) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(
-                detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (enforcement != null) {
-            Spacer(Modifier.width(12.dp))
-            EnforcementPill(enforcement)
-        }
-    }
-}
-
-@Composable
-private fun EnforcementPill(e: Enforcement) {
+internal fun EnforcementPill(e: Enforcement) {
     val c = MaterialTheme.colorScheme
     val (label, bg: Color, fg: Color) = when (e) {
         Enforcement.ENFORCED -> Triple("Enforced", c.tertiaryContainer, c.onTertiaryContainer)
@@ -201,27 +171,4 @@ private fun EnforcementPill(e: Enforcement) {
     Surface(shape = CircleShape, color = bg, contentColor = fg) {
         Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
     }
-}
-
-private fun describe(cap: Capability, app: PermissionManifest): String {
-    val p = app.permissions
-    return when (cap) {
-        Capability.FILESYSTEM ->
-            if (p.filesystem.isEmpty()) "Only its own files"
-            else p.filesystem.joinToString("\n") {
-                val name = it.path.substringAfterLast('/')
-                "$name → ${it.mountAt}" + if (it.readOnly) " (read-only)" else ""
-            }
-        Capability.NETWORK -> if (p.network) "Internet access" else "No network"
-        Capability.DISPLAY -> if (p.display) "Its own window and display" else "Terminal only"
-        Capability.AUDIO -> if (p.audio) "Can play sound" else "Muted"
-        Capability.DEVICES -> p.devices.joinToString("\n").ifEmpty { "No hardware access" }
-    }
-}
-
-/** Whether the manifest withholds something here; if it grants everything there is nothing to enforce. */
-private fun restricts(cap: Capability, app: PermissionManifest): Boolean = when (cap) {
-    Capability.NETWORK -> !app.permissions.network
-    Capability.AUDIO -> !app.permissions.audio
-    else -> true
 }

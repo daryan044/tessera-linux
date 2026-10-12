@@ -40,7 +40,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | 3.2 | App store | 🟡 | Store tab built on Debian's AppStream catalog (1,951 desktop apps in main, plus contrib and non-free), with icons, search and categories. Installing reads the app's `.desktop` file and adds a launcher entry with category-based permissions. Installs run in a background queue shown under the app bar. No screenshots (Debian's links are broken) |
 | 3.3 | One app per window | ✅ | Separate X server, display and Android window per app |
 | 3.4 | Install apps from the launcher | 🟡 | Manifests list their packages; the app sheet offers Install (apt in a root terminal) when the app is missing. Built, untested on a device. Only checked in PRoot mode |
-| 3.5 | Edit permissions in the UI | ⬜ | Shown per app with enforcement level; changing them needs editing the manifest |
+| 3.5 | Edit permissions in the UI | ✅ | The app sheet's switches (network, sound, root) and lists (shared Android folders with read-only, devices) change an app's permissions from its next launch. Stored apart from the manifest (`files/permissions.json`), so Reset restores the manifest's and store reinstalls keep the user's |
 | 3.6 | Storage permission prompt | ✅ | Asked when an app is granted a folder under /storage |
 | 3.8 | Installs page | ✅ | From Settings, the install bar, or the Store's history button: running, waiting and finished jobs with live apt output; failed ones can be retried, and a failed apt run first finishes interrupted package setup and tries once more |
 | 3.9 | Pin and favorite apps | ✅ | Hold an app: pin it (pinned apps lead every tab) or add it to Favorites (a tab after All) |

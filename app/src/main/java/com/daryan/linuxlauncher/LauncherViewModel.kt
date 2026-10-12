@@ -16,6 +16,7 @@ import com.daryan.linuxlauncher.store.QueueJob
 import com.daryan.linuxlauncher.store.StoreApp
 import com.daryan.linuxlauncher.store.StoreCatalog
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import com.daryan.linuxlauncher.container.ContainerBackend
@@ -28,6 +29,7 @@ import com.daryan.linuxlauncher.container.HostStatus
 import com.daryan.linuxlauncher.container.InstallState
 import com.daryan.linuxlauncher.container.PackageInstall
 import com.daryan.linuxlauncher.container.PermissionManifest
+import com.daryan.linuxlauncher.container.Permissions
 import com.daryan.linuxlauncher.container.RunningSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -55,10 +57,26 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /** Apps that ship with the launcher. */
     private val bundled: List<PermissionManifest> = loadApps(app)
 
-    /** Bundled apps plus those installed from the store. */
-    val apps: StateFlow<List<PermissionManifest>> = container.registry.userApps
+    /** Bundled apps plus those installed from the store, as their manifests describe them. */
+    private val manifests: StateFlow<List<PermissionManifest>> = container.registry.userApps
         .map { user -> bundled + user.filterNot { u -> bundled.any { it.id == u.id } } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, bundled)
+
+    /** Every app, with the permissions the user set where they changed any. */
+    val apps: StateFlow<List<PermissionManifest>> =
+        combine(manifests, container.permissions.overrides) { list, _ -> list.map(container.permissions::apply) }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, bundled.map(container.permissions::apply))
+
+    /** The permissions [appId]'s manifest asks for, before any change by the user. */
+    fun defaultPermissions(appId: String): Permissions? = manifests.value.firstOrNull { it.id == appId }?.permissions
+
+    /** Changes [app]'s permissions from its next launch; returns what's wrong with them, if anything. */
+    fun setPermissions(app: PermissionManifest, permissions: Permissions): List<String> =
+        container.permissions.set(app, permissions, defaultPermissions(app.id) ?: app.permissions)
+
+    fun resetPermissions(appId: String) = container.permissions.reset(appId)
+
+    val permissionOverrides: StateFlow<Map<String, Permissions>> = container.permissions.overrides
 
     val catalog: StateFlow<CatalogState> = container.catalog.state
     val installedPackages: StateFlow<Set<String>?> = container.registry.installed
