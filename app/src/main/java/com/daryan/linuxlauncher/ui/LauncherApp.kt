@@ -158,32 +158,13 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         drawerState = drawerState,
         drawerContent = {
             SideMenu(
-                engine = mode.label,
-                unavailable = when {
-                    store != null -> null
-                    mode == BackendMode.CHROOT -> "Root access is needed to edit the chroot container"
-                    else -> "Install Linux in Setup to edit its configuration"
-                },
-                onOpenFile = {
-                    scope.launch { drawerState.close() }
-                    openConfig = it
-                },
-                onAbout = {
-                    scope.launch { drawerState.close() }
-                    showAbout = true
-                },
-                installs = queue.count { it.active },
-                onInstalls = {
-                    scope.launch { drawerState.close() }
-                    showQueue = true
-                },
                 onSettings = {
                     scope.launch { drawerState.close() }
                     showSettings = true
                 },
-                onDisplaySettings = {
+                onAbout = {
                     scope.launch { drawerState.close() }
-                    context.startActivity(Intent().setClassName(context, "com.termux.x11.LoriePreferences"))
+                    showAbout = true
                 },
             )
         },
@@ -327,15 +308,10 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         exit = slideOutVertically(motion.fastSpatialSpec()) { it } + fadeOut(motion.fastEffectsSpec()),
     ) {
         SettingsScreen(
-            status = status,
-            mode = mode,
-            linuxInstall = install,
-            onMode = vm::setMode,
-            onInstallLinux = { vm.install() },
             filesUnavailable = when {
                 store != null -> null
                 mode == BackendMode.CHROOT -> "Root access is needed to edit the chroot container"
-                else -> "Install Linux to edit its files"
+                else -> "Install Linux in Setup to edit its files"
             },
             onOpenFile = { openConfig = it },
             customTabs = customTabs,

@@ -58,11 +58,6 @@ import com.daryan.linuxlauncher.store.CatalogState
 /** Everything the launcher lets you configure, in one place. Each row hands off to its owner. */
 @Composable
 fun SettingsScreen(
-    status: HostStatus?,
-    mode: BackendMode,
-    linuxInstall: InstallState,
-    onMode: (BackendMode) -> Unit,
-    onInstallLinux: () -> Unit,
     /** Why the system files can't be edited, or null when they can. */
     filesUnavailable: String?,
     onOpenFile: (ConfigFile) -> Unit,
@@ -90,31 +85,6 @@ fun SettingsScreen(
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 40.dp)) {
-            Group("Linux engine") {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    BackendMode.entries.forEachIndexed { i, m ->
-                        SegmentedButton(
-                            selected = mode == m,
-                            onClick = { onMode(m) },
-                            enabled = m == BackendMode.PROOT || status?.su != null,
-                            shape = SegmentedButtonDefaults.itemShape(i, BackendMode.entries.size),
-                        ) { Text(m.label) }
-                    }
-                }
-                Row(LauncherIcons.Terminal, "PRoot engine", if (status?.prootBinary == true) "Bundled" else "Missing from this build")
-                Row(
-                    LauncherIcons.Apps, "Linux system",
-                    when {
-                        status?.prootRootfs == true -> "Debian is installed"
-                        linuxInstall.running -> "Installing…"
-                        linuxInstall is InstallState.Failed -> "Install failed: ${linuxInstall.message}"
-                        else -> "Not installed"
-                    },
-                    action = if (status?.prootRootfs == false && !linuxInstall.running) ({ TextButton(onClick = onInstallLinux) { Text("Install") } }) else null,
-                )
-                Row(Icons.Rounded.Settings, "Root access", status?.su?.let { "Found $it" } ?: "Not rooted; chroot mode unavailable")
-            }
-
             Group("System files") {
                 if (filesUnavailable != null) Note(filesUnavailable)
                 ConfigCatalog.files.forEach { f ->
@@ -157,9 +127,6 @@ fun SettingsScreen(
                 )
             }
 
-            if (Build.VERSION.SDK_INT >= 31) {
-                Group("Android") { PhantomLimitRow() }
-            }
 
             Group("Linux Launcher") {
                 Row(Icons.Rounded.Info, "About", "Version, creator and licenses", onClick = onAbout)
@@ -201,22 +168,4 @@ private fun Row(icon: ImageVector, title: String, detail: String, onClick: (() -
 @Composable
 private fun Note(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-}
-
-@Composable
-private fun PhantomLimitRow() {
-    val context = LocalContext.current
-    // Android 14 has a settings switch; 12 and 13 only the device_config knob.
-    val command = if (Build.VERSION.SDK_INT >= 34) "adb shell settings put global settings_enable_monitor_phantom_procs false"
-    else "adb shell \"/system/bin/device_config set_sync_disabled_for_tests persistent; " +
-        "/system/bin/device_config put activity_manager max_phantom_processes 2147483647\""
-    Row(
-        Icons.Rounded.Warning, "Background process limit",
-        "Android kills apps with more than 32 processes. Run the copied command once from a computer.",
-        action = {
-            TextButton(onClick = {
-                context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("adb command", command))
-            }) { Text("Copy") }
-        },
-    )
 }
