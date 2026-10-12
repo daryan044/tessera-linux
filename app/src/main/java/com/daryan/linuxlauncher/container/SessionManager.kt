@@ -103,6 +103,8 @@ class SessionManager(
             mkdirs()
         }
         if (app.permissions.display) paths.x11SocketDir(session).mkdirs()
+        // A stopped Firefox leaves a profile lock naming a pid Android will soon reuse.
+        if (backend is ProotBackend) runCatching { StaleLocks.clean(paths.prootRootfs, android.os.Process.myUid()) }
         val spec = backend.buildLaunch(app, session)
 
         val running = if (app.gui) launchGui(app, backend, session, spec) else launchTerminal(app, backend, session, spec)
