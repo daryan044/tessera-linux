@@ -102,6 +102,10 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
         // would put it in another app's window, and a copy we killed leaves a remote endpoint
         // that never answers ("Firefox is already running, but is not responding").
         put("MOZ_NO_REMOTE", "1")
+        // Accessibility on, so the focus watcher hears about text fields (see guestCommand).
+        // GTK 3/4 report over AT-SPI by default; Firefox and Qt need asking.
+        put("GNOME_ACCESSIBILITY", "1")
+        put("QT_LINUX_ACCESSIBILITY_ALWAYS_ON", "1")
     }
     if (p.audio) put("PULSE_SERVER", "unix:${ContainerPaths.PULSE_GUEST}")
 }

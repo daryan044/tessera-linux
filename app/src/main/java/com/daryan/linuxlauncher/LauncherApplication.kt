@@ -123,6 +123,8 @@ class LauncherContainer(private val app: Application) {
     val installer = RootfsInstaller(paths, OciRegistry(), scope, Process.myUid(), Process.myUid())
 
     val queue = InstallQueue(scope, paths)
+    /** Whether this run already looked for GUI helper packages missing from the container. */
+    @Volatile var guiHelpersChecked = false
 
     /** An app whose sheet the launcher should open (set from an X11 window's Permissions tile). */
     val showAppRequests = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)

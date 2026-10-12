@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import com.daryan.linuxlauncher.container.ContainerBackend
 import com.daryan.linuxlauncher.container.DirectConfigStore
+import com.daryan.linuxlauncher.container.GUI_HELPER_PACKAGES
 import com.daryan.linuxlauncher.container.SuConfigStore
 import com.daryan.linuxlauncher.container.Distro
 import com.daryan.linuxlauncher.container.HostProbe
@@ -100,6 +101,24 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             val s = withContext(Dispatchers.IO) { probe.probe() }
             _status.value = s
             if (s.su == null && _mode.value == BackendMode.CHROOT) _mode.value = BackendMode.PROOT
+            addMissingGuiHelpers()
+        }
+    }
+
+    /**
+     * Containers set up before a GUI helper was added (the focus watcher's AT-SPI packages)
+     * get it queued once: only where GUI apps are in use, i.e. the window manager is there.
+     */
+    private suspend fun addMissingGuiHelpers() {
+        if (container.guiHelpersChecked) return
+        val store = configStore(_status.value, _mode.value) ?: return
+        val backend = backend() ?: return
+        container.guiHelpersChecked = true
+        container.registry.refreshInstalled(store)
+        val installed = container.registry.installed.value ?: return
+        if ("matchbox-window-manager" !in installed || GUI_HELPER_PACKAGES.all { it in installed }) return
+        container.queue.enqueue("Keyboard helper", GUI_HELPER_PACKAGES, QueueAction.INSTALL, null, backend) {
+            container.registry.refreshInstalled(store)
         }
     }
 
@@ -167,7 +186,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         if (blocker(_status.value, _mode.value) != null) return false
         val store = configStore(_status.value, _mode.value)
         container.queue.enqueue(
-            app.name, listOf(app.pkg, "matchbox-window-manager", "dbus-x11"), QueueAction.INSTALL,
+            app.name, listOf(app.pkg) + GUI_HELPER_PACKAGES, QueueAction.INSTALL,
             container.catalog.iconFile(app)?.path, backend,
         ) { store?.let { container.registry.register(app, it) } }
         return true
@@ -201,11 +220,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearFinishedJobs() = container.queue.clearFinished()
 
+    fun retryJob(id: Int) = container.queue.retry(id)
+
     /** Queues the packages behind a launcher app that isn't installed yet. */
     fun install(app: PermissionManifest): Boolean {
         val backend = backend() ?: return false
         val store = configStore(_status.value, _mode.value)
-        val packages = app.packages + if (app.gui) listOf("matchbox-window-manager", "dbus-x11") else emptyList()
+        val packages = app.packages + if (app.gui) GUI_HELPER_PACKAGES else emptyList()
         container.queue.enqueue(app.name, packages, QueueAction.INSTALL, app.iconFile, backend) {
             container.registry.refreshInstalled(store)
         }

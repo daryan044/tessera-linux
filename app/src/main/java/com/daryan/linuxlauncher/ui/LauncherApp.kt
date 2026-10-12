@@ -172,6 +172,11 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     scope.launch { drawerState.close() }
                     showAbout = true
                 },
+                installs = queue.count { it.active },
+                onInstalls = {
+                    scope.launch { drawerState.close() }
+                    showQueue = true
+                },
                 onSettings = {
                     scope.launch { drawerState.close() }
                     showSettings = true
@@ -400,12 +405,17 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         SessionLogSheet(s, onDismiss = { logSession = null })
     }
 
-    if (showQueue) {
-        QueueSheet(
+    AnimatedVisibility(
+        visible = showQueue,
+        enter = slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()),
+        exit = slideOutVertically(motion.fastSpatialSpec()) { it } + fadeOut(motion.fastEffectsSpec()),
+    ) {
+        InstallsScreen(
             jobs = queue,
             onCancel = vm::cancelJob,
+            onRetry = vm::retryJob,
             onClearFinished = vm::clearFinishedJobs,
-            onDismiss = { showQueue = false },
+            onClose = { showQueue = false },
         )
     }
 

@@ -73,19 +73,68 @@ data class ContainerPaths(
     }
 }
 
+/** Packages every GUI app gets with it; see [guestCommand]. */
+val GUI_HELPER_PACKAGES = listOf("matchbox-window-manager", "dbus-x11", "at-spi2-core", "python3-pyatspi")
+
 /**
- * What actually runs in the container. GUI apps get matchbox-window-manager next to them when
- * it's installed: one app per display, kept fullscreen, without title bars. The manager is
- * stopped when the app exits so the session (and its window) ends with the app.
+ * Where the focus watcher reports to, as the guest sees it. /tmp/.X11-unix is the session's
+ * X11 socket directory on the host in both backends ([ContainerPaths.x11SocketDir]).
+ */
+const val FOCUS_FILE_GUEST = "/tmp/.X11-unix/launcher-focus"
+const val FOCUS_FILE_NAME = "launcher-focus"
+
+/**
+ * What actually runs in the container. GUI apps get, when installed:
+ * - matchbox-window-manager: one app per display, kept fullscreen, without title bars;
+ * - a session D-Bus, which also carries the accessibility bus (AT-SPI);
+ * - [FOCUS_WATCHER], which reports whether the focused widget takes text, so the window can
+ *   show Android's keyboard for text fields the way a native app does.
+ * The helpers are stopped when the app exits so the session (and its window) ends with it.
  */
 internal fun guestCommand(app: PermissionManifest): List<String> =
     if (!app.gui) app.exec
-    else listOf("/bin/sh", "-c", GUI_WRAPPER, "launch") + app.exec
+    else listOf("/bin/sh", "-c", GUI_WRAPPER, "launch", FOCUS_WATCHER, FOCUS_FILE_GUEST) + app.exec
 
-private const val GUI_WRAPPER =
-    "if command -v matchbox-window-manager >/dev/null 2>&1; then " +
-        "matchbox-window-manager -use_titlebar no -use_cursor no & wm=\$!; fi; " +
-        "\"\$@\"; status=\$?; [ -n \"\$wm\" ] && kill \$wm 2>/dev/null; exit \$status"
+private const val GUI_WRAPPER = """
+watcher=${'$'}1; out=${'$'}2; shift 2
+if [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-launch >/dev/null 2>&1; then
+  eval "${'$'}(dbus-launch --sh-syntax)"; bus=${'$'}DBUS_SESSION_BUS_PID
+fi
+if [ -n "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && [ -d /usr/lib/python3/dist-packages/pyatspi ]; then
+  python3 -c "${'$'}watcher" "${'$'}out" & fw=${'$'}!
+fi
+if command -v matchbox-window-manager >/dev/null 2>&1; then
+  matchbox-window-manager -use_titlebar no -use_cursor no & wm=${'$'}!
+fi
+"${'$'}@"; status=${'$'}?
+kill ${'$'}wm ${'$'}fw ${'$'}bus 2>/dev/null
+exit ${'$'}status
+"""
+
+/**
+ * Listens on AT-SPI for focus changes and writes "text" when the focused widget is editable,
+ * "none" when it isn't. Only changes are written, one per line.
+ */
+private const val FOCUS_WATCHER = """
+import sys, pyatspi
+out = open(sys.argv[1], "a", buffering=1)
+last = None
+def focused(event):
+    global last
+    if not event.detail1:
+        return
+    try:
+        state = event.source.getState()
+        text = state.contains(pyatspi.STATE_EDITABLE) and not state.contains(pyatspi.STATE_READ_ONLY)
+    except Exception:
+        return
+    now = "text" if text else "none"
+    if now != last:
+        print(now, file=out)
+        last = now
+pyatspi.Registry.registerEventListener(focused, "object:state-changed:focused")
+pyatspi.Registry.start()
+"""
 
 interface ContainerBackend {
     val name: String

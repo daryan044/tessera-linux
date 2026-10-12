@@ -4,11 +4,15 @@
 package com.daryan.linuxlauncher
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import com.daryan.linuxlauncher.container.FocusReports
 import com.daryan.linuxlauncher.ui.X11Overlay
 import com.daryan.linuxlauncher.ui.theme.LauncherTheme
 import com.termux.x11.MainActivity
@@ -19,6 +23,9 @@ import com.termux.x11.input.InputStub
  * handling) with our Material 3 controls laid over it instead of its own toolbar.
  */
 class X11Window : MainActivity.MainActivityTagged() {
+    private var focusReports: FocusReports? = null
+    private var lastTouch = 0L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Our floating button replaces Termux:X11's extra-keys bar.
@@ -38,6 +45,38 @@ class X11Window : MainActivity.MainActivityTagged() {
             },
             ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val container = (application as LauncherApplication).container
+        val session = intent?.data?.let { container.sessions.forWindowTag(it.host ?: it.toString()) } ?: return
+        focusReports = FocusReports(container.paths.x11SocketDir(session.session)) { text ->
+            runOnUiThread { onFocusChanged(text) }
+        }.also { it.startWatching() }
+    }
+
+    override fun onPause() {
+        focusReports?.stopWatching()
+        focusReports = null
+        super.onPause()
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_UP) lastTouch = SystemClock.uptimeMillis()
+        return super.dispatchTouchEvent(ev)
+    }
+
+    /**
+     * The app's focus moved into ([text]) or out of a text field: show or hide the keyboard,
+     * as a native app would. Only right after a tap, so an app focusing a field by itself (a
+     * browser's address bar at startup) doesn't throw the keyboard up unasked.
+     */
+    private fun onFocusChanged(text: Boolean) {
+        if (SystemClock.uptimeMillis() - lastTouch > TAP_WINDOW_MS) return
+        val hardKeyboard = resources.configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
+        if (text && hardKeyboard) return
+        lorieView.setKeyboardVisible(text)
     }
 
     /** What the floating button can do to this window and its app. */
@@ -85,6 +124,8 @@ class X11Window : MainActivity.MainActivityTagged() {
         }
     }
 }
+
+private const val TAP_WINDOW_MS = 1500L
 
 enum class MouseButton { RIGHT, MIDDLE }
 

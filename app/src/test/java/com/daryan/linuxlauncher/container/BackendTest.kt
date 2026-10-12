@@ -94,7 +94,9 @@ class BackendTest {
         val gui = guestCommand(firefox)
         assertEquals(listOf("/bin/sh", "-c"), gui.take(2))
         assertTrue("matchbox-window-manager" in gui[2])
-        assertEquals(listOf("launch") + firefox.exec, gui.drop(3))
+        assertEquals("launch", gui[3])
+        assertTrue("pyatspi" in gui[4])
+        assertEquals(listOf(FOCUS_FILE_GUEST) + firefox.exec, gui.drop(5))
         assertEquals(offline.exec, guestCommand(offline))
     }
 

@@ -39,6 +39,10 @@ data class QueueJob(
     val action: QueueAction,
     val iconFile: String?,
     val state: JobState = JobState.Queued,
+    /** apt's output, minus the progress lines. */
+    val log: String = "",
+    val queuedAt: Long = System.currentTimeMillis(),
+    val finishedAt: Long? = null,
 ) {
     val active get() = state is JobState.Queued || state is JobState.Running
 }
@@ -53,6 +57,8 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
     val jobs: StateFlow<List<QueueJob>> = _jobs
     private val runner = Mutex()
     @Volatile private var runningPid = 0
+    /** How to run each job again: what [retry] needs that the job itself doesn't hold. */
+    private val reruns = java.util.concurrent.ConcurrentHashMap<Int, Pair<ContainerBackend, suspend () -> Unit>>()
 
     /**
      * Queues [packages] for [action] with [backend]; [onDone] runs after apt succeeds (adding or
@@ -68,6 +74,7 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
     ) {
         if (_jobs.value.any { it.active && it.packages == packages }) return
         val job = QueueJob(nextId.getAndIncrement(), title, packages, action, iconFile)
+        reruns[job.id] = backend to onDone
         _jobs.update { it + job }
         scope.launch(Dispatchers.IO) {
             // One apt at a time: dpkg holds a lock, and the bar shows one job.
@@ -89,7 +96,17 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         }
     }
 
-    fun clearFinished() = _jobs.update { list -> list.filter { it.active } }
+    fun clearFinished() = _jobs.update { list ->
+        list.filter { it.active }.also { kept -> reruns.keys.retainAll(kept.map { it.id }.toSet()) }
+    }
+
+    /** Queues a failed job again, in place of the failed one. */
+    fun retry(id: Int) {
+        val job = _jobs.value.firstOrNull { it.id == id && it.state is JobState.Failed } ?: return
+        val (backend, onDone) = reruns.remove(id) ?: return
+        _jobs.update { list -> list.filterNot { it.id == id } }
+        enqueue(job.title, job.packages, job.action, job.iconFile, backend, onDone)
+    }
 
     private fun run(job: QueueJob, backend: ContainerBackend): Boolean {
         set(job.id, JobState.Running(null, "Starting"))
@@ -110,13 +127,16 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
             runningPid = pid[0]
             val parser = AptProgress()
             val tail = ArrayDeque<String>()
+            val log = StringBuilder()
             ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.adoptFd(fd)).bufferedReader().use { r ->
                 try {
                     r.lineSequence().forEach { raw ->
                         val line = raw.trimEnd('\r')
-                        parser.feed(line)?.let { (p, msg) -> set(job.id, JobState.Running(p, msg)) }
-                        if (line.isNotBlank() && !line.startsWith("dlstatus:") && !line.startsWith("pmstatus:")) {
+                        parser.feed(line)?.let { (p, msg) -> set(job.id, JobState.Running(p, msg), log) }
+                        if (line.isNotBlank() && !line.startsWith("dlstatus:") && !line.startsWith("pmstatus:") && !line.startsWith("##phase")) {
                             tail.addLast(line); if (tail.size > 3) tail.removeFirst()
+                            log.append(line).append('\n')
+                            if (log.length > MAX_LOG) log.delete(0, log.length - MAX_LOG)
                         }
                     }
                 } catch (_: IOException) {
@@ -126,22 +146,33 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
             val code = Pty.waitFor(pid[0])
             runningPid = 0
             if (code == 0) {
-                set(job.id, JobState.Done); true
+                set(job.id, JobState.Done, log); true
             } else {
-                set(job.id, JobState.Failed(if (code < 0) "Stopped" else tail.lastOrNull { it.startsWith("E:") } ?: tail.lastOrNull() ?: "apt failed ($code)"))
+                set(job.id, JobState.Failed(if (code < 0) "Stopped" else tail.lastOrNull { it.startsWith("E:") } ?: tail.lastOrNull() ?: "apt failed ($code)"), log)
                 false
             }
         } catch (e: Exception) {
-            set(job.id, JobState.Failed(e.message ?: "couldn't start"))
+            set(job.id, JobState.Failed(e.message ?: "couldn't start"), null)
             false
         } finally {
             paths.sessionTmp(session).parentFile?.deleteRecursively()
         }
     }
 
-    private fun set(id: Int, state: JobState) = _jobs.update { list -> list.map { if (it.id == id) it.copy(state = state) else it } }
+    private fun set(id: Int, state: JobState, log: CharSequence? = null) = _jobs.update { list ->
+        list.map { job ->
+            if (job.id != id) job
+            else job.copy(
+                state = state,
+                log = log?.toString() ?: job.log,
+                finishedAt = if (state is JobState.Done || state is JobState.Failed) System.currentTimeMillis() else null,
+            )
+        }
+    }
 
     companion object {
+        private const val MAX_LOG = 64 * 1024
+
         /** apt in two phases with machine-readable progress; markers tell [AptProgress] which. */
         fun script(job: QueueJob): String {
             val opts = "-o APT::Status-Fd=1 -o Dpkg::Use-Pty=0 -o Dpkg::Progress-Fancy=0"

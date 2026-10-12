@@ -29,6 +29,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | 2.7 | Clipboard between Android and X apps | ⬜ | |
 | 2.8 | Firefox | ✅ | Runs under PRoot with a private /dev/shm and its sandbox off; touch scrolling via XInput2 |
 | 2.9 | Recents integration | ✅ | Every running app (GUI and terminal) has its own card, "<App> (Linux)" with its icon; closing the card stops it ("Killed by user") |
+| 2.10 | Keyboard for text fields | 🟡 | A focus watcher on the accessibility bus (AT-SPI) reports text fields; the window shows Android's keyboard after a tap into one and hides it after a tap elsewhere. Built; not yet confirmed on a device |
 
 ## Phase 3: Launcher
 
@@ -40,7 +41,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | 3.4 | Install apps from the launcher | 🟡 | Manifests list their packages; the app sheet offers Install (apt in a root terminal) when the app is missing. Built, untested on a device. Only checked in PRoot mode |
 | 3.5 | Edit permissions in the UI | ⬜ | Shown per app with enforcement level; changing them needs editing the manifest |
 | 3.6 | Storage permission prompt | ✅ | Asked when an app is granted a folder under /storage |
-| 3.8 | Installs page | ⬜ | A dedicated place for install history and the queue (installs no longer appear in Sessions; today the queue lives in the strip under the app bar). Reminder requested by the user, 2026-10-12 |
+| 3.8 | Installs page | ✅ | Side menu → Installs, or the button on the install bar: running, waiting and finished jobs, each with apt's full log; retry failed ones. History lasts until the app restarts |
 | 3.7 | Config editor (side menu) | 🟡 | Hamburger menu: .bashrc (root, user), bash.bashrc, profile, environment, apt sources and settings, resolv.conf, hosts, and Termux:X11's settings. PRoot edits files directly, chroot via su; first save keeps a .bak-launcher. Built, untested on a device |
 
 ## Phase 4: Hardware and root

@@ -34,6 +34,9 @@ fun SideMenu(
     onDisplaySettings: () -> Unit,
     onAbout: () -> Unit,
     onSettings: () -> Unit,
+    /** How many installs are running or waiting. */
+    installs: Int,
+    onInstalls: () -> Unit,
 ) {
     ModalDrawerSheet {
         Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -51,6 +54,13 @@ fun SideMenu(
             )
 
             Item("Settings", "Everything in one place", Icons.Rounded.Settings, enabled = true, onClick = onSettings)
+            Item(
+                "Installs",
+                if (installs > 0) "$installs in progress or waiting" else "Installs and removals, with their logs",
+                LauncherIcons.Store,
+                enabled = true,
+                onClick = onInstalls,
+            )
 
             ConfigCatalog.files.groupBy { it.group }.forEach { (group, files) ->
                 GroupLabel(group)
