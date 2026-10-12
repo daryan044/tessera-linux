@@ -98,7 +98,7 @@ class RootfsSetupTest {
             File("/app/files/rootfs/debian"), File("/data/local/linux/debian"),
         )
         val app = PermissionManifest(id = "htop", name = "htop", exec = listOf("/usr/bin/htop"))
-        val argv = ProotBackend(paths, FakeProc.NAMES).buildLaunch(app, Session("s1")).argv
+        val argv = ProotBackend(paths, FakeProc.NAMES, exists = { true }).buildLaunch(app, Session("s1")).argv
         assertTrue("--bind=/app/files/proc/stat:/proc/stat" in argv)
         assertTrue(argv.indexOf("--bind=/proc") < argv.indexOf("--bind=/app/files/proc/stat:/proc/stat"))
     }

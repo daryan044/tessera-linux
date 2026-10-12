@@ -1,0 +1,12 @@
+{
+  "id": "xterm",
+  "name": "xterm",
+  "description": "The classic X terminal, in its own window. Good first test for the display.",
+  "category": "System",
+  "icon": "terminal",
+  "gui": true,
+  "exec": ["/usr/bin/xterm", "-fa", "Monospace", "-fs", "11"],
+  "permissions": {
+    "display": true
+  }
+}

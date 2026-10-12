@@ -15,7 +15,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -52,6 +54,10 @@ class SessionManager(
     private val _sessions = MutableStateFlow<List<RunningSession>>(emptyList())
     val sessions: StateFlow<List<RunningSession>> = _sessions
 
+    private val x11 = X11Server(context, paths)
+    /** Running X servers, by session id. */
+    private val servers = ConcurrentHashMap<String, Process>()
+
     /** Called when a session's screen changes; set by whichever terminal view shows it. */
     private val screenListeners = ConcurrentHashMap<String, () -> Unit>()
 
@@ -68,7 +74,7 @@ class SessionManager(
         if (app.permissions.display) paths.x11SocketDir(session).mkdirs()
         val spec = backend.buildLaunch(app, session)
 
-        val running = if (app.gui) launchPty(app, backend, session, spec) else launchTerminal(app, backend, session, spec)
+        val running = if (app.gui) launchGui(app, backend, session, spec) else launchTerminal(app, backend, session, spec)
         _sessions.update { it + running }
         return running
     }
@@ -87,35 +93,62 @@ class SessionManager(
         return RunningSession(session, app, backend.name, terminal.pid, terminal = terminal)
     }
 
-    private fun launchPty(app: PermissionManifest, backend: ContainerBackend, session: Session, spec: LaunchSpec): RunningSession {
-        val pid = IntArray(1)
-        val fd = Pty.spawn(spec, rows = 24, cols = 80, pidOut = pid)
+    /**
+     * GUI apps: start the session's own X server, open its window, then run the app on a pty
+     * with DISPLAY pointing at it. Everything after the server start happens off the main thread.
+     */
+    private fun launchGui(app: PermissionManifest, backend: ContainerBackend, session: Session, spec: LaunchSpec): RunningSession {
         scope.launch(Dispatchers.IO) {
-            ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.adoptFd(fd)).use { input ->
-                val buf = ByteArray(4096)
-                try {
-                    while (true) {
-                        val r = input.read(buf)
-                        if (r < 0) break
-                        val chunk = String(buf, 0, r)
-                        update(session.id) { it.copy(output = (it.output + chunk).takeLast(MAX_OUTPUT)) }
-                    }
-                } catch (_: IOException) {
-                    // EIO once the child side closes; normal end of stream for a pty.
-                }
+            try {
+                servers[session.id] = x11.start(session)
+                withContext(Dispatchers.Main) { x11.showWindow(session) }
+                val pid = IntArray(1)
+                val fd = Pty.spawn(spec, rows = 24, cols = 80, pidOut = pid)
+                update(session.id) { it.copy(pid = pid[0]) }
+                launch { readOutput(session.id, fd) }
+                val code = Pty.waitFor(pid[0])
+                update(session.id) { it.copy(exitCode = code) }
+            } catch (e: Exception) {
+                Log.w(TAG, "GUI session ${session.id} failed", e)
+                update(session.id) { it.copy(output = "Couldn't start: ${e.message}", exitCode = -1) }
+            } finally {
+                servers.remove(session.id)?.destroy()
+                withContext(Dispatchers.Main + NonCancellable) { x11.closeWindow(session) }
             }
         }
-        scope.launch(Dispatchers.IO) {
-            val code = Pty.waitFor(pid[0])
-            update(session.id) { it.copy(exitCode = code) }
+        return RunningSession(session, app, backend.name, pid = 0)
+    }
+
+    private fun readOutput(id: String, fd: Int) {
+        ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.adoptFd(fd)).use { input ->
+            val buf = ByteArray(4096)
+            try {
+                while (true) {
+                    val r = input.read(buf)
+                    if (r < 0) break
+                    val chunk = String(buf, 0, r)
+                    update(id) { it.copy(output = (it.output + chunk).takeLast(MAX_OUTPUT)) }
+                }
+            } catch (_: IOException) {
+                // EIO once the child side closes; normal end of stream for a pty.
+            }
         }
-        return RunningSession(session, app, backend.name, pid[0])
+    }
+
+    /** Brings a GUI session's window back to the front. */
+    fun showWindow(id: String) {
+        _sessions.value.firstOrNull { it.session.id == id && it.terminal == null }?.let { x11.showWindow(it.session) }
     }
 
     fun stop(id: String) {
         val s = _sessions.value.firstOrNull { it.session.id == id && it.running } ?: return
         // SIGKILL to proot; --kill-on-exit takes its tracees down with it.
-        s.terminal?.finishIfRunning() ?: android.os.Process.killProcess(s.pid)
+        when {
+            s.terminal != null -> s.terminal.finishIfRunning()
+            s.pid > 0 -> android.os.Process.killProcess(s.pid)
+            // Still starting its X server: stopping the server ends the launch.
+            else -> servers.remove(id)?.destroy()
+        }
     }
 
     fun stopAll() = _sessions.value.filter { it.running }.forEach { stop(it.session.id) }
@@ -172,6 +205,7 @@ class SessionManager(
     }
 
     private companion object {
+        const val TAG = "Sessions"
         const val MAX_OUTPUT = 16 * 1024
         const val TRANSCRIPT_ROWS = 5000
     }

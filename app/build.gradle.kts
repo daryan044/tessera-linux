@@ -42,6 +42,9 @@ android {
         }
     }
 
+    // xkb keyboard data for the X server, staged by scripts/x11/build-native.sh.
+    sourceSets.getByName("main").assets.srcDir(rootProject.file("build/x11/assets"))
+
     packaging {
         // proot & friends ship as lib*.so and must exist as real files in nativeLibraryDir
         jniLibs { useLegacyPackaging = true }
@@ -68,6 +71,7 @@ dependencies {
     implementation(libs.haze)
     implementation(libs.haze.blur.materials)
     implementation(libs.kotlinx.serialization.json)
+    implementation(project(":lorie"))
     implementation(libs.termux.terminal.view)
     implementation(libs.termux.terminal.emulator)
 

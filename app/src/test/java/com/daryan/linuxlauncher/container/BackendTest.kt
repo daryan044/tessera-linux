@@ -33,7 +33,7 @@ class BackendTest {
     private val session = Session(id = "s3", display = 3)
 
     @Test fun `proot binds only granted paths and runs the app under env -i`() {
-        val spec = ProotBackend(paths).buildLaunch(firefox, session)
+        val spec = ProotBackend(paths, exists = { true }).buildLaunch(firefox, session)
         assertEquals("/app/lib/libproot.so", spec.executable)
         assertTrue("--rootfs=/app/files/rootfs/debian" in spec.argv)
         assertTrue("--bind=/storage/emulated/0/Download:/home/user/Downloads" in spec.argv)
@@ -45,7 +45,7 @@ class BackendTest {
     }
 
     @Test fun `proot cannot withhold network and says so`() {
-        val proot = ProotBackend(paths)
+        val proot = ProotBackend(paths, exists = { true })
         assertEquals(Enforcement.UNAVAILABLE, proot.enforcement(Capability.NETWORK, offline))
         assertEquals(Enforcement.ADVISORY, proot.enforcement(Capability.FILESYSTEM, offline))
     }

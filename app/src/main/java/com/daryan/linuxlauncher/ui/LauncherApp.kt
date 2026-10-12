@@ -189,7 +189,11 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 Destination.Sessions -> SessionsScreen(
                     sessions,
                     padding,
-                    onOpen = { openTerminal = it },
+                    onOpen = { id ->
+                        // Terminal apps open in-app; GUI apps live in their own X11 window.
+                        if (sessions.any { it.session.id == id && it.terminal != null }) openTerminal = id
+                        else vm.sessions.showWindow(id)
+                    },
                     onStop = vm.sessions::stop,
                     onDismiss = vm.sessions::dismiss,
                 )

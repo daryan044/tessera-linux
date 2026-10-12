@@ -13,7 +13,8 @@ The UI says which of the two applies to each permission, per app.
 
 Done: app skeleton, NDK pty spawner, permission model, both backends, launcher UI (1.1), and
 PRoot built from source for Android (1.1b, [docs/native-binaries.md](docs/native-binaries.md)).
-Next: rootfs download and setup (1.2), terminal view and foreground service (1.4), X11 (phase 2).
+Also done: Debian install (1.2), terminal and foreground service (1.4).
+In progress: GUI apps (phase 2), each with its own Termux:X11 server, display and window.
 
 ## Layout
 
@@ -55,9 +56,14 @@ app/src/main/
 JDK 17 and the Android SDK with NDK 28.2.13676358 and CMake 3.31.6.
 
 ```
-scripts/proot/build.sh        # once: builds PRoot into app/src/main/jniLibs
+git submodule update --init           # Termux:X11 fork (third_party/termux-x11)
+scripts/proot/build.sh                # once: builds PRoot into app/src/main/jniLibs
+scripts/x11/build-native.sh           # once, on Linux or WSL: X server + xkb data into build/x11
 ./gradlew assembleDebug testDebugUnitTest
 ```
+
+The X server's native build needs a Linux host (it compiles helper tools with the host gcc);
+everything else, including the app itself, builds on Windows, macOS or Linux.
 
 `targetSdk` is 28 on purpose: newer targets forbid executing files from app storage, which is
 where the Linux system lives. This rules out Google Play; distribute through GitHub and F-Droid.
@@ -79,6 +85,7 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 |---|---|---|
 | [PRoot](https://github.com/termux/proot) (Termux fork) | GPL-2.0-or-later | container engine, built by `scripts/proot/build.sh` |
 | [talloc](https://talloc.samba.org) | LGPL-3.0-or-later | PRoot dependency (`scripts/proot/talloc-compat.c` is adapted from Samba) |
+| [Termux:X11](https://github.com/termux/termux-x11) ([our fork](https://github.com/daryan044/termux-x11)) | GPL-3.0 | X server and GUI windows |
 | [Termux terminal-emulator / terminal-view](https://github.com/termux/termux-app) | Apache-2.0 | terminal |
 | [Haze](https://github.com/chrisbanes/haze) | Apache-2.0 | background blur |
 | AndroidX, Jetpack Compose, Material 3 | Apache-2.0 | UI |

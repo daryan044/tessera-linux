@@ -5,6 +5,7 @@ package com.daryan.linuxlauncher
 
 import android.app.Application
 import android.os.Process
+import com.termux.x11.LorieApp
 import com.daryan.linuxlauncher.container.ChrootBackend
 import com.daryan.linuxlauncher.container.FakeProc
 import com.daryan.linuxlauncher.container.HostProbe
@@ -21,7 +22,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class LauncherApplication : Application() {
+/** Extends Termux:X11's application class, which its windows and receivers expect. */
+class LauncherApplication : LorieApp() {
     lateinit var container: LauncherContainer
         private set
 

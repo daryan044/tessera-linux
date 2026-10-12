@@ -1,0 +1,4 @@
+[submodule "third_party/termux-x11"]
+	path = third_party/termux-x11
+	url = https://github.com/daryan044/termux-x11.git
+	branch = linuxlauncher

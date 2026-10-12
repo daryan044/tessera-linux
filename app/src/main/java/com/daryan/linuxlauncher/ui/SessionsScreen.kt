@@ -81,7 +81,6 @@ private fun SessionCard(
 ) {
     Surface(
         onClick = { onOpen(s.session.id) },
-        enabled = s.terminal != null,
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = modifier.fillMaxWidth(),

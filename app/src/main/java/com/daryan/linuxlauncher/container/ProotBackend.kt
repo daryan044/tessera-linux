@@ -13,6 +13,8 @@ class ProotBackend(
     private val paths: ContainerPaths,
     /** [FakeProc] files to bind over their /proc counterparts. */
     private val fakeProc: List<String> = emptyList(),
+    /** PRoot fails on a binding whose host path is missing, so missing grants are skipped. */
+    private val exists: (String) -> Boolean = { File(it).exists() },
 ) : ContainerBackend {
     override val name = "PRoot"
 
@@ -40,9 +42,10 @@ class ProotBackend(
             bind("/dev/urandom", "/dev/random")
             bind(tmp.invariantSeparatorsPath, "/tmp")
             // proot has no read-only binds; FsGrant.readOnly is advisory here.
-            p.filesystem.forEach { bind(it.path, it.mountAt) }
-            p.devices.forEach { bind(it) }
-            if (p.audio) bind(paths.pulseSocket.invariantSeparatorsPath, ContainerPaths.PULSE_GUEST)
+            p.filesystem.filter { exists(it.path) }.forEach { bind(it.path, it.mountAt) }
+            p.devices.filter(exists).forEach { bind(it) }
+            val pulse = paths.pulseSocket.invariantSeparatorsPath
+            if (p.audio && exists(pulse)) bind(pulse, ContainerPaths.PULSE_GUEST)
 
             add("/usr/bin/env")
             add("-i")
