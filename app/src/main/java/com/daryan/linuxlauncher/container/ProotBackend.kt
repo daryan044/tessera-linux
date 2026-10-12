@@ -93,6 +93,11 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
     put("LANG", "C.UTF-8")
     put("TERM", session.term)
     put("TMPDIR", "/tmp")
-    if (p.display && session.display != null) put("DISPLAY", ":${session.display}")
+    if (p.display && session.display != null) {
+        put("DISPLAY", ":${session.display}")
+        // Termux:X11 sends real multi-touch events; Firefox only uses them (finger scrolling,
+        // pinch zoom) with XInput2 on, otherwise it treats a finger as a mouse drag.
+        put("MOZ_USE_XINPUT2", "1")
+    }
     if (p.audio) put("PULSE_SERVER", "unix:${ContainerPaths.PULSE_GUEST}")
 }
