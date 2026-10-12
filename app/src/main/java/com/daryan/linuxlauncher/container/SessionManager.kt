@@ -80,6 +80,10 @@ class SessionManager(
             deleteRecursively()
             mkdirs()
         }
+        paths.sessionShm(session).apply {
+            deleteRecursively()
+            mkdirs()
+        }
         if (app.permissions.display) paths.x11SocketDir(session).mkdirs()
         val spec = backend.buildLaunch(app, session)
 

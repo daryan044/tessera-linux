@@ -58,6 +58,8 @@ data class ContainerPaths(
     /** Private /tmp per session, so apps cannot see each other's sockets. */
     fun sessionTmp(session: Session) = File(cacheDir, "sessions/${session.id}/tmp")
     fun x11SocketDir(session: Session) = File(sessionTmp(session), ".X11-unix")
+    /** Private /dev/shm per session; Android has none, and browsers' IPC needs one. */
+    fun sessionShm(session: Session) = File(cacheDir, "sessions/${session.id}/shm")
     val pulseSocket get() = File(filesDir, "pulse/native")
     /** Stand-ins for /proc files Android hides from apps; see [FakeProc]. */
     val fakeProcDir get() = File(filesDir, "proc")

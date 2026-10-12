@@ -46,6 +46,7 @@ class ProotBackend(
             bind("/sys")
             bind("/dev/urandom", "/dev/random")
             bind(tmp.invariantSeparatorsPath, "/tmp")
+            bind(paths.sessionShm(session).invariantSeparatorsPath, "/dev/shm")
             // proot has no read-only binds; FsGrant.readOnly is advisory here.
             p.filesystem.filter { exists(it.path) }.forEach { bind(it.path, it.mountAt) }
             p.devices.filter(exists).forEach { bind(it) }
@@ -54,7 +55,7 @@ class ProotBackend(
 
             add("/usr/bin/env")
             add("-i")
-            addAll(guestEnv(app, session).map { (k, v) -> "$k=$v" })
+            addAll((guestEnv(app, session) + SANDBOX_OFF).map { (k, v) -> "$k=$v" })
             addAll(guestCommand(app))
         }
         val hostEnv = buildMap {
@@ -69,6 +70,19 @@ class ProotBackend(
         add(if (host == guest) "--bind=$host" else "--bind=$host:$guest")
     }
 }
+
+/**
+ * Firefox's per-process sandboxes install seccomp filters that clash with PRoot's ptrace, and
+ * its child processes die with SIGSEGV. PRoot mode can't offer that isolation anyway; chroot
+ * mode keeps the sandbox.
+ */
+private val SANDBOX_OFF = mapOf(
+    "MOZ_DISABLE_CONTENT_SANDBOX" to "1",
+    "MOZ_DISABLE_GMP_SANDBOX" to "1",
+    "MOZ_DISABLE_RDD_SANDBOX" to "1",
+    "MOZ_DISABLE_SOCKET_PROCESS_SANDBOX" to "1",
+    "MOZ_DISABLE_UTILITY_SANDBOX" to "1",
+)
 
 /** Environment inside the container; shared by both backends. */
 internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, String> = buildMap {

@@ -38,6 +38,8 @@ class BackendTest {
         assertTrue("--rootfs=/app/files/rootfs/debian" in spec.argv)
         assertTrue("--bind=/storage/emulated/0/Download:/home/user/Downloads" in spec.argv)
         assertTrue("--bind=/app/cache/sessions/s3/tmp:/tmp" in spec.argv)
+        assertTrue("--bind=/app/cache/sessions/s3/shm:/dev/shm" in spec.argv)
+        assertTrue("MOZ_DISABLE_CONTENT_SANDBOX=1" in spec.argv)
         assertFalse(spec.argv.any { it.startsWith("--bind=/storage/emulated/0:") || it == "--bind=/storage" })
         assertTrue("DISPLAY=:3" in spec.argv)
         assertEquals(firefox.exec, spec.argv.takeLast(3))
