@@ -43,6 +43,7 @@ class BackendTest {
         assertFalse(spec.argv.any { it.startsWith("--bind=/storage/emulated/0:") || it == "--bind=/storage" })
         assertTrue("DISPLAY=:3" in spec.argv)
         assertTrue("MOZ_USE_XINPUT2=1" in spec.argv)
+        assertTrue("MOZ_NO_REMOTE=1" in spec.argv)
         assertEquals(firefox.exec, spec.argv.takeLast(3))
         assertEquals("/app/lib/libproot-loader.so", spec.env["PROOT_LOADER"])
     }

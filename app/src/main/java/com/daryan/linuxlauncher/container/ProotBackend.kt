@@ -98,6 +98,10 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
         // Termux:X11 sends real multi-touch events; Firefox only uses them (finger scrolling,
         // pinch zoom) with XInput2 on, otherwise it treats a finger as a mouse drag.
         put("MOZ_USE_XINPUT2", "1")
+        // Each session has its own display: Firefox handing a window to "the running copy"
+        // would put it in another app's window, and a copy we killed leaves a remote endpoint
+        // that never answers ("Firefox is already running, but is not responding").
+        put("MOZ_NO_REMOTE", "1")
     }
     if (p.audio) put("PULSE_SERVER", "unix:${ContainerPaths.PULSE_GUEST}")
 }
