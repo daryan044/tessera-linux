@@ -92,7 +92,7 @@ private fun SessionCard(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.size(44.dp).clip(appShape(s.app)).background(container),
                 ) {
-                    Icon(appIcon(s.app.icon), null, Modifier.size(22.dp), tint = onContainer)
+                    AppGlyph(s.app, 22.dp, onContainer)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {

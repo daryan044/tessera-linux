@@ -22,7 +22,9 @@ object AppIcons {
 
     /** [rootfs] is null when the container's files aren't readable (chroot mode). */
     fun forApp(app: PermissionManifest, rootfs: File?): Bitmap =
-        cache.getOrPut("${app.id}@${rootfs?.path}") { rootfs?.let { find(app, it) } ?: tile(app) }
+        cache.getOrPut("${app.id}@${rootfs?.path}") {
+            app.iconFile?.let { BitmapFactory.decodeFile(it) } ?: rootfs?.let { find(app, it) } ?: tile(app)
+        }
 
     /** Freedesktop icon names worth trying, most specific first. */
     internal fun candidateNames(app: PermissionManifest): List<String> = listOfNotNull(

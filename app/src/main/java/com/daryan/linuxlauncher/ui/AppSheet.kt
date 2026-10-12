@@ -83,7 +83,7 @@ fun AppSheet(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.size(72.dp).clip(appShape(app)).background(container),
                 ) {
-                    Icon(appIcon(app.icon), null, Modifier.size(32.dp), tint = onContainer)
+                    AppGlyph(app, 32.dp, onContainer)
                 }
                 Spacer(Modifier.width(16.dp))
                 Column {

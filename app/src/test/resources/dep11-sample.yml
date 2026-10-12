@@ -1,0 +1,1571 @@
+---
+File: DEP-11
+Version: '1.0'
+Origin: debian-trixie-main
+MediaBaseUrl: https://appstream.debian.org/media/trixie
+Time: 20250808T201507
+---
+Type: desktop-application
+ID: firefox-esr.desktop
+Package: firefox-esr
+Name:
+  'no': Firefox ESR
+  es: Firefox ESR
+  sv: Firefox ESR
+  sk: Firefox ESR
+  fi: Firefox ESR
+  ca: Firefox ESR
+  it: Firefox ESR
+  ja: Firefox ESR
+  fa: Firefox ESR
+  fr: Firefox ESR
+  nb: Firefox ESR
+  pl: Firefox ESR
+  pt: Firefox ESR
+  el: Firefox ESR
+  C: Firefox ESR
+  cs: Firefox ESR
+  bg: Firefox ESR
+  nn: Firefox ESR
+  pt-BR: Firefox ESR
+  ko: Firefox ESR
+  hu: Firefox ESR
+  nl: Firefox ESR
+  ru: Firefox ESR
+Summary:
+  'no': Surf på nettet
+  es: Navegue por la web
+  sv: Surfa på webben
+  sk: Prehliadanie internetu
+  fi: Selaa Internetin WWW-sivuja
+  ca: Navegueu per el web
+  it: Esplora il web
+  ja: ウェブを閲覧します
+  de: Im Internet surfen
+  fr: Navigue sur Internet
+  nb: Surf på nettet
+  fa: صفحات شبکه جهانی اینترنت را مرور نمایید
+  pt: Navegue na Internet
+  el: Περιηγηθείτε στον παγκόσμιο ιστό
+  C: Browse the World Wide Web
+  cs: Prohlížení stránek World Wide Webu
+  bg: Сърфиране в Мрежата
+  nn: Surf på nettet
+  pt-BR: Navegue na Internet
+  pl: Przeglądanie stron WWW
+  hu: A világháló böngészése
+  ko: 웹을 돌아 다닙니다
+  nl: Verken het internet
+  ru: Обозреватель Всемирной Паутины
+Description:
+  uk: >-
+    <p>Firefox ESR — це потужний розширюваний веб-браузер з підтримкою технологій для сучасних веб-застосунків.</p>
+  es: >-
+    <p>Firefox ESR es un navegador web potente y extensible compatible con las tecnologías modernas de aplicaciones web.</p>
+  fr: >-
+    <p>Firefox ESR est un navigateur web puissant, extensible, qui gère les technologies web modernes.</p>
+  ko: >-
+    <p>Firefox ESR은 최신 웹 어플리케이션 기술을 지원하는 강력하고, 확장 가능한 웹 브라우져입니다.</p>
+  de: >-
+    <p>Firefox ESR ist ein leistungsstarker, erweiterbarer Webbrowser. Er unterstützt moderne Techniken für Webanwendungen.</p>
+  pt_BR: >-
+    <p>Firefox ESR é um navegador de rede extensível e poderoso com suporte a tecnologias de aplicação web modernas.</p>
+  ja: >-
+    <p>Firefox ESR は強力で拡張可能なウェブブラウザで、最近のウェブアプリケーション 技術をサポートします。</p>
+  zh_CN: >-
+    <p>火狐长期支持版，是一个强大的、可扩展的网络浏览器，支持当今 的网络应用技术。</p>
+  it: >-
+    <p>Firefox ESR è un browser web potente ed estensibile, con il supporto per le tecnologie moderne per applicazioni web.</p>
+  sk: >-
+    <p>Firefox ESR je mocný, rozšíriteľný webový prehliadač s podporou moderných technológií webových aplikácií.</p>
+  ru: >-
+    <p>Firefox ESR — это мощный расширяемый веб-браузер с поддержкой технологий для современных веб-приложений.</p>
+  C: >-
+    <p>Firefox ESR is a powerful, extensible web browser with support for modern web application technologies.</p>
+  da: >-
+    <p>Firefox ESR er en funktionsrig internetbrowser, der kan udvides, og som har understøttelse af moderne teknologier indenfor
+    internetteknologi.</p>
+  pl: >-
+    <p>Firefox ESR (Extended Support Release - wersja z długoterminowym wsparciem) to potężna, rozszerzalna przeglądarka internetowa
+    obsługująca nowoczesne technologie aplikacji internetowych.</p>
+  en: >-
+    <p>Firefox ESR is a powerful, extensible web browser with support for modern web application technologies.</p>
+Categories:
+- Network
+- WebBrowser
+Icon:
+  cached:
+  - name: firefox-esr_firefox-esr.png
+    width: 48
+    height: 48
+  - name: firefox-esr_firefox-esr.png
+    width: 64
+    height: 64
+  - name: firefox-esr_firefox-esr.png
+    width: 128
+    height: 128
+  remote:
+  - url: f/fi/firefox-esr.desktop/b7665b1e87a3bf3acba1e22e855f2cfa/icons/128x128/firefox-esr_firefox-esr.png
+    width: 128
+    height: 128
+  stock: firefox-esr
+Launchable:
+  desktop-id:
+  - firefox-esr.desktop
+Provides:
+  mediatypes:
+  - text/html
+  - text/xml
+  - application/xhtml+xml
+  - application/xml
+  - application/vnd.mozilla.xul+xml
+  - application/rss+xml
+  - application/rdf+xml
+  - image/gif
+  - image/jpeg
+  - image/png
+  - x-scheme-handler/http
+  - x-scheme-handler/https
+---
+Type: desktop-application
+ID: org.gimp.GIMP
+Package: gimp
+ProjectLicense: GPL-3.0+ AND LGPL-3.0+
+Name:
+  kab: Ahil GNU i wesqerdec n tugna
+  nds: GNU Billbewarkenprogramm
+  oc: Editor d'imatge GIMP
+  ca-valencia: Programa de retoc d'imatges de GNU
+  zh-Hant-HK: GNU 圖片處理程式
+  be-Cyrl: GNU Image Manipulation Program
+  nb: GNU bildebehandlingsprogram
+  ml: GNU Image Manipulation Program
+  lv: GNU attēlu apstrādes programma
+  sv: GNU:s bildmanipuleringsprogram
+  cs: GNU Image Manipulation Program
+  nn: GNU bilethandsamingsprogram
+  fa: برنامهٔ روتوش تصویر گنو
+  ta: க்னூ பட கையாளல் நிரல்
+  C: GNU Image Manipulation Program
+  ru: GNU Image Manipulation Program
+  br: Goulev da zornata skeudennoù GNU
+  sk: GNU program na manipuláciu s obrázkami
+  he: תוכנת עיבוד התמונה של GNU
+  my: GNU ရုပ်ပုံ စီမံကိုင်တွယ်ရေး ပရိုဂရမ်
+  en-CA: GNU Image Manipulation Program
+  el: Πρόγραμμα επεξεργασίας εικόνων GNU
+  sl: GIMP – program GNU za obdelavo slik
+  gd: GNU Image Manipulation Program
+  is: GNU myndvinnsluforritið
+  bg: Редактор на изображения на GNU (GIMP)
+  ar: برنامج جنو لمعالجة الصور
+  hr: GIMP program za manipulaciju slikama
+  ne: जी एन यू छवि परिचालन कार्यक्रम
+  it: GNU Image Manipulation Program
+  pt: Programa de Manipulação de Imagens GNU
+  zh-Hans-CN: GNU 图像处理程序
+  zh-Hant-TW: GNU 影像處理程式
+  da: GNU Image Manipulation Program
+  ka: GNU Image Manipulation Program
+  km: កម្មវិធី​រៀបចំ​រូបភាពរបស់ GNU
+  eo: Bildmanipulilo (GIMP = GNU Image Manipulation Program)
+  te: గ్నూ ఇమేజ్ మానిప్యులేషన్ ప్రోగ్రామ్
+  ky: GNU Image Manipulation Program
+  sr-Cyrl: Гнуов програм за обраду слика
+  kn: GNU ಇಮೇಜ್ ಮ್ಯಾನಿಪುಲೇಶನ್ ಪ್ರೊಗ್ರಾಮ್
+  vi: Chương trình xử ký ảnh GNU
+  ja: GIMP (GNU Image Manipulation Program)
+  sr-Latn: Gnuov program za obradu slika
+  hu: GNU képszerkesztő program
+  dz: ་་ཨི་མེཇི་་མ་ནུ་པུ་ལེ་ཤཱན་་པོརོ་གརམ།
+  fr: Éditeur d’image GIMP
+  mr: गिम्प - मराठी
+  tr: GNU Görüntü İşleme Programı
+  ko: 그누 이미지 처리 프로그램
+  ro: GIMP
+  pl: Edytor obrazów GIMP
+  ca: Programa de retoc d'imatges de GNU
+  pa: ਗਨੂ ਈਮੇਜ਼ ਮੈਨੂਪਲੇਸ਼ਨ ਪਰੋਗਰਾਮ
+  gu: GNU ચિત્ર જાળવણી કાર્યક્રમ
+  en-GB: GNU Image Manipulation Program
+  th: GNU Image Manipulation Program
+  de: GNU Image Manipulation Program
+  tt: Sürät Eşkärtüçe GNU-Yasılım
+  ast: Programa de Manipulación d'Imaxe GNU
+  fi: GIMP-kuvankäsittely
+  es: Programa de manipulación de imágenes de GNU
+  bn: GNU ছবি দক্ষতা সহকারে ব্যবহারের কার্যক্রম
+  uk: GNU Image Manipulation Program
+  csb: Editora òbrôzów GIMP
+  bs-Latn: Gnuov program za obradu slika (GNU Image Manipulation Program)
+  et: GIMP - GNU pilditöötlusprogramm
+  lt: GNU paveikslėlių manipuliavimo programa
+  gl: Programa de Manipulación de Imaxes de GNU
+  nl: GNU Image Manipulation Program
+  id: GNU Program Manipulasi Gambar
+  si: GNU Image Manipulation Program
+  pt-BR: Programa de manipulação de imagem do GNU
+  eu: Irudiak Manipulatzeko GNU Programa
+  mk: ГНУ програма за манипулација со слики
+Summary:
+  kab: Snulfu-d tugniwin yerna ẓreg tiwlafin
+  kk-Cyrl: Суреттерді жасау және фотоларды түзету
+  ca-valencia: Creeu imatges i editeu fotografies
+  oc: Crear d'imatges e modificar de fotografias
+  zh-Hant-HK: 建立圖像與編輯照片
+  be-Cyrl: Стварэнне відарысаў і рэдагаванне фатаграфій
+  nb: Lag bilder og rediger fotografier
+  lv: Veido attēlus vai rediģē fotogrāfijas
+  sv: Skapa bilder och redigera fotografier
+  cs: Vytvářejte obrázky a upravujte fotografie
+  nn: Lag bilete og rediger foto
+  fa: ایجاد تصاویر و ویرایش عکس‌ها
+  ta: பிம்பங்களை உருவாக்கவும் மற்றும் படங்களை திருத்தவும்
+  C: Create images and edit photographs
+  ru: Создание изображений и редактирование фотографий
+  br: Krouiñ hag embann skeudennoù pe luc'hskeudennoù
+  sk: Vytvárajte a upravujte obrázky alebo fotografie
+  my: ရုပ်ပုံများကို ဖန်တီးပြီး ဓါတ်ပုံများကို တည်းဖြတ်ပါ
+  en-CA: Create images and edit photographs
+  el: Δημιουργία εικόνων και επεξεργασία φωτογραφιών
+  sl: Ustvari slike in uredi fotografije
+  gd: Cruthaich dealbhan is deasaich dealbhan camara
+  is: Búa til myndir og breyta ljósmyndum
+  bg: Създаване на изображения и редакция на снимки
+  ar: أنشئ صورا وحرّر لقطات
+  hr: Stvarajte slike i uređujte fotografije
+  ne: छवि सिर्जना गर्नुहोस् र फोटोग्राफ सम्पादन गर्नुहोस्
+  it: Creazione immagini e modifica fotografie
+  pt: Criar imagens e editar fotografias
+  zh-Hans-CN: 创建图像或编辑照片
+  zh-Hant-TW: 製作影像與編輯照片
+  da: Opret billeder og redigér fotografier
+  ka: შექმენით გამოსახულებები და ჩაასწორეთ ფოტოგრაფიები
+  km: បង្កើត​រូបភាព និង កែសម្រួល​រូបថត
+  eo: Krei bildojn aŭ redakti fotaĵojn
+  te: బొమ్మలను సృష్టించు మరియు చిత్రాలను సవరించు
+  sr-Cyrl: Направите нове сличице и средите ваше фотографије
+  kn: ಚಿತ್ರಗಳನ್ನು ರಚಿಸಿ ಹಾಗು ಫೋಟೋಗ್ರಾಫ್‌ಗಳನ್ನು ಸಂಪಾದಿಸಿ
+  vi: Tạo và chỉnh sửa ảnh
+  ca: Creeu imatges i editeu fotografies
+  ja: 画像の作成と写真の編集を行います
+  hu: Képek létrehozása és fotók szerkesztése
+  sr-Latn: Napravite nove sličice i sredite vaše fotografije
+  fr: Créer des images et modifier des photographies
+  mr: प्रतिमा तयार करा आणि छायाचित्रे संपादित करा
+  tr: Görüntü oluşturur ve fotoğraf düzenler
+  dz: གཟུགས་བརྙན་ཚུ་ གསར་བསྐྲུན་འབད་ནི་དང་ དཔར་ཚུ་ཞུན་དག་འབད།
+  ko: 이미지를 만들고 사진을 편집합니다
+  ro: Creează imagini și editează fotografii
+  pl: Tworzenie oraz obróbka obrazów i fotografii
+  pa: ਚਿੱਤਰ ਬਣਾਓ ਅਤੇ ਤਸਵੀਰਾਂ ਸੋਧੋ
+  gu: ચિત્રો બનાવો અને ફોટાઓમાં ફેરફાર કરો
+  en-GB: Create images and edit photographs
+  de: Bilder erstellen und Fotografien bearbeiten
+  ast: Crea imáxenes y edita semeyes
+  fi: Luo kuvia ja muokkaa valokuvia
+  es: Cree imágenes y edite fotografías
+  bn: ছবি তৈরি করুন এবং ফটোগ্রাফ সম্পাদন করুন
+  uk: Створення зображень та редагування фотографій
+  bs-Latn: Napravite slike i obradite fotografije
+  et: Joonistamine ja fotode töötlemine
+  lt: Kurti paveikslėlius ir redaguoti fotografijas
+  gl: Crear imaxes e editar fotografías
+  nl: Bewerk foto's en maak afbeeldingen aan
+  id: Buat gambar dan sunting foto
+  pt-BR: Crie e edite imagens ou fotografias
+  eu: Sortu irudiak eta editatu argazkiak
+  mk: Направи слики и уреди фотографии
+Description:
+  zh-Hant-TW: >-
+    <p>GIMP 代表「GNU 影像處理程式」(GNU Image Manipulation Program) 的縮寫，這是款可用於修圖、影像合成與創作的自由軟體。</p>
+
+    <p>GIMP 有許多功能：可用來簡單繪圖、專業修圖，還能用作為線上批次處理系統、可大量製圖的影像算繪器、影像格式轉換器等等。</p>
+
+    <p>GIMP 可擴展且可延伸：它以搭配外掛插件與擴充套件為精神作設計，讓用途有無限可能。其中進階的命令稿編寫介面，讓您無論從簡單的操作，甚至到複雜的影像處理流程，都能輕鬆寫成命令稿。GIMP 也提供 Linux、Microsoft Windows
+    及 OS X 等版本。</p>
+  bs-Latn: >-
+    <p>GIMP je akronim za GNU Image Manipulation Program(GNU program za manipulaciju slikom). To je slobodno distribuiran
+    program za namjene kao što su dotjerivanje slike, kompoziciju slike i autorstvo.</p>
+
+    <p>Ima mnoge mogućnosti. Može se koristiti kao jednostavni program za crtanje, program za dotjerivanje slika ekspertne
+    kvalitete, sistem za grupno online procesiranje,  prikazivač masivno proizvedenih slika, koverter formata slike itd.</p>
+
+    <p>GIMP je proširiv i dopunjiv. Dizajniran je da bude proširen sa dodacima i proširenjima za bilo šta. Napredni interfejs
+    za pisanje dozvoljava sve, od najjednostavnijih zadataka do jednostavnog pisanja najkompleksnijih procedura manipulacije
+    slikom. GIMP je dostupan za Linux, Microsoft Windows i OS X.</p>
+  eu: >-
+    <p>Irudiak Manipulatzeko GNU Programaren akronimoa da GIMP. Argazkiak moldatzeko, irudiak konposatzeko eta irudiak sortzeko
+    programa bat da, modu librean banatzen dena.</p>
+
+    <p>Gaitasun anitzekoa da. Margotzeko programa xume bat bezala, argazkiak moldatzeko adituen kalitateko programa bezala,
+    lineako talde-lanak prozesatzeko sistema gisa, irudiak errendatzeko ekoizpen handiko sistema gisa, irudiak formatuz bihurtzeko
+    bezala eta abar erabil daiteke.</p>
+
+    <p>GIMP hedagarria da. Pluginen eta hedapenen bidez hobetua izateko diseinatuta dago, nahi den edozein ekintza gauzatzeko.
+    Script aurreratuen interfazeak zeregin sinpleenetik konplexuenera lantzea baimentzen du irudiak ukitzeko prozesuetan.
+    Linux, Microsoft Windows eta OS X sistemetan erabilgarri dago GIMP.</p>
+  vi: >-
+    <p>GIMP được viết tắt từ cụm từ tiếng Anh "GNU Image Manipulation Program". Nó là một chương trình được phân phối tự do
+    dành cho các công việc như là sửa, hợp nhất hay đánh dấu tác giả cho ảnh.</p>
+
+    <p>Nó có nhiều ứng dụng. Nó có thể được dùng như là chương trình vẽ đơn giản, một phần mềm sửa ảnh chất lượng cao, một
+    hệ thống xử lý bó trực tuyến, một bộ xem ảnh, một bộ chuyển đổi định dạng ảnh, v.v..</p>
+
+    <p>GIMP có thể mở rộng và mở rộng. Nó được thiết kế để được tăng cường với các trình cắm và tiện ích mở rộng để làm bất
+    cứ điều gì. Giao diện kịch bản nâng cao cho phép mọi thứ từ nhiệm vụ đơn giản nhất đến các quy trình thao tác hình ảnh
+    phức tạp nhất dễ dàng được viết kịch bản. GIMP có sẵn cho Linux, Microsoft Windows và OS X.</p>
+  mr: >-
+    <p>गिम्प जीएनयू  प्रतिमा कुशलता हाताळणी कार्यप्रणालीसाठी एक परिवर्णी शब्द आहे. छायाचित्र धारणा, प्रतिमा रचना आणि प्रतिमा
+    लेखन यासारख्या कार्यांसाठी ही स्वतंत्रपणे वितरीत केलेली कार्यप्रणाली आहे.</p>
+
+    <p>यात अनेक कार्यक्षमता आहेत. हे एक सोपे  रंगाचे साधन म्हणून वापरले जाऊ शकते. हे एक उत्तम गुणवत्तेचे  छायाचित्र परिक्षण
+    साधन असून  एक ऑनलाइन बॅच प्रक्रिया प्रणाली आहे, हे एकाच वेळी अनेक प्रतिमा प्रस्तुतकर्ता साधन असून एक प्रतिमा दुसऱ्या स्वरूपात
+    रूपांतर करते.</p>
+
+    <p>गिम्प विस्तृत आणि विस्तारयोग्य आहे. हे प्लग-इन आणि विस्तारासह वाढविण्याकरिता रचना केले आहे जेणेकरून काहीही करू शकता.
+    प्रगत हस्तलेखन प्रणाली सर्वकाही परवानगी देते, सोप्या कामापासून सर्वात क्लिष्ट प्रतिमेपर्यंत कुशलतेने हाताळणीची प्रक्रिया
+    सहजपणे साध्य करते. गिम्प हे लिनक्स मायक्रोसॉफ्ट विंडोज आणि ओएस एक्स साठी उपलब्ध आहे.</p>
+  de: >-
+    <p>GIMP ist ein Akronym für »GNU Image Manipulation Program«. Es ist ein frei veröffentlichtes Programm z. B. zum Retuschieren
+    von Fotos, zur Bildkomposition und Bilderstellung.</p>
+
+    <p>Es hat viele Einsatzmöglichkeiten. Es kann als einfaches Malprogramm, als Retuschierprogramm für Experten, als Stapelverarbeitungssystem,
+    als Bildersteller für Massenproduktion, als Bildformatumwandler u.v.m eingesetzt werden.</p>
+
+    <p>GIMP ist erweiterbar. Es ist darauf ausgelegt, mit Plugins und Erweiterungen bereichert zu werden, um nahezu alles
+    erledigen zu können. Die fortgeschrittene Skript-Schnittstelle ermöglicht alles von der einfachsten Aufgabe bis hin zu
+    den komplexesten Bildbearbeitungsvorgängen zu skripten. GIMP ist für Linux, Microsoft Windows und OS X verfügbar.</p>
+  gl: >-
+    <p>GIMP é o acrónimo de GNU Image Manipulation Program (Programa de manipulación de imaxes de GNU). É un programa que
+    se distribué de forma libre para as tarefas de retoque, composición imaxes e autoría de imaxes. </p>
+
+    <p>Conta con moitas características. Pode usarse como un programa simple de debuxo, un programa de retoque de imaxes de
+    calidade para expertos, un sistema de procesado de imaxes en lote, un renderizador de imaxes de producción en masa, un
+    conversor de formatos de imaxe, etc.</p>
+
+    <p>GIMP é expandíbel e extensíbel. Está deseñado para ser aumentado mediante engadidos e extensións para que poida facer
+    case calquera cousa. A interface de scripting avanzado permítelle de forma doada crear scripts para calquera cousa desde
+    as tarefas máis doadas ate os procedementos de manipulación de imaxes máis complexos. GIMP está dispoñíbel para Linux,
+    Microsoftw Windows e OS X.</p>
+  pt: >-
+    <p>GIMP é o acrónimo de “GNU Image Manipulation Program”. É um programa distribuído gratuitamente para tarefas como retoques,
+    composição e criação de imagens.</p>
+
+    <p>Tem muitas capacidades. Pode ser usado como um simples programa de pintura, um programa avançado para retocar fotografias,
+    um sistema online para processamento em lotes, um renderizador de imagens em massa, um conversor de formatos, etc.</p>
+
+    <p>O GIMP é expansível e extensível. Foi concebido para ser aumentado com complementos para fazer praticamente tudo. A
+    interface avançada de scripting permite tudo, desde a tarefa mais simples até aos mais complexos procedimentos de manipulação
+    de imagens. O GIMP está disponível para Linux, Microsoft Windows e OS X.</p>
+  pt-BR: >-
+    <p>GIMP é um acrônimo para GNU Image Manipulation Program. Ele é um programa distribuído livremente para tarefas como
+    retoque de fotos, composição e criação de imagens.</p>
+
+    <p>O GIMP possui muitas capacidades. Ele pode ser usado como um programa de pintura simples, como um programa de retoque
+    de fotos semiprofissional, como um sistema de processamento de imagens em massa online, como um renderizador de imagens
+    em massa, como um conversor de arquivos de imagem, etc.</p>
+
+    <p>O GIMP é expansível e extensível. Ele foi projetado para ser ampliado com plug-ins e extensões e fazer qualquer coisa.
+    A interface avançada de scripts permite desde tarefas simples até os mais complexos processos de manipulação de imagens
+    em scripts. O GIMP é compatível com Linux, Microsoft Windows e OS X.</p>
+  ro: >-
+    <p>GIMP este un acronim pentru GNU Image Manipulation Program. Este un program distribuit liber pentru lucrări precum
+    retușare fotografică, compoziție de imagini și creație de imagini.</p>
+
+    <p>Capabilitățile sale sunt multiple. Poate fi utilizat ca un program simplu de pictură, un program expert de retușare
+    a fotografiilor, un sistem de procesare a loturilor online, un generator de imagine de producție în masă, un convertor
+    de format de imagine etc.</p>
+
+    <p>GIMP este expandabil și extensibil. Este conceput pentru a fi augmentat cu plugin-uri și extensii pentru a face aproape
+    orice. Interfața avansată de scripting permite ca toate lucrurile, de la cea mai simplă sarcină la cele mai complexe proceduri
+    de manipulare a imaginilor, să fie ușor scriptate. GIMP este disponibil pentru Linux, Microsoft Windows și OS X.</p>
+  nn: >-
+    <p>GIMP er akronym for GNU "Image Manipulation Program" («GNU sitt biletbehandsamingsprogram»). Det er eit gratis program
+    for retusjering av foto, biletkomposisjon og biletredigering.</p>
+
+    <p>Det har mange eigenskapar og kan brukast som eit enkelt teikne- og måleprogram, til retusjering av foto med topp kvalitet,
+    til satsvis prosessering på nett, for å masseprodusera bilete, for å byta mellom ulike biletformat og mykje meir.</p>
+
+    <p>GIMP kan gjera mykje og kan lett utvidast. Programmet kan gjerast større med programutvidingar («plug-ins») og kan
+    såleis utvidast til å gjera nesten kva som helst. Det er også innebygd avanserte skriptfunksjonar, slik at det er lett
+    å laga spesielle verktøy for enkle oppgåver eller kompliserte bilethansamingar som lett kan skriptast. GIMP er tilgjengeleg
+    for Linux, Windows og OS X.</p>
+  ru: >-
+    <p>GIMP — это акроним английского словосочетания "GNU Image Manipulation Program". Это свободно распространяемая программа
+    для выполнения таких задач, как ретуширование фотографий, создания композиций, а также рисования своих собственных изображений.</p>
+
+    <p>У программы много возможностей. Можно просто рисовать, а можно выполнять качественную профессиональную ретушь фото.
+    Кроме того, это и система пакетной обработки в режиме онлайн, и средство массовой визуализации изображений, и программа
+    для преобразования изображений из одного формата в другой, и многое другое.</p>
+
+    <p>GIMP является расширяемым и дополняемым. Он разработан для дополнения плагинами и расширениями, позволяющими делать
+    практически все. Продвинутый интерфейс сценариев позволяет легко создавать сценарии от простейших задач до самых сложных
+    процедур работы с изображениями. GIMP доступен для Linux, Microsoft Windows и macOS.</p>
+  el: >-
+    <p>Το GIMP είναι ένα ακρωνύμιο για το πρόγραμμα επεξεργασίας εικόνας GNU. Διανέμεται ελεύθερα για τέτοιες εργασίες όπως
+    επεξεργασία φωτογραφίας, σύνθεση εικόνας και δημιουργία εικόνας.</p>
+
+    <p>Έχει πολλές δυνατότητες. Μπορεί να χρησιμοποιηθεί ως ένα απλό πρόγραμμα χρωματισμού, ένα υψηλής ποιότητας πρόγραμμα
+    επεξεργασίας φωτογραφίας, ένα δικτυακό ομαδικό σύστημα επεξεργασίας, μία απόδοση εικόνας μαζικής παραγωγής, ένας μετατροπέας
+    τύπου εικόνας, κλπ.</p>
+
+    <p>Το GIMP είναι αναπτυσσόμενο και επεκτάσιμο. Είναι σχεδιασμένο να επαυξάνεται με πρόσθετα και επεκτάσεις για να κάνει
+    σχεδόν οτιδήποτε. Η προχωρημένη διεπαφή σεναρίου επιτρέπει ο,τιδήποτε από την πιο απλή εργασία μέχρι τις πιο σύνθετες
+    διαδικασίες επεξεργασίας εικόνας να γίνονται εύκολα σενάρια. Το GIMP είναι διαθέσιμο για Λίνουξ, Microsoft Windows και
+    OS X.</p>
+  fa: >-
+    <p>گیمپ که مخفف «برنامهٔ روتوش تصویر گنو» است، نرم‌افزاری آزاد برای انجام کارهایی همچون دستکاری عکس‌ها، ترکیب و ایجاد
+    تصاویر است.</p>
+
+    <p>توانایی‌های بسیاری دارد؛ می‌تواند یک برنامهٔ نقاشی ساده باشد؛ یک برنامهٔ دستکاری عکس پیش‌رفته باشد؛ یک سامانهٔ پردازش
+    دسته‌ای برخط باشد؛ یک پردازندهٔ تصویر تولید انبوه باشد؛ یک تعویض‌کنندهٔ قالب تصویر باشد و….</p>
+
+    <p>گیمپ گسترش‌پذیر و افزون‌پذیر است. ساخته شده تا با افزایه‌ها و افزونه‌ها تقریباً هر کاری را انجام دهد. رابط کدنویسی
+    پیش‌رفته اجازهٔ کدنویسی هر چیزی از ساده‌ترین کار گرفته تا پیچیده‌ترین روش روتوش تصویر را می‌دهد. گیمپ برای گنو/لینوکس،
+    ویندوز مایکروسافت و مکینتاش موجود است.</p>
+  uk: >-
+    <p>GIMP – це абревіатура від GNU Image Manipulation Program (програма GNU для маніпулювання зображеннями). Це вільно розповсюджувана
+    програма для таких завдань, як ретушування фотографій, компонування та створення зображень.</p>
+
+    <p>Вона має багато можливостей. Її можна використати як простеньку програму для малювання, як програму ретушування високоякісних
+    фотографій, як інтернет-систему пакетної обробки, як відтворювач масових зображень, як перетворювач між різними графічними
+    форматами тощо.</p>
+
+    <p>GIMP легко розбирається і розширюється. Вона розроблена, щоби через доповнення модулями і розширеннями робити усе,
+    що завгодно. Додатковий інтерфейс сценаріїв дозволяє легко запрограмувати усе від найпростіших завдань до найскладніших
+    процедур обробки зображень. GIMP доступний для Linux, Microsoft Windows та OS X.</p>
+  C: >-
+    <p>
+          GIMP is an acronym for GNU Image Manipulation Program. It is a
+          freely distributed program for such tasks as photo retouching,
+          image composition and image authoring.
+        </p>
+    <p>
+          It has many capabilities. It can be used as a simple paint
+          program, an expert quality photo retouching program, an online
+          batch processing system, a mass production image renderer, an
+          image format converter, etc.
+        </p>
+    <p>
+          GIMP is expandable and extensible. It is designed to be
+          augmented with plug-ins and extensions to do just about
+          anything. The advanced scripting interface allows everything
+          from the simplest task to the most complex image manipulation
+          procedures to be easily scripted. GIMP is available for Linux,
+          Microsoft Windows and OS X.
+        </p>
+  is: >-
+    <p>GIMP er skammstöfun fyrir GNU Image Manipulation Program. Það er frjálst forrit sem má dreifa að vild og nýtist við
+    viðgerðir á myndum, ýmsa myndvinnslu, myndasamsetningu og margt fleira.</p>
+
+    <p>Það er með marga nytsamlega eiginleika. Hægt er að nota það sem einfalt málunarforrit, sem myndaviðgerðatól fyrir sérfræðinga,
+    sem magnvinnslukerfi á neti, sem myndgerðartól í magnvinnslu, sem myndsniðaumbreyti og margt fleira.</p>
+
+    <p>GIMP er útvíkkanlegt og viðbætanlegt. Hönnun þess gerir ráð fyrir að hægt sé að bæta við nýjum eiginleikum með hjálparforritum
+    (plug-ins) og forritsviðaukum (extensions), möguleikarnir eru ótæmandi. Háþróað skriftuviðmót gerir einfalt að bæta við
+    allt frá einföldum aðgerðum til mjög flókinnar myndmeðhöndlunar með hjálp auðlæsilegra skrifta. GIMP er einnig fáanlegt
+    fyrir Microsoft Windows og OS X.</p>
+  da: >-
+    <p>GIMP er en forkortelse af GNU Image Manipulation Program. Programmet kan frit videregives og anvendes til opgaver såsom
+    billedretouchering, billedkomposition og oprettelse af nye billeder.</p>
+
+    <p>Den har mange anvendelsesmuligheder. Det kan bruges som et simpelt tegneprogram, et avanceret retoucheringsprogram
+    af høj kvalitet, et online batchbehandlingssystem, en masseproduktion-billedoptegning, et billedkonverteringsprogram,
+    osv.</p>
+
+    <p>GIMP kan udvides. Programmet er designet til at blive suppleret med udvidelsesmoduler og udvidelser til at gøre næsten
+    alt. Den avancerede scriptinggrænseflade giver mulighed for nemt at scripte alt fra den simpleste opgave til de mest komplekse
+    billedmanipulationsprocedurer. GIMP fås til Linux, Microsoft Windows og OS X.</p>
+  lt: >-
+    <p>GIMP yra GNU paveikslėlių keitimo programos santrumpa. Tai yra laisvai platinama programa tokiems veiksmams kaip nuotraukų
+    retušavimas, paveikslėlių kompozicija ir kūrimas.</p>
+
+    <p>Ji turi daug galimybių. Ją galima naudoti kaip paprastą piešimo programą, eksperto kokybės nuotraukų retušavimo programą,
+    internetinę masinio apdorojimo sistemą, masinio kiekio paveikslėlių piešimo programą, paveikslėlių formato konvertuotoją
+    ir t. t.</p>
+
+    <p>GIMP yra plečiama programa. Ji yra sukurta taip, kad įskiepių bei plėtinių pagalba būtų galima padaryti beveik bet
+    ką. Sudėtinga scenarijų sąsaja leidžia scenarijais aprašyti viską pradedant paprasčiausiomis užduotimis ir baigiant sudėtingomis
+    paveikslėlių keitimo procedūromis. GIMP taip pat galima naudoti Linux, Microsoft Windows ir OS X sistemose.</p>
+  be-Cyrl: >-
+    <p>GIMP - гэта абрэвіятура ад GNU Image Manipulation Program. Гэта свабоднае праграмнае забеспячэнне для рэтушавання фатаграфій
+    і сумяшчэння відарысаў, а таксама для стварэння ўласных відарысаў.</p>
+
+    <p>Праграма мае шмат магчымасцей. У ёй можна проста маляваць, а можна выконваць якаснае рэтушаванне фатаграфій на прафесійным
+    узроўні. Акрамя гэтага, яна з'яўляецца сістэмай пакетнай апрацоўкі ў сетцы, сродкам масавай візуалізацыі відарысаў, праграмай
+    пераўтварэння відарысаў у розныя фарматы, а таксама мае іншыя прафесійныя магчымасці.</p>
+
+    <p>Магчымасці праграмы GIMP можна без намаганняў дапоўніць пры дапамозе ўбудоў і пашырэнняў. Дзякуючы гэтаму, магчыма
+    выкананне практычна любых задач. Перадавы інтэрфейс для распрацоўкі сцэнарыяў дазваляе лёгка аўтаматызаваць выкананне
+    як самых простых задач, так і самых складаных працэдур апрацоўкі відарысаў. Праграма GIMP даступна для Linux, Microsoft
+    Windows і OS X.</p>
+  sv: >-
+    <p>GIMP är en akronym för GNU Image Manipulation Program. Det är ett fritt distribuerat program för sådana uppgifter som
+    fotoretuschering, bildkomposition och bildskapande.</p>
+
+    <p>Det har många funktioner. Det kan användas som ett enkelt ritprogram, ett fotoretuscheringsprogram på expertnivå, ett
+    online massbearbetningssystem, en massproduktionsbildåtergivare, en bildformatsomvandlare, etc.</p>
+
+    <p>GIMP är utbyggbart och tänjbart. Det är avsett att kompletteras med insticksprogram och tillägg för att göra nästan
+    vad som helst. Det avancerade skriptgränssnittet tillåter allt från den enklaste uppgift till de mest komplexa bildmanipuleringsförfaranden
+    att enkelt skrivas. GIMP är tillgängligt för Linux, Microsoft Windows och OS X.</p>
+  sk: >-
+    <p>GIMP je skratka pre GNU Image Manipulation Program. Je to voľne šíriteľný program na retušovanie fotografií, vytváranie
+    a autorizovanie obrázkov.</p>
+
+    <p>Disponuje mnohými možnosťami. Môže byť použitý ako jednoduchý kresliaci program, profesionálny program na retušovanie
+    fotografií, internetový dávkový systém na spracovanie fotografií, vykresľovač obrázkov hromadnej výroby, konvertor formátov
+    obrázkov, atď.</p>
+
+    <p>GIMP je nepostrádateľný a rozšíriteľný. Je navrhnutý s rozšíreniami pomocou zásuvných modulov a rozšírení, ktoré dokážu
+    vykonať takmer čokoľvek. Pokročilé rozhranie jednoducho ovládateľné pomocou skriptov vám umožňuje vykonať všetko od najľahšej
+    úlohy až po tie najzložitejšie manipulačné procedúry. Program GIMP je dostupný pre systémy Linux, Microsoft Windows a
+    OS X.</p>
+  ca: >-
+    <p>El GIMP és l'acrònim de GNU Image Manipulation Program (Programa de retoc d'imatges GNU). És un programa que es distribueix
+    de manera lliure per a tasques com el retoc de fotografies, la composició i la creació d'imatges.</p>
+
+    <p>Té moltes funcionalitats. Pot utilitzar-se com a un programa simple de dibuix, com una aplicació professional de retoc
+    fotogràfic, com un sistema en línia de processament per lots, per a renderitzar imatges de forma massiva, per a convertir
+    imatges entre formats, etc.</p>
+
+    <p>El GIMP és ampliable i extensible. Està dissenyat per a ampliar-se amb connectors i extensions, per a fer-hi gairebé
+    de tot. La interfície avançada de scripts permet fer un script per a qualsevol cosa, des de la tasca més simple als processos
+    més complexos de manipulació d'imatges. El GIMP està disponible per a Linux, Microsoft Windows i OS X.</p>
+  ast: >-
+    <p>GIMP ye l'acrónimu de Programa de Manipulación d'Imáxenes de GNU. Distribúise llibre y gratuito pa xeres de retocáu
+    de fotos, composición d'imáxenes y autoría d'imáxenes.</p>
+
+    <p>Tien abondes carauterístiques. Pue usase como un programa cenciellu de dibuxu, un programa de retoque fotográficu profesiona,
+    un sistema de procesáu por llotes, un xenerador d'imáxenes rederizaes en masa, un convertidor de formatu d'imáxenes, etc.</p>
+
+    <p>GIMP ye ampliable y estensible. Ta diseñáu pa poder ameyoralu con complementos y estensiones pa facer casi cualaquier
+    cosa. La interfaz de programación avanzada permite facer un script pa cualaquier cosa, dende una xera cenciella hasta
+    los procedimientos de manipulación d'imáxenes más enguedeyaos. GIMP tamién ta disponible pa Microsoft Windows y OS X.</p>
+  fr: >-
+    <p>GIMP est l’acronyme de GNU Image Manipulation Program. C’est un programme libre destiné à des tâches comme la retouche
+    de photographies, la composition et la création d’images.</p>
+
+    <p>Ses capacités sont très nombreuses. On peut s’en servir comme d’un simple programme de peinture, d’un programme expert
+    de retouche photo, d’un système de traitement par lots en ligne, d’un convertisseur de format d’image, etc.</p>
+
+    <p>GIMP est extensible. Il est prévu pour être complété par des extensions appelées greffons qui lui permettent de réaliser
+    à peu près tout. l’interface avancée de script offre la possibilité d’effectuer facilement depuis la plus simple tâche
+    jusqu’aux procédures de manipulation d’image les plus complexes. GIMP est disponible pour Linux, Microsoft Windows et
+    OS X.</p>
+  bg: >-
+    <p>GIMP е съкращение от GNU Image Manipulation Program — програма за обработка на изображения на GNU. Тя се разпространява
+    свободно и поддържа ретуширане на фотографии, композиране и създаване на изображения.</p>
+
+    <p>Може да се ползва по много начини — като се почне от основна програма за рисуване, професионално решение за ретуширане
+    на фотографии, мине се през звено от онлайн системи за пакетна обработка, конвейер за изобразяване на кадри и се стигне
+    до конвертор между различни формати и мн. др.</p>
+
+    <p>GIMP може да се надгражда и разширява. Проектиран е да поддържа приставки и разширения за всичко. Интерфейсът за скриптове
+    има много възможности и позволява автоматизирането както на прости действия, така и сложни процедури за обработка на изображения.
+    GIMP има версии за Linux, Microsoft Windows и OS X.</p>
+  it: >-
+    <p>GIMP è l'acronimo di GNU Image Manipulation Program. È un programma distribuito liberamente per attività di ritocco
+    fotografico, modifica, composizione e creazione immagini.</p>
+
+    <p>Ha molte capacità. Può essere utilizzato come semplice programma di disegno, come programma di ritocco fotografico
+    di qualità professionale, come sistema di elaborazione batch online, renderer di immagini per la produzione in massa,
+    convertitore di formati di immagine, ecc.</p>
+
+    <p>GIMP è espandibile ed estensibile. È progettato per essere arricchito con plug-in ed estensioni per fare praticamente
+    qualsiasi cosa. L'interfaccia di scripting avanzata consente di creare facilmente script di qualsiasi cosa, dall'attività
+    più semplice alle procedure di manipolazione delle immagini più complesse. GIMP è disponibile per Linux, Microsoft Windows
+    e OS X.</p>
+  es: >-
+    <p>GIMP es el acrónimo de Programa de Manipulación de Imágenes de GNU. Se distribuye libre y gratuitamente para tareas
+    de retocado de fotos, composición de imágenes y autoría de imágenes.</p>
+
+    <p>Tiene muchas características. Se puede usar como un simple programa de dibujo, un programa de retoque fotográfico profesional,
+    un sistema de procesado por lotes, un generador de imágenes renderizadas en masa, un conversor de formato de imágenes,
+    etc.</p>
+
+    <p>GIMP es ampliable y extensible. Está diseñado para poder mejorarlo con complementos y extensiones para hacer casi cualquier
+    cosa. La interfaz de programación avanzada permite hacer un script para cualquier cosa, desde una tarea sencilla hasta
+    los procedimientos de manipulación de imágenes más complejos. GIMP también está disponible para Microsoft Windows y OS
+    X.</p>
+  ar: >-
+    <p>جمب هو اختصار برنامج جنو لمعالجة الصور. هو برنامج حر لأمور مثل تعديل الصور و تركيبها و تحسينها.</p>
+
+    <p>له الكثير من الإمكانيات. يمكن استخدامه كبرنامج رسم بسيط، أو كبرنامج احترافي لتعديل الصور، أو كنظام لمعالجة الصور في
+    دفعات، أو كمحول بين أنساق الصور، إلخ.</p>
+
+    <p>صمم جمب ليمكن تعزيزه بملحقات و إضافات لفعل كل شيء تقريبًا. واجهة البرمجة المتقدمة تتيح كتابة برامج تفسيرية لعمل كل
+    شيء من أبسط المهام إلى أعقد عمليات معالجة الصور. يتوفر جمب على لينكس و ويندوز و ماك.</p>
+  sl: >-
+    <p>GIMP je okrajšava polnega angleškega imena, GNU Image Manipulation Program. Je prosto dostopen program, namenjen retuši
+    fotografij, tvorbi in avtorstvu slik.</p>
+
+    <p>Ima veliko zmogljivih funkcij. Uporabite ga lahko kot enostavni program za risanje, kot strokovno kakovosten program
+    za retušo fotografij, spletni sistem za paketno obdelavo, masovni upodobljevalnik slik, pretvornik med slikovnimi zapisi
+    itn.</p>
+
+    <p>GIMP je razširljiv. Zasnovan je tako, da ga je mogoče dopolnjevati z vtičniki in razširitvami, da zmore pravzaprav
+    vse. Napredni vmesnik skriptanja omogoča skriptanje vsega, od najenostavnejših nalog do najkompleksnejših procedur obdelave
+    slik. GIMP je na voljo tudi za sisteme Microsoft Windows in OS X.</p>
+  sr-Cyrl: >-
+    <p>Гимп је скраћени назив за Гнуов програм за обраду слика. Слободно је расподељив за задатке као што је сређивање фотографија,
+    слагање слика и издавање слика.</p>
+
+    <p>Поседује многе могућности. Може бити коришћен као једноставан програм за сликање, као напредан програм за дотеривање
+    фотографија, као систем за групно обрађивање на мрежи, као исцртавач слика масовне производње, као претварач записа слика,
+    итд.</p>
+
+    <p>Гимп можете надоградити уздуж и попреко! Можете да га напуните разним прикључцима и проширењима како би радио баш све
+    што пожелите. Он поседује напредне и једноставне алате који олакшавају писање скрипти за обављање једноставних задатака
+    али и најсложенијих процеса обраде слкика. Гимп је доступан за Линукс, Мајкрософт Виндоуз и ОС Икс.</p>
+  tr: >-
+    <p>GIMP, GNU Image Manipulation Program tümcesinin kısaltmasıdır. Fotoğraf rötuşlama, görüntü kompozisyonu ve görüntü
+    oluşturma gibi görevler için özgürce dağıtılan bir programdır.</p>
+
+    <p>Birçok yeteneğe sahiptir. Basit bir boyama programı, uzman kalite fotoğraf rötuş programı, çevrim içi toplu işleme
+    sistemi, seri üretim görüntü gerçekleyici, görüntü biçim dönüştürücü vb. olarak kullanılabilir.</p>
+
+    <p>GIMP genişletilebilir ve geliştirilebilirdir. Eklentiler ve uzantılar ile genişletilebilecek şekilde tasarlanmıştır.
+    Gelişmiş betik arayüzü en basit görevden en karmaşık görüntü işleme yöntemlerine kadar her şeyi kolayca betiklemenize
+    olanak sağlar. GIMP Linux, Microsoft Windows ve OS X işletim sistemlerinde kullanılabilirdir.</p>
+  zh-Hans-CN: >-
+    <p>GIMP 是 GNU 图像处理程序 (GNU Image Manipulation Program) 的缩写。GIMP 是一个可自由分发的程序，可用于照片的后期处理、图像合成处理和图像出版。</p>
+
+    <p>GIMP 功能强大。它可以作为简单的画图程序、专家级的照片后期程序、在线批处理程序、大批量图像渲染器或者图片格式转化器等。</p>
+
+    <p>GIMP 可扩张亦可拓展。全功能的插件和扩展使其用途广泛。无论是最简单的任务还是最复杂的图像处理过程，GIMP 的先进脚本接口都允许你将它们轻松写成脚本。GIMP 可用于 Linux、Microsoft Windows 和 OS
+    X。</p>
+  hr: >-
+    <p>GIMP je skraćenica za GNU Image Manipulation Program (program za manipulaciju slikama). Program se slobodno distribuira
+    za zadatke poput retuširanja fotografija, oblikovanje i stvaranje slika.</p>
+
+    <p>Ima mnogo mogućnosti. Može se koristiti kao jednostavan program za slikanje, stručni program za kvalitetno retuširanje
+    fotografija, skupni mrežni sustav obrade, prikaz slika za masovnu proizvodnju, pretvorbu formata slike, itd.</p>
+
+    <p>GIMP ima proširive mogućnosti. Dizajniran je tako da se može proširiti priključcima i proširenjima kako bi mogao učiniti
+    gotovo sve. Napredno sučelje skriptiranja omogućuje sve od najjednostavnijeg zadatka do najsloženijih postupaka manipulacije
+    slikom u svrhu olakšavanja skriptiranja. GIMP je dostupan za Linux, Microsoft Windows i OS X.</p>
+  fi: >-
+    <p>GIMP on lyhenne englanninkielisistä sanoista GNU Image Manipulation Program, vapaasti suomennettuna GNU-kuvankäsittelyohjelma.
+    Se on vapaasti jaeltava ohjelma kuvien käsittelyä ja koostamista varten.</p>
+
+    <p>Se sisältää lukuisia ominaisuuksia. GIMP soveltuu yksinkertaiseksi piirrosohjelmaksi, ammattilaisen työkaluksi, kuvamuotojen
+    muuntajaksi ja niin edelleen.</p>
+
+    <p>GIMP on laajennettavissa. Se on suunniteltu täydennettävksi lisäosilla ja laajennuksilla, jotka voivat tehdä melkeinpä
+    mitä vain. Kehittynyt skriptausliittymä sallii kaikenlaisen automatisoinnin yksinkertaisista tehtävistä aina haastaviin
+    kuvankäsittelytoimenpiteisiin. GIMP on saataville Linuxille, Microsoft Windowsille ja OS X:lle.</p>
+  lv: >-
+    <p>GIMP ir saīsinājums no GNU Image Manipulation Program (GNU attēlu manipulēšanas programma). Tā ir brīvi izplatāma programma
+    fotogrāfiju retušēšanai, attēlu veidošanai un līdzīgiem uzdevumiem.</p>
+
+    <p>Tajā ir daudz iespēju. To var izmantot kā vienkāršu zīmēšanas lietotni, profesionālas kvalitātes fotogrāfiju retušēšanas
+    lietotni, tiešsaistes pakešu apstrādes sistēmu, masu produkcijas attēlu renderētāju, attēlu formātu konvertētāju utt.</p>
+
+    <p>GIMP ir paplašināma programma. Tā ir veidota tā, lai to varētu paplašināt ar spraudņiem un papildinājumiem, ar kuriem
+    var izdarīt gandrīz visu. Ar paplašināto skriptēšanas saskarni var skriptēt visu, sākot no vienkāršākajiem uzdevumiem
+    līdz kompleksām attēlu manipulācijas procedūrām. GIMP ir pieejams uz Linux, Microsoft Windows un OS X operētājsistēmām.</p>
+  pl: >-
+    <p>GIMP to program do manipulowania obrazami projektu GNU. Jest on wolnym oprogramowaniem służącym do retuszowania zdjęć
+    i tworzenia obrazów.</p>
+
+    <p>Daje on wiele możliwości. Może być używany jako prosty program do rysowania, narzędzie do retuszowania zdjęć dla ekspertów,
+    system do masowego przetwarzania plików obrazów przez sieć, program renderujący obrazy, konwerter formatów obrazów itp.</p>
+
+    <p>GIMP jest wysoce rozszerzalny. Za pomocą wtyczek i rozszerzeń można osiągnąć niemalże wszystko. Zaawansowany interfejs
+    skryptów umożliwia łatwe automatyzowanie wszystkich działań, od najprostszych zadań do złożonych procedur manipulacji
+    obrazami. GIMP jest dostępny dla systemów Linux, Microsoft Windows i OS X.</p>
+  hu: >-
+    <p>A GIMP a GNU Image Manipulation Program rövidítése. Ez egy szabadon terjesztett program fényképretusálás, képösszeállítás
+    és képszerkesztési feladatokhoz.</p>
+
+    <p>Számos képességgel rendelkezik. Használható egyszerű rajzprogramként, profi minőségű fényképretusáló programként, online
+    kötegelt feldolgozó rendszerként, tömeggyártó kép renderelőként vagy akár képformátum átalakítóként, stb.</p>
+
+    <p>A GIMP kiegészíthető és bővíthető. Úgy tervezték, hogy bővíthető legyen bővítményekkel és kiegészítőkkel, amikkel szinte
+    minden meg lehet csinálni. A speciális parancsfájlfelület lehetővé tesz mindent a legegyszerűbb feladatoktól kezdve a
+    legkomplexebb képmanipulációs eljárásokig egyszerű parancsfájlokkal. A GIMP elérhető Linux, Microsoft Windows és OS X
+    rendszerekre is.</p>
+  ca-valencia: >-
+    <p>El GIMP és un acrònim de GNU Image Manipulation Program (Programa de manipulació d'imatges GNU), i és un programa que
+    es distribueix de manera lliure per a algunes tasques com ara el retoc de fotografies, la composició i la creació d'imatges.</p>
+
+    <p>Té un gran potencial: pot utilitzar-se com a programa només per a dibuixar, com una aplicació professional de retoc
+    fotogràfic, com un sistema en línia de processament per lots, per a renderitzar imatges en sèrie, per a convertir imatges
+    entre formats, etc.</p>
+
+    <p>El GIMP és ampliable i extensible. Està dissenyat per a augmentar-se amb connectors i extensions, per a fer-hi gairebé
+    de tot. La interfície avançada d'scripts ho permet tot, es poden realitzar fàcilment amb scripts des de la tasca més simple
+    als processos més complexos de manipulació d'imatges . El GIMP està disponible per a Linux, per a Microsoft Windows i
+    per a OS X.</p>
+  sr-Latn: >-
+    <p>Gimp je skraćeni naziv za Gnuov program za obradu slika. Slobodno je raspodeljiv za zadatke kao što je sređivanje fotografija,
+    slaganje slika i izdavanje slika.</p>
+
+    <p>Poseduje mnoge mogućnosti. Može biti korišćen kao jednostavan program za slikanje, kao napredan program za doterivanje
+    fotografija, kao sistem za grupno obrađivanje na mreži, kao iscrtavač slika masovne proizvodnje, kao pretvarač zapisa
+    slika, itd.</p>
+
+    <p>Gimp možete nadograditi uzduž i popreko! Možete da ga napunite raznim priključcima i proširenjima kako bi radio baš
+    sve što poželite. On poseduje napredne i jednostavne alate koji olakšavaju pisanje skripti za obavljanje jednostavnih
+    zadataka ali i najsloženijih procesa obrade slkika. Gimp je dostupan za Linuks, Majkrosoft Vindouz i OS Iks.</p>
+  nl: >-
+    <p>GIMP is een acroniem voor GNU Image Manipulation Program. Het is een vrij gedistribueerd programma voor taken als het
+    bewerken van foto's, samenstellen van afbeeldingen en bewerken van afbeeldingen.</p>
+
+    <p>Het heeft vele mogelijkheden. Het kan worden gebruikt als een eenvoudig tekenprogramma, een expert kwaliteitsprogramma
+    voor het retoucheren van foto's, een online systeem voor het in bulk verwerken, een afbeeldingsrenderer voor massaproductie,
+    een conversieprogramma voor afbeeldinsgindelingen, etc.</p>
+
+    <p>GIMP is uit te breiden. Het is ontworpen om te worden uitgebreid met plug-ins en extensies om bijna alles te kunnen
+    uitvoeren. De geavanceerde interface voor scripten maakt van alles mogelijk, tussen de eenvoudige taak tot de meest complexe
+    bewerkingsprocedures voor afbeeldingen, om eenvoudig te worden gescript. GIMP is beschikbaar voor Linux, Microsoft Windows
+    en macOS.</p>
+  en-GB: >-
+    <p>GIMP is an acronym for GNU Image Manipulation Program. It is a freely distributed program for such tasks as photo retouching,
+    image composition and image authoring.</p>
+
+    <p>It has many capabilities. It can be used as a simple paint program, an expert quality photo retouching program, an
+    online batch processing system, a mass production image renderer, an image format converter, etc.</p>
+
+    <p>GIMP is expandable and extensible. It is designed to be augmented with plug-ins and extensions to do just about anything.
+    The advanced scripting interface allows everything from the simplest task to the most complex image manipulation procedures
+    to be easily scripted. GIMP is available for Linux, Microsoft Windows and OS X.</p>
+Developer:
+  name:
+    zh-Hant-TW: GIMP 團隊
+    vi: Nhóm GIMP
+    eu: GIMP taldea
+    ka: GIMP-ის გუნდი
+    de: Das GIMP-Team
+    gl: O equipo de GIMP
+    pt: A equipa do GIMP
+    pt-BR: A equipe do GIMP
+    nn: GIMP-teamet
+    fa: گروه گیمپ
+    el: Η ομάδα GIMP
+    C: The GIMP team
+    uk: Команда GIMP
+    da: Holdet bag GIMP
+    is: GIMP-teymið
+    lt: GIMP komanda
+    sv: GIMP-gruppen
+    ca: L'equip del GIMP
+    be-Cyrl: Каманда GIMP
+    it: La squadra GIMP
+    es: El equipo de GIMP
+    bg: Екипът на GIMP
+    sl: Ekipa GIMP
+    sr-Cyrl: Гимпов тим
+    tr: GIMP takımı
+    zh-Hans-CN: GIMP 团队
+    fi: GIMP-tiimi
+    lv: GIMP komanda
+    en-GB: The GIMP team
+    hu: A GIMP csapata
+    sr-Latn: Gimpov tim
+    nl: Het GIMP-team
+Categories:
+- Graphics
+- 2DGraphics
+- RasterGraphics
+Keywords:
+  kab:
+  - GIMP
+  kk-Cyrl:
+  - GIMP
+  nds:
+  - GIMP
+  oc:
+  - GIMP
+  be:
+  - GIMP
+  - graphic
+  - design
+  - illustration
+  - painting
+  - графіка
+  - распрацоўка
+  - дызайн
+  - ілюстрацыя
+  - маляванне
+  ca-valencia:
+  - El GIMP
+  zh-Hant-HK:
+  - GIMP
+  be-Cyrl:
+  - GIMP
+  nb:
+  - GIMP
+  ml:
+  - ജിമ്പ്
+  lv:
+  - GIMP
+  sv:
+  - GIMP
+  cs:
+  - GIMP
+  nn:
+  - GIMP
+  fa:
+  - گیمپ
+  ta:
+  - கிம்ப்
+  C:
+  - GIMP
+  - Photoshop
+  ru:
+  - GIMP
+  br:
+  - GIMP
+  sk:
+  - GIMP
+  xh:
+  - I-GIMP
+  he:
+  - GIMP
+  my:
+  - GIMP
+  en-CA:
+  - GIMP
+  el:
+  - GIMP
+  sl:
+  - GIMP
+  gd:
+  - GIMP
+  is:
+  - GIMP
+  bg:
+  - GIMP
+  ar:
+  - جمب
+  hr:
+  - GIMP
+  zh-CN:
+  - GIMP
+  - graphic
+  - design
+  - illustration
+  - painting
+  - 图形
+  - 图像
+  - 图片
+  - 照片
+  - 设计
+  - 绘画
+  - 绘制
+  - 幻想
+  - 想象
+  - 想像
+  - ps
+  ne:
+  - गिम्प
+  it:
+  - GIMP
+  pt:
+  - GIMP
+  zh-Hans-CN:
+  - GIMP
+  zh-Hant-TW:
+  - GIMP
+  da:
+  - GIMP
+  ka:
+  - GIMP
+  km:
+  - GIMP
+  eo:
+  - GIMPo
+  te:
+  - గింప్
+  ky:
+  - GIMP
+  sr-Cyrl:
+  - Гимп
+  kn:
+  - GIMP
+  vi:
+  - GIMP
+  ja:
+  - GIMP
+  sr-Latn:
+  - Gimp
+  hu:
+  - GIMP
+  dz:
+  - ཇི་ཨིའ་ཨེམ་པི།
+  fr:
+  - GIMP
+  mr:
+  - गिम्प
+  tr:
+  - GIMP
+  ko:
+  - 김프
+  ro:
+  - GIMP
+  pl:
+  - GIMP
+  ca:
+  - El GIMP
+  ms:
+  - GIMP
+  zh-TW:
+  - GIMP
+  - 圖形
+  - 影像
+  - 設計
+  - 插畫
+  - 繪圖
+  - graphic
+  - design
+  - illustration
+  - painting
+  pa:
+  - ਜੈਮਪ
+  gu:
+  - GIMP
+  en-GB:
+  - GIMP
+  th:
+  - GIMP
+  de:
+  - GIMP
+  sr:
+  - Гимп
+  - обрада фотографија
+  - графика
+  - дизајн
+  - илустрација
+  - цртање
+  - obrada fotografija
+  - grafika
+  - dizajn
+  - ilustracija
+  - crtanje
+  - GIMP
+  - graphic
+  - design
+  - illustration
+  - painting
+  tt:
+  - GIMP
+  ast:
+  - GIMP
+  fi:
+  - GIMP
+  es:
+  - GIMP
+  bn:
+  - গিম্প
+  uk:
+  - GIMP
+  csb:
+  - GIMP
+  bs-Latn:
+  - GIMP
+  et:
+  - GIMP
+  lt:
+  - GIMP
+  gl:
+  - GIMP
+  nl:
+  - GIMP
+  id:
+  - GIMP
+  si:
+  - GIMP
+  ga:
+  - GIMP
+  pt-BR:
+  - GIMP
+  eu:
+  - GIMP
+  mk:
+  - GIMP
+Url:
+  bugtracker: https://www.debian.org/Bugs/Reporting
+  help: https://www.gimp.org/docs/
+  homepage: https://www.gimp.org/
+  vcs-browser: https://gitlab.gnome.org/GNOME/gimp/
+  donation: https://www.gimp.org/donating/
+  contribute: https://www.gimp.org/develop/
+Icon:
+  cached:
+  - name: gimp_gimp.png
+    width: 48
+    height: 48
+  - name: gimp_gimp.png
+    width: 64
+    height: 64
+  - name: gimp_gimp.png
+    width: 128
+    height: 128
+  remote:
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/icons/128x128/gimp_gimp.png
+    width: 128
+    height: 128
+  stock: gimp
+Launchable:
+  desktop-id:
+  - gimp.desktop
+Provides:
+  binaries:
+  - gimp-3.0
+  ids:
+  - gimp.desktop
+  mediatypes:
+  - image/bmp
+  - image/g3fax
+  - image/gif
+  - image/svg+xml
+  - image/x-compressed-xcf
+  - image/x-fits
+  - image/x-gimp-gbr
+  - image/x-gimp-gih
+  - image/x-gimp-pat
+  - image/x-pcx
+  - image/x-portable-anymap
+  - image/x-portable-bitmap
+  - image/x-portable-graymap
+  - image/x-portable-pixmap
+  - image/x-psd
+  - image/x-sgi
+  - image/x-sun-raster
+  - image/x-tga
+  - image/x-xbitmap
+  - image/x-xcf
+  - image/x-xwindowdump
+  - image/tiff
+  - image/jpeg
+  - image/x-psp
+  - application/postscript
+  - image/png
+  - image/x-icon
+  - image/x-xpixmap
+  - image/qoi
+  - image/x-exr
+  - image/x-webp
+  - image/webp
+  - image/heif
+  - image/heic
+  - image/avif
+  - application/pdf
+  - image/x-wmf
+  - image/jp2
+  - image/jpeg2000
+  - image/jpx
+  - image/jxl
+  - image/x-xcursor
+  - image/fits
+  - image/openraster
+Screenshots:
+- default: true
+  caption:
+    ca: Escena 4, tall 15 de «ZeMarmot» que s'està editant en el GIMP. Il·lustració d'Aryeom (CC by-sa 4.0 International)
+    tr: '"ZeMarmot"un 4. sahnesinin 15. kesiti GIMP’te düzenleniyor. Çizer: Aryeom (CC by-sa 4.0 International)'
+    uk: Сцена 4, шматок 15 з «ZeMarmot» під час редагування у GIMP. Ілюстрація від Aryeom (CC by-sa 4.0 International)
+    nn: Scene 4 utsnitt 15 av «ZeMarmot» redigert i GIMP. Illustrasjon av Aryeom (CC by-sa 4.0 International)
+    sl: 'Prizor 4, rez 15: "ZeMarmot", ki je bil urejen v GIMP-u. Ilustracija Aryeom (CC by-sa 4.0 International)'
+    de: Szene 4 Cut 15 von »ZeMarmot« wird in GIMP bearbeitet. Illustration von Aryeom (CC by-sa 4.0 International)
+    nl: Scene 4 geknipt uit 15 van "ZeMarmot" in bewerking in GIMP. Illustratie door Aryeom (CC by-sa 4.0 International)
+    sv: Scen 4 bild 15 av ”ZeMarmot” som redigeras i GIMP. Illustration av Aryeom (CC by-sa 4.0 Internationell)
+    zh-Hans-CN: GIMP 中正在编辑的“ZeMarmot”场景 4 剪辑 15。创作者 Aryeom（CC by-sa 4.0 International）
+    en-GB: Scene 4 cut 15 of "ZeMarmot" being edited in GIMP. Illustration by Aryeom (CC by-sa 4.0 International)
+    C: Scene 4 cut 15 of "ZeMarmot" being edited in GIMP. Illustration by Aryeom (CC by-sa 4.0 International)
+    es: Escena 4, corte 15 de «ZeMarmot» editado en GIMP. Ilustración de Aryeom (CC BY-SA 4.0 International)
+    bg: Сцена 4, ролка  15 от „Мармота“ (ZeMarmot), редактирана в GIMP. Илюстрация от Aryeom (CC by-sa 4.0 International)
+  thumbnails:
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-1_1248x702@1.png
+    width: 1248
+    height: 702
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-1_752x423@1.png
+    width: 752
+    height: 423
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-1_624x351@1.png
+    width: 624
+    height: 351
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-1_224x126@1.png
+    width: 224
+    height: 126
+  source-image:
+    url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-1_orig.png
+    width: 1920
+    height: 1080
+- default: true
+  caption:
+    ca: Fotografia d'una gavina a la platja que s'està editant en el GIMP. Foto d'Iana (CC by-sa 4.0 International)
+    tr: 'Kumsaldaki martı fotoğrafı GIMP’te düzenleniyor. Fotoğrafçı: Iana (CC by-sa 4.0 International)'
+    uk: Фотографія чайки на пляжі під час редагування у GIMP. Фото Iana (CC by-sa 4.0 International)
+    nn: Måke på strand er redigert i GIMP. Foto v Iana (CC by-sa 4.0 International)
+    sl: Fotografija galeba na plaži, urejeno v GIMP-u. Fotografija Iana (CC by-sa 4.0 International)
+    de: Foto einer Möwe am Strand wird in GIMP bearbeitet. Foto von Iana (CC by-sa 4.0 International)
+    nl: Foto Zeemeeuw op strand, in bewerking in GIMP. Foto van Iana (CC by-sa 4.0 International)
+    sv: Fotografi av mås på strand som redigeras i GIMP. Foto av Iana (CC by-sa 4.0 Internationell)
+    zh-Hans-CN: GIMP 中正在编辑的海滩上的海鸥。拍摄者 Iana（CC by-sa 4.0 International）
+    en-GB: Gull on beach photograph being edited in GIMP. Photo by Iana (CC by-sa 4.0 International)
+    C: Gull on beach photograph being edited in GIMP. Photo by Iana (CC by-sa 4.0 International)
+    es: Fotografía de una gaviota en la playa editada en GIMP. Foto de Iana (CC BY-SA 4.0 International)
+    bg: Снимка на чайка на плажа, редактирана в GIMP. Фотография от Iana (CC by-sa 4.0 International)
+  thumbnails:
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-2_1248x681@1.png
+    width: 1248
+    height: 681
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-2_752x410@1.png
+    width: 752
+    height: 410
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-2_624x340@1.png
+    width: 624
+    height: 340
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-2_224x122@1.png
+    width: 224
+    height: 122
+  source-image:
+    url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-2_orig.png
+    width: 1920
+    height: 1048
+- default: true
+  caption:
+    ca: Retrat de la Sofiia que s'està editant en el GIMP. Foto de Sofia (CC by-sa 4.0 International)
+    tr: 'Sofiia’nın portresi GIMP’te düzenleniyor. Fotoğrafçı: Sofia (CC by-sa 4.0 International)'
+    uk: Портрет Софії під час редагування у GIMP. Фотографія Sofia (CC by-sa 4.0 International)
+    nn: Portrett av Sofiia redigert i GIMP. Foto av Sofia (CC by-sa 4.0 International)
+    sl: 'Portret Sofiie, urejen v GIMP-u. Foto: Sofia (CC by-sa 4.0 International)'
+    de: Porträt von Sofiia wird in GIMP bearbeitet. Foto von Sofia (CC by-sa 4.0 International)
+    nl: Portret van Sofia, in bewerking in GIMP. Foto van Sofia (CC by-sa 4.0 International)
+    sv: Porträtt av Sofiia som redigeras i GIMP. Foto av Sofia (CC by-sa 4.0 Internationell)
+    zh-Hans-CN: GIMP 中正在编辑的索菲亚的人像。拍摄者索菲亚（CC by-sa 4.0 International）
+    en-GB: Portrait of Sofiia being edited in GIMP. Photo by Sofia (CC by-sa 4.0 International)
+    C: Portrait of Sofiia being edited in GIMP. Photo by Sofia (CC by-sa 4.0 International)
+    es: Retrato de Sofía editado en GIMP. Foto de Sofía (CC BY-SA 4.0 International)
+    bg: Портрет на София, редактиран в GIMP. Фотография от Sofia (CC by-sa 4.0 International)
+  thumbnails:
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-3_1248x681@1.png
+    width: 1248
+    height: 681
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-3_752x410@1.png
+    width: 752
+    height: 410
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-3_624x340@1.png
+    width: 624
+    height: 340
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-3_224x122@1.png
+    width: 224
+    height: 122
+  source-image:
+    url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-3_orig.png
+    width: 1920
+    height: 1048
+- default: true
+  caption:
+    ca: Gravat escanejat que s'està editant en el GIMP. Obra de Liam (CC0)
+    tr: 'Taranmış oyma GIMP’te düzenleniyor. Sanatçı: Liam (CC0)'
+    uk: Редагування сканованого гравірування у GIMP. Художня робота Liam (CC0)
+    nn: Scanna gravering redigert i GIMP. Kunstverk av Liam (CC0)k
+    sl: Skenirana gravura, urejena v GIMP-u. Umetniško delo Liama (CC0)
+    de: Gescannte Gravur wird in GIMP bearbeitet. Kunstwerk von Liam (CC0)
+    nl: Gescande gravering, in bewerking in GIMP. Kunstwerk van Liam (CC0)
+    sv: Inläst gravyr som redigeras i GIMP. Illustration av Liam (CC0)
+    zh-Hans-CN: GIMP 中正在编辑的扫描版画。创作者 Liam（CC0）
+    en-GB: Scanned engraving being edited in GIMP. Artwork by Liam (CC0)
+    C: Scanned engraving being edited in GIMP. Artwork by Liam (CC0)
+    es: Grabado escaneado editado en GIMP. Ilustración de Liam (CC0)
+    bg: Сканирана гравюра, редактирана в GIMP. Картина от Liam (CC0)
+  thumbnails:
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-4_1248x702@1.png
+    width: 1248
+    height: 702
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-4_752x423@1.png
+    width: 752
+    height: 423
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-4_624x351@1.png
+    width: 624
+    height: 351
+  - url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-4_224x126@1.png
+    width: 224
+    height: 126
+  source-image:
+    url: org/gimp/GIMP/81aa8be6edc018b9d60a2f0cd75bd113/screenshots/image-4_orig.png
+    width: 1920
+    height: 1080
+Languages:
+- locale: ar
+  percentage: 64
+- locale: ast
+  percentage: 94
+- locale: be
+  percentage: 92
+- locale: bg
+  percentage: 98
+- locale: bn
+  percentage: 54
+- locale: br
+  percentage: 53
+- locale: bs
+  percentage: 61
+- locale: ca
+  percentage: 98
+- locale: ca@valencia
+  percentage: 84
+- locale: cs
+  percentage: 74
+- locale: da
+  percentage: 98
+- locale: de
+  percentage: 98
+- locale: el
+  percentage: 98
+- locale: en_GB
+  percentage: 98
+- locale: en_US
+  percentage: 100
+- locale: eo
+  percentage: 46
+- locale: es
+  percentage: 98
+- locale: et
+  percentage: 56
+- locale: eu
+  percentage: 98
+- locale: fa
+  percentage: 43
+- locale: fi
+  percentage: 95
+- locale: fr
+  percentage: 96
+- locale: gd
+  percentage: 56
+- locale: gl
+  percentage: 70
+- locale: hr
+  percentage: 25
+- locale: hu
+  percentage: 98
+- locale: id
+  percentage: 35
+- locale: is
+  percentage: 98
+- locale: it
+  percentage: 98
+- locale: ja
+  percentage: 78
+- locale: ka
+  percentage: 93
+- locale: kab
+  percentage: 64
+- locale: ko
+  percentage: 65
+- locale: lt
+  percentage: 99
+- locale: lv
+  percentage: 98
+- locale: mk
+  percentage: 27
+- locale: mr
+  percentage: 85
+- locale: my
+  percentage: 45
+- locale: nb
+  percentage: 50
+- locale: ne
+  percentage: 31
+- locale: nl
+  percentage: 98
+- locale: nn
+  percentage: 98
+- locale: oc
+  percentage: 53
+- locale: pa
+  percentage: 50
+- locale: pl
+  percentage: 94
+- locale: pt
+  percentage: 98
+- locale: pt_BR
+  percentage: 99
+- locale: ro
+  percentage: 87
+- locale: ru
+  percentage: 97
+- locale: sk
+  percentage: 62
+- locale: sl
+  percentage: 98
+- locale: sr
+  percentage: 100
+- locale: sr@latin
+  percentage: 100
+- locale: sv
+  percentage: 98
+- locale: ta
+  percentage: 53
+- locale: te
+  percentage: 54
+- locale: tr
+  percentage: 98
+- locale: uk
+  percentage: 98
+- locale: vi
+  percentage: 98
+- locale: zh_CN
+  percentage: 98
+- locale: zh_HK
+  percentage: 49
+- locale: zh_TW
+  percentage: 99
+Releases:
+- version: 3.0.4
+  type: stable
+  unix-timestamp: 1747440000
+  description:
+    C: >-
+      <p>
+              This second micro release in the 3.0 series fixes various bugs and improves usability in several parts of the
+      interface:
+              </p>
+      <ul>
+        <li>
+                MyPaint Brush: tool options layout made more consistent with other paint tools
+                </li>
+        <li>
+                Paths: clicking on the starting point in design mode closes the path</li>
+        <li>Scissors Select: pressing Enter connects the start and end points</li>
+        <li>Pencil: "Force" slider is now hidden in the tool options</li>
+        <li>Dockable dialogs in Windows have titlebars matching the theme's dark mode setting</li>
+        <li>Editing non-destructive filters now creates undo steps</li>
+        <li>Optimized font loading for faster startup</li>
+        <li>Improvements in various file format supports</li>
+        <li>And more bug fixes and usability improvements…</li>
+      </ul>
+- version: 3.0.2
+  type: stable
+  unix-timestamp: 1742688000
+  description:
+    C: >-
+      <p>
+              As could be expected from a major release, a few critical bugs slipped through our testing!
+              This first micro-point release fix such bugs.
+              </p>
+- version: 3.0.0
+  type: stable
+  unix-timestamp: 1742083200
+  description:
+    C: >-
+      <p>
+              Our initial release for the next generation in image manipulation!
+              While GIMP 3.0 has too many improvements to make an exhaustive list, here are
+              some of the highlights:
+              </p>
+      <ul>
+        <li>Multi-selection of layers in the Layers dockable</li>
+        <li>Proper high pixel density display support</li>
+        <li>Improved graphics tablets support</li>
+        <li>Wayland support</li>
+        <li>New soft-proofing toggle in the status bar, with pop-over settings on right click</li>
+        <li>
+                Initial UI for non-destructive layer effects
+                </li>
+        <li>
+                Paint tools now have an "Expand Layers" option and sub-options to auto-expand layers when painting over their
+      boundaries
+                </li>
+        <li>
+                Align and Distribute tool: completely reworked usage
+                </li>
+        <li>
+                Text tool: new "Outlined" and "Outlined and filled" options
+                </li>
+        <li>
+                New "Stroke borders" option in Bucket Fill tool's "Fill by line art detection"
+                </li>
+        <li>
+                Redesigned and reorganized "Fill by line art detection" settings
+                </li>
+        <li>Deeply reworked API for plug-in developers</li>
+        <li>Plug-in API now available in C/C++, Python 3, Javascript, Lua, Vala and more</li>
+        <li>Improved support of many image formats</li>
+      </ul>
+- version: 3.0.0~rc3
+  type: development
+  unix-timestamp: 1739059200
+  description:
+    C: >-
+      <p>
+              While GIMP 3.0 is getting more and more robust with this
+              third release candidate, some core changes require more testing.
+              Some of the highlights of this version are:
+              </p>
+      <ul>
+        <li>Reworked image graph for even less destructive filters</li>
+        <li>BC7 compression support for DDS file import</li>
+        <li>Improved PSD support (16-bit per channel LAB import, metadata, etc.)</li>
+        <li>Various API improvements for plug-in developers</li>
+        <li>Script-Fu: new named-argument syntax for functions generated from PDB procedures</li>
+        <li>Many bug fixes and a much more robust base overall</li>
+      </ul>
+ContentRating:
+  oars-1.1: {}
+---
+Type: font
+ID: io.pagure.lohit.tamil.classicalfont
+Package: fonts-lohit-taml-classical
+ProjectLicense: OFL-1.1
+Name:
+  C: Lohit Tamil Classical
+Summary:
+  C: Lohit family font for the Tamil language
+Description:
+  C: "<p>\n\t    This package provides a free Tamil classical script TrueType font.\n    </p>\n<p>\n\t    This font is part
+    of the Lohit font family, a set of fonts for\n\t    Indic languages originally created by Modular Infotech and\n\t    now
+    maintained by Red Hat. Lohit means “red” in Sanskrit.\n    </p>"
+Url:
+  homepage: https://pagure.io/lohit
+  bugtracker: https://github.com/pravins/lohit/issues
+Icon:
+  cached:
+  - name: fonts-lohit-taml-classical_lohittamilclassical-regular.png
+    width: 48
+    height: 48
+  - name: fonts-lohit-taml-classical_lohittamilclassical-regular.png
+    width: 48
+    height: 48
+    scale: 2
+  - name: fonts-lohit-taml-classical_lohittamilclassical-regular.png
+    width: 64
+    height: 64
+  - name: fonts-lohit-taml-classical_lohittamilclassical-regular.png
+    width: 64
+    height: 64
+    scale: 2
+  - name: fonts-lohit-taml-classical_lohittamilclassical-regular.png
+    width: 128
+    height: 128
+  - name: fonts-lohit-taml-classical_lohittamilclassical-regular.png
+    width: 128
+    height: 128
+    scale: 2
+  remote:
+  - url: io/pagure/lohit.tamil.classicalfont/a4da64007e4cdfa7097438ff64a6c260/icons/128x128/fonts-lohit-taml-classical_lohittamilclassical-regular.png
+    width: 128
+    height: 128
+  - url: io/pagure/lohit.tamil.classicalfont/a4da64007e4cdfa7097438ff64a6c260/icons/128x128@2/fonts-lohit-taml-classical_lohittamilclassical-regular.png
+    width: 128
+    height: 128
+    scale: 2
+Provides:
+  fonts:
+  - name: Lohit Tamil Classical
+Screenshots:
+- default: true
+  caption:
+    C: Lohit Tamil Classical Regular
+  thumbnails:
+  - url: io/pagure/lohit.tamil.classicalfont/a4da64007e4cdfa7097438ff64a6c260/screenshots/image-lohittamilclassical-regular_1560.png
+    width: 1560
+    height: 388
+  - url: io/pagure/lohit.tamil.classicalfont/a4da64007e4cdfa7097438ff64a6c260/screenshots/image-lohittamilclassical-regular_752.png
+    width: 752
+    height: 206
+  - url: io/pagure/lohit.tamil.classicalfont/a4da64007e4cdfa7097438ff64a6c260/screenshots/image-lohittamilclassical-regular_624.png
+    width: 624
+    height: 171
+Languages:
+- locale: ta
+  percentage: 100
+---
+Type: desktop-application
+ID: starfighter.desktop
+Package: starfighter
+Name:
+  C: 'Project: Starfighter'
+Summary:
+  C: Liberate the universe from the evil company WEAPCO
+Description:
+  it: >-
+    <p>Dopo decenni di guerra una compagnia, che era diventata potente rifornendo di armamenti entrambe le parti, si fece
+    avanti e annientò entrambe le fazioni in guerra in un solo colpo. Usando armamenti ben superiori e equipaggiamenti con
+    IA, la compagnia era assolutamente inarrestabile e nessuno poteva ostacolarla. A migliaia morivano sotto il pugno di ferro
+    della compagnia. Il popolo era alla disperata ricerca di un salvatore, di qualcuno che potesse portare un po&apos; di
+    luce in quest&apos;era di tenebre... e qualcuno arrivò.</p>
+
+    <p>Caratteristiche del gioco:</p>
+
+    <p>  o 26 missioni in 4 sistemi stellari,   o armi primarie e secondarie (incluso un cannone laser e un&apos;arma    
+    ricaricabile),   o un sistema di potenziamenti per le armi,   o piloti alleati,   o missioni con obiettivi primari e secondari,  
+    o svariati tipi di missioni (di protezione, distruzione, ecc.),   o battaglie con super-nemici.</p>
+  fr: >-
+    <p>Après des décennies de guerre, une société, qui a gagné en puissance en fournissant des armes des deux côtés, progresse
+    et anéantit les deux factions combattantes en peu de temps. Utilisant un armement de loin supérieur et une intelligence
+    artificielle, la société est devenue invincible et maintenant personne ne peut s&apos;opposer à elle. Des milliers de
+    personnes sont en train de périr sous la poigne de fer cette société. Les gens réclamaient un sauveur, qui apporte la
+    lumière dans cette heure sombre...et quelqu&apos;un l’a fait.</p>
+
+    <p>Caractéristiques du jeu :</p>
+
+    <p> – 26 missions sur 4 systèmes stellaires ;  – armes primaires et secondaires (dont un canon laser et une arme    à
+    charges) ;  – système de mise sous tension d&apos;arme ;  – ailiers;  – missions avec objectif primaire et secondaire ; 
+    – variété de missions (protection, destruction, etc.) ;  – combats contre un « boss ».</p>
+  C: >-
+    <p>After decades of war one company, who had gained powerful supplying both sides with weaponry, steps forwards and crushes
+    both warring factions in one swift movement. Using far superior weaponry and AI craft, the company was completely unstoppable
+    and now no one can stand in their way. Thousands began to perish under the iron fist of the company. The people cried
+    out for a saviour, for someone to light this dark hour... and someone did.</p>
+
+    <p>Features of the game:</p>
+
+    <p> o 26 missions over 4 star systems  o Primary and Secondary Weapons (including a laser cannon and a charge weapon) 
+    o A weapon powerup system  o Wingmates  o Missions with Primary and Secondary Objectives  o A Variety of Missions (Protect,
+    Destroy, etc)  o Boss battles</p>
+  da: >-
+    <p>Efter årtier med krig træder et firma, som er blevet mægtigt ved at forsyne begge sider med våben, frem på scenen og
+    knuser begge fraktioner i en hurtig indsats. Med langt overlegne våben og computerkraft var firmaet ikke til at stoppe
+    og ingen kan modstå dem. Tusinder begynder at gå til grunde under firmaets jernnæve. Folk er fortvivlet efter en redningsmand,
+    en der kan lyse mørket op ... og en stod frem.</p>
+
+    <p>Funktioner i spillet:</p>
+
+    <p> o 26 missioner over 4 stjernesystemer  o Primære og sekundære våben (inklusiv en laserkanon og et ladevåben)  o Et
+    opladningssystem for våben  o Støttepiloter  o Missioner med primære og sekundære objektiver  o En række forskellige missioner
+    (beskyt, knus etc.)  o Boss-kampe</p>
+  en: >-
+    <p>After decades of war one company, who had gained powerful supplying both sides with weaponry, steps forwards and crushes
+    both warring factions in one swift movement. Using far superior weaponry and AI craft, the company was completely unstoppable
+    and now no one can stand in their way. Thousands began to perish under the iron fist of the company. The people cried
+    out for a saviour, for someone to light this dark hour... and someone did.</p>
+
+    <p>Features of the game:</p>
+
+    <p> o 26 missions over 4 star systems  o Primary and Secondary Weapons (including a laser cannon and a charge weapon) 
+    o A weapon powerup system  o Wingmates  o Missions with Primary and Secondary Objectives  o A Variety of Missions (Protect,
+    Destroy, etc)  o Boss battles</p>
+  pt_BR: >-
+    <p>Após décadas de guerra, uma companhia que se tornou poderosa ao fornecer armamentos para ambos os lados dá um passo
+    a mais e, em um movimento rápido, esmaga ambas as facções em disputa. Usando armamentos muito superiores e técnicas de
+    IA, a companhia era completamente irrefreável e agora ninguém pode ficar em seu caminho. Milhares começam a morrer sob
+    o punho de ferro da companhia. As pessoas suplicavam por salvação, por alguém que iluminasse esse terrível momento...
+    e alguém surgiu.</p>
+
+    <p>Recursos do jogo:</p>
+
+    <p> o 26 missões em 4 sistemas estelares  o Armamento Primário e Secundário (incluindo um canhão a laser e uma arma   
+    que carrega)  o Um sistema de melhoria de armas  o Companheiros de esquadra  o Missões com objetivos primários e secundários 
+    o Uma variedade de missões (Proteger, Destruir, etc.)  o Batalhas com chefes</p>
+Categories:
+- Game
+- ActionGame
+- ArcadeGame
+Keywords:
+  C:
+  - Games
+Icon:
+  cached:
+  - name: starfighter_starfighter.png
+    width: 64
+    height: 64
+  stock: starfighter
+Launchable:
+  desktop-id:
+  - starfighter.desktop

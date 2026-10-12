@@ -65,7 +65,8 @@ data class ContainerPaths(
     val fakeProcDir get() = File(filesDir, "proc")
 
     companion object {
-        const val GUEST_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        // Debian's default PATH, including the games directories.
+        const val GUEST_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games"
         const val PULSE_GUEST = "/run/pulse/native"
         /** Written last by [RootfsInstaller]; a rootfs without it is incomplete. */
         const val INSTALLED_MARKER = ".launcher-installed"

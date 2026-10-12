@@ -8,7 +8,16 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import android.os.Build
 import com.daryan.linuxlauncher.container.ConfigStore
+import com.daryan.linuxlauncher.store.CatalogState
+import com.daryan.linuxlauncher.store.QueueAction
+import com.daryan.linuxlauncher.store.QueueJob
+import com.daryan.linuxlauncher.store.StoreApp
+import com.daryan.linuxlauncher.store.StoreCatalog
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import com.daryan.linuxlauncher.container.ContainerBackend
 import com.daryan.linuxlauncher.container.DirectConfigStore
 import com.daryan.linuxlauncher.container.SuConfigStore
@@ -40,7 +49,16 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val sessions = container.sessions
     val installState: StateFlow<InstallState> = container.installer.state
 
-    val apps: List<PermissionManifest> = loadApps(app)
+    /** Apps that ship with the launcher. */
+    private val bundled: List<PermissionManifest> = loadApps(app)
+
+    /** Bundled apps plus those installed from the store. */
+    val apps: StateFlow<List<PermissionManifest>> = container.registry.userApps
+        .map { user -> bundled + user.filterNot { u -> bundled.any { it.id == u.id } } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, bundled)
+
+    val catalog: StateFlow<CatalogState> = container.catalog.state
+    val installedPackages: StateFlow<Set<String>?> = container.registry.installed
 
     private val _status = MutableStateFlow<HostStatus?>(null)
     val status: StateFlow<HostStatus?> = _status
@@ -66,7 +84,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancelInstall() = container.installer.cancel()
 
-    fun tabs(custom: List<CustomTab>): List<LauncherTab> = buildList {
+    fun tabs(apps: List<PermissionManifest>, custom: List<CustomTab>): List<LauncherTab> = buildList {
         add(LauncherTab("All", apps, custom = false))
         apps.map { it.category }.distinct().sorted().forEach { cat ->
             add(LauncherTab(cat, apps.filter { it.category == cat }, custom = false))
@@ -123,9 +141,60 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         else -> null
     }
 
-    /** Installs [app]'s packages in a root session; [onLaunched] gets that session. */
-    fun install(app: PermissionManifest, onLaunched: (RunningSession) -> Unit) =
-        launch(PackageInstall.installerFor(app), onLaunched)
+    /** Loads the store catalog for the active container's release, and what it has installed. */
+    fun openStore(refresh: Boolean = false) {
+        val store = configStore(_status.value, _mode.value)
+        viewModelScope.launch {
+            val release = runCatching { store?.read("/etc/os-release") }.getOrNull()
+            val suite = release?.lineSequence()?.firstOrNull { it.startsWith("VERSION_CODENAME=") }
+                ?.substringAfter('=')?.trim('"')?.takeIf { it.isNotBlank() } ?: "trixie"
+            container.catalog.load(suite, StoreCatalog.debianArch(Build.SUPPORTED_ABIS.first()), refresh)
+            container.registry.refreshInstalled(store)
+        }
+    }
+
+    fun storeIcon(app: StoreApp) = container.catalog.iconFile(app)
+
+    val queue: StateFlow<List<QueueJob>> = container.queue.jobs
+
+    /**
+     * Queues a store app's install; it runs in the background after any before it, and its
+     * launcher entry is added when apt succeeds. False when no container is ready.
+     */
+    fun storeInstall(app: StoreApp): Boolean {
+        val backend = backend() ?: return false
+        if (blocker(_status.value, _mode.value) != null) return false
+        val store = configStore(_status.value, _mode.value)
+        container.queue.enqueue(
+            app.name, listOf(app.pkg, "matchbox-window-manager", "dbus-x11"), QueueAction.INSTALL,
+            container.catalog.iconFile(app)?.path, backend,
+        ) { store?.let { container.registry.register(app, it) } }
+        return true
+    }
+
+    fun storeUninstall(app: StoreApp): Boolean {
+        val backend = backend() ?: return false
+        val store = configStore(_status.value, _mode.value)
+        container.queue.enqueue(app.name, listOf(app.pkg), QueueAction.REMOVE, container.catalog.iconFile(app)?.path, backend) {
+            container.registry.unregister(app, store)
+        }
+        return true
+    }
+
+    fun cancelJob(id: Int) = container.queue.cancel(id)
+
+    fun clearFinishedJobs() = container.queue.clearFinished()
+
+    /** Queues the packages behind a launcher app that isn't installed yet. */
+    fun install(app: PermissionManifest): Boolean {
+        val backend = backend() ?: return false
+        val store = configStore(_status.value, _mode.value)
+        val packages = app.packages + if (app.gui) listOf("matchbox-window-manager", "dbus-x11") else emptyList()
+        container.queue.enqueue(app.name, packages, QueueAction.INSTALL, app.iconFile, backend) {
+            container.registry.refreshInstalled(store)
+        }
+        return true
+    }
 
     fun launch(app: PermissionManifest, onLaunched: (RunningSession) -> Unit) {
         viewModelScope.launch {

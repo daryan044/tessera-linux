@@ -35,7 +35,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | | Item | Status | Notes |
 |---|---|---|---|
 | 3.1 | Launcher UI and tabs | ✅ | Material 3 Expressive, dynamic color, blur, floating dock, category and custom tabs |
-| 3.2 | `.desktop` file scanner | ⬜ | Apps come from bundled manifests in `assets/apps/` only |
+| 3.2 | App store | 🟡 | Store tab built on Debian's AppStream catalog (1,951 desktop apps in main, plus contrib and non-free), with icons, search and categories. Installing reads the app's `.desktop` file and adds a launcher entry with category-based permissions. Installs run in a background queue shown under the app bar. No screenshots (Debian's links are broken) |
 | 3.3 | One app per window | ✅ | Separate X server, display and Android window per app |
 | 3.4 | Install apps from the launcher | 🟡 | Manifests list their packages; the app sheet offers Install (apt in a root terminal) when the app is missing. Built, untested on a device. Only checked in PRoot mode |
 | 3.5 | Edit permissions in the UI | ⬜ | Shown per app with enforcement level; changing them needs editing the manifest |

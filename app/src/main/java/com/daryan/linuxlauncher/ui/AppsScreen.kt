@@ -190,10 +190,7 @@ private fun AppTile(app: PermissionManifest, index: Int, onClick: () -> Unit) {
                 .clip(appShape(app))
                 .background(container),
         ) {
-            Icon(
-                appIcon(app.icon), contentDescription = null, tint = onContainer,
-                modifier = Modifier.size(30.dp).graphicsLayer { rotationZ = -spin },
-            )
+            AppGlyph(app, 30.dp, onContainer, Modifier.graphicsLayer { rotationZ = -spin })
         }
         Spacer(Modifier.height(10.dp))
         Text(

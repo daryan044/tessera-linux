@@ -15,6 +15,9 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.daryan.linuxlauncher.container.InstallState
+import com.daryan.linuxlauncher.store.JobState
+import com.daryan.linuxlauncher.store.QueueAction
+import com.daryan.linuxlauncher.store.QueueJob
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
@@ -46,14 +49,14 @@ class ContainerService : Service() {
 
         val container = (application as LauncherApplication).container
         scope.launch {
-            combine(container.installer.state, container.sessions.sessions) { install, sessions ->
-                install to sessions.count { it.exitCode == null }
-            }.collect { (install, running) ->
-                if (!install.running && running == 0) {
+            combine(container.installer.state, container.sessions.sessions, container.queue.jobs) { install, sessions, jobs ->
+                Triple(install, sessions.count { it.exitCode == null }, jobs)
+            }.collect { (install, running, jobs) ->
+                if (!install.running && running == 0 && jobs.none { it.active }) {
                     stopSelf()
                     return@collect
                 }
-                nm.notify(NOTIFICATION_ID, notification(describe(install, running)))
+                nm.notify(NOTIFICATION_ID, notification(describe(install, running, jobs)))
             }
         }
     }
@@ -62,6 +65,7 @@ class ContainerService : Service() {
         if (intent?.action == ACTION_STOP) {
             val container = (application as LauncherApplication).container
             container.installer.cancel()
+            container.queue.jobs.value.filter { it.active }.forEach { container.queue.cancel(it.id) }
             container.sessions.stopAll()
         }
         return START_NOT_STICKY
@@ -73,7 +77,13 @@ class ContainerService : Service() {
         super.onDestroy()
     }
 
-    private fun describe(install: InstallState, running: Int): String = buildList {
+    private fun describe(install: InstallState, running: Int, jobs: List<QueueJob>): String = buildList {
+        jobs.firstOrNull { it.state is JobState.Running }?.let { job ->
+            val p = (job.state as JobState.Running).progress
+            val verb = if (job.action == QueueAction.INSTALL) "Installing" else "Removing"
+            add("$verb ${job.title}" + (p?.let { " ${(it * 100).toInt()}%" } ?: ""))
+        }
+        jobs.count { it.state == JobState.Queued }.takeIf { it > 0 }?.let { add("$it waiting") }
         when (install) {
             is InstallState.Downloading -> add("Downloading Linux ${install.done * 100 / install.total.coerceAtLeast(1)}%")
             InstallState.Resolving, InstallState.Extracting, InstallState.Configuring -> add("Installing Linux")

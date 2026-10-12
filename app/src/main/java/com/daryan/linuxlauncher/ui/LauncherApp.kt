@@ -71,11 +71,14 @@ import com.daryan.linuxlauncher.BackendMode
 import com.daryan.linuxlauncher.LauncherViewModel
 import com.daryan.linuxlauncher.TerminalActivity
 import com.daryan.linuxlauncher.container.ConfigFile
+import com.daryan.linuxlauncher.store.CatalogState
+import com.daryan.linuxlauncher.store.StoreApp
 import com.daryan.linuxlauncher.container.PermissionManifest
 import kotlinx.coroutines.launch
 
 enum class Destination(val label: String, val title: String, val icon: ImageVector) {
     Apps("Apps", "Linux", LauncherIcons.Apps),
+    Store("Store", "Store", LauncherIcons.Store),
     Sessions("Sessions", "Sessions", LauncherIcons.Terminal),
     Setup("Setup", "Setup", Icons.Rounded.Settings),
 }
@@ -87,7 +90,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val customTabs by vm.tabStore.tabs.collectAsStateWithLifecycle()
     val sessions by vm.sessions.sessions.collectAsStateWithLifecycle()
     val install by vm.installState.collectAsStateWithLifecycle()
-    val tabs = remember(customTabs) { vm.tabs(customTabs) }
+    val apps by vm.apps.collectAsStateWithLifecycle()
+    val tabs = remember(apps, customTabs) { vm.tabs(apps, customTabs) }
 
     var destination by rememberSaveable { mutableStateOf(Destination.Apps) }
     var openApp by remember { mutableStateOf<PermissionManifest?>(null) }
@@ -96,6 +100,11 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
 
     val context = LocalContext.current
     var openConfig by remember { mutableStateOf<ConfigFile?>(null) }
+    var openStoreApp by remember { mutableStateOf<StoreApp?>(null) }
+    var showQueue by remember { mutableStateOf(false) }
+    val queue by vm.queue.collectAsStateWithLifecycle()
+    val catalog by vm.catalog.collectAsStateWithLifecycle()
+    val installedPackages by vm.installedPackages.collectAsStateWithLifecycle()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val launchApp: (PermissionManifest) -> Unit = { app ->
         vm.launch(app) { started ->
@@ -110,6 +119,11 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val storageRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         pendingLaunch?.let(launchApp)
         pendingLaunch = null
+    }
+
+    // The store loads (or refreshes its week-old cache) when first opened.
+    LaunchedEffect(destination, status) {
+        if (destination == Destination.Store && status != null) vm.openStore()
     }
 
     val snackbar = remember { SnackbarHostState() }
@@ -158,7 +172,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 val subtitle = @Composable {
                     Text(
                         when (destination) {
-                            Destination.Apps -> "${mode.label} · ${vm.apps.size} apps"
+                            Destination.Apps -> "${mode.label} · ${apps.size} apps"
+                            Destination.Store -> (catalog as? CatalogState.Ready)?.let { "${it.apps.size} apps from Debian" } ?: "Apps from Debian"
                             Destination.Sessions -> if (running == 0) "Nothing running" else "$running running"
                             Destination.Setup -> blocker ?: "Ready to launch apps"
                         },
@@ -184,6 +199,13 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                         colors = barColors,
                         scrollBehavior = scrollBehavior,
                     )
+                }
+                AnimatedVisibility(
+                    visible = queue.any { it.active },
+                    enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                    exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                ) {
+                    QueueStrip(queue, onOpenQueue = { showQueue = true })
                 }
                 AnimatedVisibility(
                     visible = destination == Destination.Apps,
@@ -224,6 +246,14 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         ) { d ->
             when (d) {
                 Destination.Apps -> AppsPager(tabs, pagerState, padding, onOpen = { openApp = it })
+                Destination.Store -> StoreScreen(
+                    catalog = catalog,
+                    installed = installedPackages,
+                    padding = padding,
+                    iconFor = vm::storeIcon,
+                    onRetry = { vm.openStore(refresh = true) },
+                    onOpenApp = { openStoreApp = it },
+                )
                 Destination.Sessions -> SessionsScreen(
                     sessions,
                     padding,
@@ -248,6 +278,41 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             }
         }
     }
+    }
+
+    openStoreApp?.let { app ->
+        // The launcher entry for this package, once it's been installed from here or bundled.
+        val entry = apps.firstOrNull { app.pkg in it.packages }
+        StoreAppSheet(
+            app = app,
+            icon = vm.storeIcon(app),
+            installed = installedPackages?.contains(app.pkg),
+            blocker = blocker,
+            job = queue.lastOrNull { app.pkg in it.packages && it.active },
+            onInstall = {
+                if (vm.storeInstall(app)) {
+                    openStoreApp = null
+                    scope.launch { snackbar.showSnackbar("${app.name} added to installs") }
+                }
+            },
+            onOpen = entry?.let { e -> { openStoreApp = null; launchApp(e) } },
+            onUninstall = {
+                if (vm.storeUninstall(app)) {
+                    openStoreApp = null
+                    scope.launch { snackbar.showSnackbar("Removing ${app.name}") }
+                }
+            },
+            onDismiss = { openStoreApp = null },
+        )
+    }
+
+    if (showQueue) {
+        QueueSheet(
+            jobs = queue,
+            onCancel = vm::cancelJob,
+            onClearFinished = vm::clearFinishedJobs,
+            onDismiss = { showQueue = false },
+        )
     }
 
     // Config editor slides up over the launcher, like a full-screen sheet.
@@ -287,10 +352,9 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 }
             },
             onInstall = {
-                vm.install(app) { started ->
+                if (vm.install(app)) {
                     openApp = null
-                    destination = Destination.Sessions
-                    TerminalActivity.open(context, started.session.id)
+                    scope.launch { snackbar.showSnackbar("${app.name} added to installs") }
                 }
             },
             onDismiss = { openApp = null },

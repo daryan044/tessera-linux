@@ -19,6 +19,9 @@ import com.daryan.linuxlauncher.container.EndReason
 import com.daryan.linuxlauncher.container.RunningSession
 import com.daryan.linuxlauncher.container.SessionManager
 import com.daryan.linuxlauncher.container.X11Server
+import com.daryan.linuxlauncher.store.InstallQueue
+import com.daryan.linuxlauncher.store.StoreCatalog
+import com.daryan.linuxlauncher.store.StoreRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -107,10 +110,14 @@ class LauncherContainer(private val app: Application) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val paths = HostProbe.pathsFor(app)
     val sessions = SessionManager(app, scope, paths)
+    val catalog = StoreCatalog(java.io.File(app.filesDir, "store"), scope)
+    val registry = StoreRegistry(java.io.File(app.filesDir, "apps"), catalog)
     val installer = RootfsInstaller(paths, OciRegistry(), scope, Process.myUid(), Process.myUid())
 
-    val busy: StateFlow<Boolean> = combine(installer.state, sessions.sessions) { install, list ->
-        install.running || list.any { it.exitCode == null }
+    val queue = InstallQueue(scope, paths)
+
+    val busy: StateFlow<Boolean> = combine(installer.state, sessions.sessions, queue.jobs) { install, list, jobs ->
+        install.running || list.any { it.exitCode == null } || jobs.any { it.active }
     }.stateIn(scope, SharingStarted.Eagerly, false)
 
     init {

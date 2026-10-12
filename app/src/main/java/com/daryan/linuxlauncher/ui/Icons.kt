@@ -58,6 +58,12 @@ object LauncherIcons {
         curveTo(14.5f, 6f, 15.5f, 9f, 15.5f, 12f)
         curveTo(15.5f, 15f, 14.5f, 18f, 12f, 21f)
     }
+    val Store = outline("Store") {
+        moveTo(5f, 8f); lineTo(19f, 8f); lineTo(18f, 20f); lineTo(6f, 20f); close()
+        moveTo(9f, 8f); lineTo(9f, 6.5f)
+        curveTo(9f, 4.8f, 10.3f, 3.5f, 12f, 3.5f)
+        curveTo(13.7f, 3.5f, 15f, 4.8f, 15f, 6.5f); lineTo(15f, 8f)
+    }
     val Folder = outline("Folder") {
         moveTo(3.5f, 7f)
         curveTo(3.5f, 5.9f, 4.4f, 5f, 5.5f, 5f)

@@ -19,6 +19,8 @@ data class PermissionManifest(
     val category: String = "Apps",
     /** Key into the launcher's icon set. */
     val icon: String = "terminal",
+    /** Host path of a PNG icon (store-installed apps); used instead of [icon] when present. */
+    val iconFile: String? = null,
     /** Command run inside the container, argv style. */
     val exec: List<String>,
     /** GUI apps get their own X display in their own tab. */
