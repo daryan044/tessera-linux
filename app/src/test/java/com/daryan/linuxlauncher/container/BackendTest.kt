@@ -96,7 +96,9 @@ class BackendTest {
         assertTrue("matchbox-window-manager" in gui[2])
         assertEquals("launch", gui[3])
         assertTrue("pyatspi" in gui[4])
-        assertEquals(listOf(FOCUS_FILE_GUEST) + firefox.exec, gui.drop(5))
+        assertEquals(FOCUS_FILE_GUEST, gui[5])
+        assertTrue("Xlib" in gui[6])
+        assertEquals(listOf(WINDOWS_FILE_GUEST) + firefox.exec, gui.drop(7))
         assertEquals(offline.exec, guestCommand(offline))
     }
 

@@ -72,7 +72,7 @@ data class ContainerPaths(
 }
 
 /** Packages every GUI app gets with it; see [guestCommand]. */
-val GUI_HELPER_PACKAGES = listOf("matchbox-window-manager", "dbus-x11", "at-spi2-core", "python3-pyatspi", "pulseaudio")
+val GUI_HELPER_PACKAGES = listOf("matchbox-window-manager", "dbus-x11", "at-spi2-core", "python3-pyatspi", "pulseaudio", "python3-xlib")
 
 /**
  * Where the focus watcher reports to, as the guest sees it. /tmp/.X11-unix is the session's
@@ -90,15 +90,16 @@ const val AUDIO_RATE = 48000
  * - a session D-Bus, which also carries the accessibility bus (AT-SPI);
  * - [FOCUS_WATCHER], which reports whether the focused widget takes text, so the window can
  *   show Android's keyboard for text fields the way a native app does;
- * - with the audio permission, PulseAudio playing into a FIFO the app reads (AudioPipe).
+ * - with the audio permission, PulseAudio playing into a FIFO the app reads (AudioPipe);
+ * - [WINDOW_WATCHER], which reports the app's windows so each can have its own Android task.
  * The helpers are stopped when the app exits so the session (and its window) ends with it.
  */
 internal fun guestCommand(app: PermissionManifest): List<String> =
     if (!app.gui) app.exec
-    else listOf("/bin/sh", "-c", GUI_WRAPPER, "launch", FOCUS_WATCHER, FOCUS_FILE_GUEST) + app.exec
+    else listOf("/bin/sh", "-c", GUI_WRAPPER, "launch", FOCUS_WATCHER, FOCUS_FILE_GUEST, WINDOW_WATCHER, WINDOWS_FILE_GUEST) + app.exec
 
 private const val GUI_WRAPPER = """
-watcher=${'$'}1; out=${'$'}2; shift 2
+watcher=${'$'}1; out=${'$'}2; windows=${'$'}3; windows_out=${'$'}4; shift 4
 if [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-launch >/dev/null 2>&1; then
   eval "${'$'}(dbus-launch --sh-syntax)"; bus=${'$'}DBUS_SESSION_BUS_PID
 fi
@@ -116,9 +117,13 @@ if [ -n "${'$'}LAUNCHER_AUDIO" ] && command -v pulseaudio >/dev/null 2>&1; then
 fi
 if command -v matchbox-window-manager >/dev/null 2>&1; then
   matchbox-window-manager -use_titlebar no -use_cursor no & wm=${'$'}!
+  if [ -d /usr/lib/python3/dist-packages/Xlib ]; then
+    # Once the manager owns the screen, or the window list it keeps isn't there yet.
+    ( sleep 0.5; exec python3 -c "${'$'}windows" "${'$'}windows_out" ) & ww=${'$'}!
+  fi
 fi
 "${'$'}@"; status=${'$'}?
-kill ${'$'}wm ${'$'}fw ${'$'}pa ${'$'}bus 2>/dev/null
+kill ${'$'}ww ${'$'}wm ${'$'}fw ${'$'}pa ${'$'}bus 2>/dev/null
 exit ${'$'}status
 """
 

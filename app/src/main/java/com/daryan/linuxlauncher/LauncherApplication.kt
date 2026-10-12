@@ -61,6 +61,8 @@ class LauncherApplication : LorieApp() {
         override fun onActivityResumed(activity: Activity) {
             // Terminal windows brand themselves once their session is known.
             if (activity.javaClass.name != X11Server.TAGGED_WINDOW) return
+            // Windows of their own brand themselves with their X window's title.
+            if (X11Server.windowId(activity.intent?.data) != null) return
             sessionOf(activity)?.let { brandForRecents(activity, it, container) }
         }
 
@@ -71,6 +73,8 @@ class LauncherApplication : LorieApp() {
             // the user closed its card in Recents.
             if (!activity.isFinishing || activity.isChangingConfigurations) return
             val session = sessionOf(activity)?.takeIf { it.running } ?: return
+            // A window of its own closed in Recents: close that X window, not the whole app.
+            X11Server.windowId(activity.intent?.data)?.let { return container.sessions.closeWindow(session.session.id, it) }
             container.sessions.stop(session.session.id, EndReason.CLOSED_FROM_RECENTS)
         }
 

@@ -38,6 +38,8 @@ data class RunningSession(
     val endedBy: EndReason? = null,
     /** Bumped on every screen change so card previews recompose. */
     val revision: Int = 0,
+    /** A GUI app's X windows, as its window watcher last reported them. */
+    val windows: XWindows = XWindows(),
 ) {
     val running get() = exitCode == null
 
@@ -81,6 +83,14 @@ class SessionManager(
     }
     /** Running X servers, by session id. */
     private val servers = ConcurrentHashMap<String, Process>()
+    /** What GUI sessions' helpers report, by session id. */
+    private val windowReports = ConcurrentHashMap<String, SessionFiles>()
+
+    private val _focusChanges = kotlinx.coroutines.flow.MutableSharedFlow<Pair<String, Boolean>>(extraBufferCapacity = 16)
+    /** (session id, whether a text field now has focus), from each GUI session's focus watcher. */
+    val focusChanges: kotlinx.coroutines.flow.SharedFlow<Pair<String, Boolean>> = _focusChanges
+    /** Per GUI session, the X windows that have an Android task of their own. */
+    private val windowTasks = ConcurrentHashMap<String, MutableSet<Long>>()
 
     /** Called when a session's screen changes; set by whichever terminal view shows it. */
     private val screenListeners = ConcurrentHashMap<String, () -> Unit>()
@@ -136,6 +146,7 @@ class SessionManager(
         scope.launch(Dispatchers.IO) {
             try {
                 servers[session.id] = x11.start(session)
+                followWindows(session)
                 audio?.let { launch { it.run() } }
                 withContext(Dispatchers.Main) { x11.showWindow(session) }
                 val pid = IntArray(1)
@@ -150,6 +161,8 @@ class SessionManager(
                 Log.w(TAG, "GUI session ${session.id} failed", e)
                 update(session.id) { it.copy(output = "Couldn't start: ${e.message}", exitCode = -1) }
             } finally {
+                windowReports.remove(session.id)?.stopWatching()
+                windowTasks.remove(session.id)
                 audio?.stop()
                 servers.remove(session.id)?.destroy()
                 withContext(Dispatchers.Main + NonCancellable) { x11.closeWindow(session) }
@@ -203,6 +216,46 @@ class SessionManager(
         stop(id)
         screenListeners.remove(id)
         _sessions.update { list -> list.filterNot { it.session.id == id } }
+    }
+
+    /**
+     * Every main window an app opens after its first gets an Android task of its own (its own
+     * card in Recents), the way a native app's second activity would. The first main window
+     * stays with the session's own window, see [primaryWindow].
+     */
+    private fun followWindows(session: Session) {
+        val tasks = windowTasks.getOrPut(session.id) { java.util.Collections.synchronizedSet(mutableSetOf()) }
+        val reports = SessionFiles(paths.x11SocketDir(session), onFocus = { _focusChanges.tryEmit(session.id to it) }) { windows ->
+            update(session.id) { it.copy(windows = windows) }
+            val primary = primaryWindow(windows, tasks)
+            tasks.retainAll(windows.main.map { it.id }.toSet())
+            val fresh = windows.main.filter { it.id != primary && it.id !in tasks }
+            tasks += fresh.map { it.id }
+            if (fresh.isNotEmpty()) scope.launch(Dispatchers.Main) { fresh.forEach { x11.showWindow(session, it.id) } }
+        }
+        windowReports[session.id] = reports
+        reports.startWatching()
+    }
+
+    /** The main window the session's own window shows: the first one without a task of its own. */
+    private fun primaryWindow(windows: XWindows, tasks: Set<Long>): Long? =
+        windows.main.firstOrNull { it.id !in tasks }?.id
+
+    /** The X window the Android window for [windowId] shows; null [windowId] means the session's own. */
+    fun windowFor(sessionId: String, windowId: Long?): Long? {
+        if (windowId != null) return windowId
+        val windows = byId(sessionId)?.windows ?: return null
+        return primaryWindow(windows, windowTasks[sessionId].orEmpty())
+    }
+
+    /** Brings [windowId] to the front of its app's screen. */
+    fun activateWindow(sessionId: String, windowId: Long) {
+        windowReports[sessionId]?.activate(windowId)
+    }
+
+    /** Asks the app to close [windowId], as its own close button would. */
+    fun closeWindow(sessionId: String, windowId: Long) {
+        windowReports[sessionId]?.close(windowId)
     }
 
     private fun update(id: String, f: (RunningSession) -> RunningSession) =

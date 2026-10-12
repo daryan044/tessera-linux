@@ -63,11 +63,11 @@ class TerminalActivity : ComponentActivity() {
 }
 
 /** Names a session's window "<App> (Linux)" in Recents, with the app's own icon. */
-fun brandForRecents(activity: Activity, session: RunningSession, container: LauncherContainer) {
+fun brandForRecents(activity: Activity, session: RunningSession, container: LauncherContainer, title: String? = null) {
     // Only PRoot rootfs is readable by the app; chroot sessions get a generated tile.
     val rootfs = if (session.backend == BackendMode.PROOT.label) container.paths.prootRootfs else null
     @Suppress("DEPRECATION")
     activity.setTaskDescription(
-        ActivityManager.TaskDescription("${session.app.name} (Linux)", AppIcons.forApp(session.app, rootfs)),
+        ActivityManager.TaskDescription("${title ?: session.app.name} (Linux)", AppIcons.forApp(session.app, rootfs)),
     )
 }

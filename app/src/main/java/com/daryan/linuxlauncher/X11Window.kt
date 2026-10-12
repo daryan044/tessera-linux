@@ -12,7 +12,13 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import com.daryan.linuxlauncher.container.FocusReports
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.daryan.linuxlauncher.container.X11Server
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import com.daryan.linuxlauncher.ui.X11Overlay
 import com.daryan.linuxlauncher.ui.theme.LauncherTheme
 import com.termux.x11.MainActivity
@@ -21,10 +27,17 @@ import com.termux.x11.input.InputStub
 /**
  * A GUI app's window: Termux:X11's tagged window (X server connection, touch and keyboard
  * handling) with our Material 3 controls laid over it instead of its own toolbar.
+ *
+ * An app's first main window is shown by the session's own window. Each further one (Firefox's
+ * Library, a second browser window) gets an X11Window of its own, in its own task, named by
+ * [windowId] in the intent data; all of them share the session's X server, and whichever is in
+ * front brings its X window forward.
  */
 class X11Window : MainActivity.MainActivityTagged() {
-    private var focusReports: FocusReports? = null
     private var lastTouch = 0L
+    private val container get() = (application as LauncherApplication).container
+    private val windowId get() = X11Server.windowId(intent?.data)
+    private val sessionTag get() = intent?.data?.let { it.host ?: it.toString() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,21 +58,45 @@ class X11Window : MainActivity.MainActivityTagged() {
             },
             ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
+        followSession()
+        followFocus()
+    }
+
+    /** While in front, opens and closes the keyboard as the app's focus enters and leaves text fields. */
+    private fun followFocus() {
+        val tag = sessionTag ?: return
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                container.sessions.focusChanges.collect { (sessionId, text) ->
+                    if (container.sessions.byId(sessionId)?.let { X11Server.windowTag(it.session) } == tag) onFocusChanged(text)
+                }
+            }
+        }
+    }
+
+    /** Ends with what it shows: the session, or for a window of its own, that X window. */
+    private fun followSession() {
+        val tag = sessionTag ?: return
+        val id = windowId
+        lifecycleScope.launch {
+            container.sessions.sessions
+                .map { list -> list.firstOrNull { X11Server.windowTag(it.session) == tag } }
+                .distinctUntilChanged()
+                .collect { s ->
+                    val gone = s == null || !s.running || (id != null && s.windows.main.none { it.id == id })
+                    // Every window of the session, not just the one Termux:X11's stop finds by tag.
+                    if (gone) return@collect finishAndRemoveTask()
+                    val title = s?.windows?.windows?.firstOrNull { it.id == id }?.title
+                    if (id != null && s != null && !title.isNullOrBlank()) brandForRecents(this@X11Window, s, container, title)
+                }
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        val container = (application as LauncherApplication).container
-        val session = intent?.data?.let { container.sessions.forWindowTag(it.host ?: it.toString()) } ?: return
-        focusReports = FocusReports(container.paths.x11SocketDir(session.session)) { text ->
-            runOnUiThread { onFocusChanged(text) }
-        }.also { it.startWatching() }
-    }
-
-    override fun onPause() {
-        focusReports?.stopWatching()
-        focusReports = null
-        super.onPause()
+        val session = sessionTag?.let { container.sessions.forWindowTag(it) } ?: return
+        // In front now: show our X window on the shared screen.
+        container.sessions.windowFor(session.session.id, windowId)?.let { container.sessions.activateWindow(session.session.id, it) }
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
@@ -119,7 +156,13 @@ class X11Window : MainActivity.MainActivityTagged() {
         }
 
         override fun close(sessionId: String?) {
-            sessionId?.let { (application as LauncherApplication).container.sessions.stop(it) }
+            val id = windowId
+            if (id != null && sessionId != null) {
+                // Just this window, the way its own close button would; the task follows.
+                container.sessions.closeWindow(sessionId, id)
+                return
+            }
+            sessionId?.let { container.sessions.stop(it) }
             finishAndRemoveTask()
         }
     }

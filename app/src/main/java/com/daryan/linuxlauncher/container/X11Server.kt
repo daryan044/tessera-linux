@@ -54,11 +54,15 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
         throw IOException("X server didn't create $socket within 5 s")
     }
 
-    /** Opens (or brings back) the session's window. */
-    fun showWindow(session: Session) {
+    /**
+     * Opens (or brings back) the session's window, or with [windowId] the window of one of
+     * its app's X windows: a task of its own, sharing the session's server.
+     */
+    fun showWindow(session: Session, windowId: Long? = null) {
+        val path = windowId?.let { "/$it" } ?: ""
         context.startActivity(
             Intent().setClassName(context, TAGGED_WINDOW)
-                .setData(Uri.parse("termux-x11-window://${windowTag(session)}"))
+                .setData(Uri.parse("termux-x11-window://${windowTag(session)}$path"))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
@@ -102,5 +106,8 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
 
         /** Identifies a session's Termux:X11 window (its `-tag` and document data). */
         fun windowTag(session: Session) = "linux-${session.id}"
+
+        /** The X window an Android window's data names, or null for the session's own window. */
+        fun windowId(data: Uri?): Long? = data?.path?.trim('/')?.toLongOrNull()
     }
 }
