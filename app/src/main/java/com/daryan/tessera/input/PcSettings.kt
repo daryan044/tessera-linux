@@ -24,6 +24,7 @@ class PcSettings(private val prefs: SharedPreferences) {
     private var natural by mutableStateOf(prefs.getBoolean(KEY_NATURAL, true))
     private var pinch by mutableStateOf(prefs.getBoolean(KEY_PINCH, true))
     private var keyboard by mutableStateOf(prefs.getBoolean(KEY_AUTO_KEYBOARD, true))
+    private var zoom by mutableFloatStateOf(prefs.getFloat(KEY_ZOOM, 1f))
 
     /** Pointer movement, as a multiple of the default. */
     var pointerSpeed: Float
@@ -57,6 +58,14 @@ class PcSettings(private val prefs: SharedPreferences) {
             prefs.edit().putBoolean(KEY_PINCH, value).apply()
         }
 
+    /** Zoom steps per dp of spreading, as a multiple of the default. */
+    var pinchSpeed: Float
+        get() = zoom
+        set(value) {
+            zoom = value
+            prefs.edit().putFloat(KEY_ZOOM, value).apply()
+        }
+
     /** The keyboard opens as soon as a PC is connected. */
     var autoKeyboard: Boolean
         get() = keyboard
@@ -74,6 +83,7 @@ class PcSettings(private val prefs: SharedPreferences) {
         private const val KEY_NATURAL = "pc_natural_scroll"
         private const val KEY_PINCH = "pc_pinch_zoom"
         private const val KEY_AUTO_KEYBOARD = "pc_auto_keyboard"
+        private const val KEY_ZOOM = "pc_pinch_speed"
 
         fun of(context: Context) = PcSettings(
             context.getSharedPreferences("launcher", Context.MODE_PRIVATE),

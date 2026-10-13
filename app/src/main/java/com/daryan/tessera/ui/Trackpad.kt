@@ -73,6 +73,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -89,10 +90,13 @@ private const val SCROLL = 1
 private const val PINCH = 2
 
 /** Movement, in dp, before two fingers are taken to be scrolling or pinching. */
-private const val DECIDE_DP = 8f
+private const val DECIDE_DP = 6f
 
 /** How far fingers must spread, in dp, for one step of zoom. */
-private const val PINCH_DP = 44f
+private const val PINCH_DP = 26f
+
+/** How much spreading is favoured over panning when deciding which a gesture is. */
+private const val PINCH_BIAS = 1.8f
 
 private const val TAP_MS = 220L
 private const val DOUBLE_TAP_MS = 300L
@@ -282,6 +286,8 @@ fun TrackpadSurface(
     naturalScroll: Boolean = true,
     /** Whether two fingers spreading zooms, or only ever scrolls. */
     pinchZoom: Boolean = true,
+    /** Zoom steps per dp of spreading, as a multiple of the default. */
+    pinchScale: Float = 1f,
 ) {
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
@@ -343,7 +349,12 @@ fun TrackpadSurface(
                     var travel = 0f
                     var twoFingers = UNDECIDED
                     var spreadSum = 0f
-                    var panSum = 0f
+                    // Where the fingers have got to between them, not how far they have
+                    // travelled: a pinch moves them opposite ways, so the middle hardly shifts.
+                    // Measuring the path instead let pan outgrow spread every frame and pinch
+                    // could almost never win.
+                    var panX = 0f
+                    var panY = 0f
                     var zoomRest = 0f
                     scrollX = 0f
                     scrollY = 0f
@@ -386,14 +397,19 @@ fun TrackpadSurface(
                             val spread = ((pressed[0].position - pressed[1].position).getDistance() -
                                 (pressed[0].previousPosition - pressed[1].previousPosition).getDistance()) / density.density
                             spreadSum += spread
-                            panSum += d.getDistance() / density.density
-                            if (twoFingers == UNDECIDED && (abs(spreadSum) > DECIDE_DP || panSum > DECIDE_DP)) {
-                                twoFingers = if (pinchZoom && abs(spreadSum) > panSum) PINCH else SCROLL
+                            panX += d.x / density.density
+                            panY += d.y / density.density
+                            val pan = hypot(panX, panY)
+                            if (twoFingers == UNDECIDED && (abs(spreadSum) > DECIDE_DP || pan > DECIDE_DP)) {
+                                // Spread is favoured: fingers rarely part without drifting a
+                                // little, and a scroll that was meant as a pinch is the more
+                                // annoying mistake of the two.
+                                twoFingers = if (pinchZoom && abs(spreadSum) * PINCH_BIAS > pan) PINCH else SCROLL
                             }
                             when (twoFingers) {
                                 PINCH -> {
                                     // Fingers apart is zoom in, as everywhere else.
-                                    zoomRest += spread / PINCH_DP
+                                    zoomRest += spread / (PINCH_DP / pinchScale)
                                     val steps = zoomRest.toInt()
                                     if (steps != 0) {
                                         sink.zoom(steps)

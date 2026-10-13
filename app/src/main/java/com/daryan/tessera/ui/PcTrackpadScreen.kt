@@ -175,6 +175,7 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
                     pointerScale = settings.pointerSpeed,
                     naturalScroll = settings.naturalScroll,
                     pinchZoom = settings.pinchZoom,
+                    pinchScale = settings.pinchSpeed,
                 )
                 Spacer(Modifier.height(8.dp))
                 KeyRow(sink)
@@ -200,6 +201,7 @@ private fun PcSettingsDialog(settings: PcSettings, onDismiss: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 SpeedSlider("Pointer speed", settings.pointerSpeed) { settings.pointerSpeed = it }
                 SpeedSlider("Scroll speed", settings.scrollSpeed) { settings.scrollSpeed = it }
+                SpeedSlider("Zoom speed", settings.pinchSpeed) { settings.pinchSpeed = it }
                 HorizontalDivider(Modifier.padding(vertical = 6.dp))
                 SettingSwitch(
                     "Natural scrolling",
@@ -208,7 +210,7 @@ private fun PcSettingsDialog(settings: PcSettings, onDismiss: () -> Unit) {
                 ) { settings.naturalScroll = it }
                 SettingSwitch(
                     "Pinch to zoom",
-                    "Off, two fingers always scroll",
+                    "Off, two fingers only ever scroll",
                     settings.pinchZoom,
                 ) { settings.pinchZoom = it }
                 SettingSwitch(
