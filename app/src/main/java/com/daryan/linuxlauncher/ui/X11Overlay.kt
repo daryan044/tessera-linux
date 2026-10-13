@@ -75,14 +75,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.daryan.linuxlauncher.MouseButton
 import com.daryan.linuxlauncher.TouchMode
+import com.daryan.linuxlauncher.UsbState
 import com.daryan.linuxlauncher.X11Actions
 import com.daryan.linuxlauncher.container.RunningSession
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-private enum class Page { MAIN, KEYS, INPUT }
+private enum class Page { MAIN, KEYS, INPUT, CAST, USB }
 
 private val PANEL_WIDTH = 248.dp
 private val HANDLE_WIDTH = 28.dp
@@ -99,6 +101,9 @@ private const val KEY_ALONG = "handle_along"
  */
 @Composable
 fun X11Overlay(session: RunningSession?, actions: X11Actions) {
+    // While the window is cast to another display, the phone is its trackpad.
+    val cast by actions.cast.collectAsStateWithLifecycle()
+    cast?.let { return TrackpadScreen(it, actions) }
     val scope = rememberCoroutineScope()
     val motion = MaterialTheme.motionScheme
     val density = LocalDensity.current
@@ -235,6 +240,8 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
                             Page.MAIN -> MainPage(session, actions, onPage = { page = it }, run = ::run)
                             Page.KEYS -> SubPage("Keys", onBack = { page = Page.MAIN }) { KeysPage(actions) }
                             Page.INPUT -> SubPage("Input mode", onBack = { page = Page.MAIN }) { InputPage(actions) }
+                            Page.CAST -> SubPage("Cast", onBack = { page = Page.MAIN }) { CastPage(actions, ::run) }
+                            Page.USB -> SubPage("USB devices", onBack = { page = Page.MAIN }) { UsbPage(session, actions, ::run) }
                         }
                     }
                 }
@@ -259,6 +266,8 @@ private fun MainPage(session: RunningSession?, actions: X11Actions, onPage: (Pag
         Tile(LauncherIcons.Mouse, "Middle click") { run { actions.click(MouseButton.MIDDLE) } }
         Tile(LauncherIcons.Keyboard, "Keys") { onPage(Page.KEYS) }
         Tile(LauncherIcons.Mouse, "Input mode") { onPage(Page.INPUT) }
+        Tile(LauncherIcons.Cast, "Cast") { onPage(Page.CAST) }
+        Tile(LauncherIcons.Usb, "USB") { onPage(Page.USB) }
         if (session != null) Tile(Icons.Rounded.Lock, "Permissions") { run { actions.openPermissions(session.app.id) } }
         Tile(Icons.Rounded.Settings, "Display") { run(actions::displaySettings) }
         Tile(Icons.Rounded.Close, "Close", danger = true) { run { actions.close(session?.session?.id) } }
@@ -330,6 +339,91 @@ private fun InputPage(actions: X11Actions) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Casting the app to another display: the ones connected now (a TV or monitor on a cable, a
+ * wireless display once Android has connected it), and the way to connect a wireless one.
+ */
+@Composable
+private fun CastPage(actions: X11Actions, run: (() -> Unit) -> Unit) {
+    val targets by actions.castTargets.collectAsStateWithLifecycle()
+    val colors = MaterialTheme.colorScheme
+    Text(
+        "Shows the app on another screen; this phone becomes its trackpad and keyboard.",
+        style = MaterialTheme.typography.bodySmall,
+        color = colors.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(12.dp))
+    if (targets.isEmpty()) {
+        Text(
+            "No other display yet. Plug in a TV or monitor, or connect a wireless display below.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+    targets.forEach { t ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                .background(colors.secondaryContainer)
+                .clickable { run { actions.startCast(t.displayId) } }
+                .padding(12.dp),
+        ) {
+            Icon(LauncherIcons.Monitor, null, tint = colors.onSecondaryContainer)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(t.name, style = MaterialTheme.typography.titleSmall, color = colors.onSecondaryContainer)
+                Text(t.detail, style = MaterialTheme.typography.bodySmall, color = colors.onSecondaryContainer.copy(alpha = 0.8f))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+    Spacer(Modifier.height(8.dp))
+    FilledTonalButton(onClick = actions::wirelessDisplays, modifier = Modifier.fillMaxWidth()) {
+        Icon(LauncherIcons.Cast, null)
+        Spacer(Modifier.width(8.dp))
+        Text("Connect a wireless display")
+    }
+}
+
+/** The USB devices plugged into the phone, and whether this app may use each one. */
+@Composable
+private fun UsbPage(session: RunningSession?, actions: X11Actions, run: (() -> Unit) -> Unit) {
+    val devices by actions.usbDevices.collectAsStateWithLifecycle()
+    val colors = MaterialTheme.colorScheme
+    if (devices.isEmpty()) {
+        Text(
+            "Nothing plugged in. Connect a USB device (with an OTG adapter if needed) and it shows up here.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+    devices.forEach { d ->
+        val shared = d.state != UsbState.NOT_SHARED
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(40.dp).clip(CircleShape)
+                    .background(if (d.state == UsbState.IN_USE) colors.primaryContainer else colors.surfaceContainerHighest),
+            ) {
+                Icon(LauncherIcons.Usb, null, tint = if (d.state == UsbState.IN_USE) colors.onPrimaryContainer else colors.onSurfaceVariant)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(d.label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(d.state.label, style = MaterialTheme.typography.bodySmall, color = if (shared) colors.primary else colors.onSurfaceVariant)
+                Text(d.detail, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+    if (session != null) {
+        Spacer(Modifier.height(12.dp))
+        FilledTonalButton(onClick = { run { actions.openPermissions(session.app.id) } }, modifier = Modifier.fillMaxWidth()) {
+            Text("Share devices in Permissions")
         }
     }
 }

@@ -113,6 +113,31 @@ object LauncherIcons {
         close()
     }
 
+    /** The USB trident: a stem with a circle, a square and an arrow on its branches. */
+    val Usb = outline("Usb") {
+        moveTo(12f, 3.5f); lineTo(12f, 18f)
+        moveTo(10f, 5.5f); lineTo(12f, 3.5f); lineTo(14f, 5.5f)
+        moveTo(12f, 14f); lineTo(7f, 11.5f); lineTo(7f, 9f)
+        moveTo(12f, 12f); lineTo(17f, 9.5f); lineTo(17f, 7.5f)
+        roundRect(15.5f, 5f, 18.5f, 7.5f, 0.5f)
+        moveTo(12f, 18f)
+        arcTo(1.75f, 1.75f, 0f, true, true, 11.99f, 18f)
+        moveTo(7f, 9f)
+        arcTo(1.25f, 1.25f, 0f, true, true, 6.99f, 9f)
+    }
+    /** A screen with the broadcast arcs in its corner, like Android's cast symbol. */
+    val Cast = outline("Cast") {
+        moveTo(3f, 9f); lineTo(3f, 6.5f)
+        curveTo(3f, 5.4f, 3.9f, 4.5f, 5f, 4.5f); lineTo(19f, 4.5f)
+        curveTo(20.1f, 4.5f, 21f, 5.4f, 21f, 6.5f); lineTo(21f, 17.5f)
+        curveTo(21f, 18.6f, 20.1f, 19.5f, 19f, 19.5f); lineTo(14f, 19.5f)
+        moveTo(3f, 12.5f)
+        curveTo(6.6f, 12.5f, 10f, 15.9f, 10f, 19.5f)
+        moveTo(3f, 16f)
+        curveTo(4.9f, 16f, 6.5f, 17.6f, 6.5f, 19.5f)
+        moveTo(3f, 19.5f); lineTo(3.01f, 19.5f)
+    }
+
     private fun PathBuilder.roundRect(l: Float, t: Float, r: Float, b: Float, rad: Float) {
         moveTo(l + rad, t); lineTo(r - rad, t)
         arcTo(rad, rad, 0f, false, true, r, t + rad); lineTo(r, b - rad)

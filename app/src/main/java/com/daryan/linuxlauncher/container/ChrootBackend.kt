@@ -14,7 +14,11 @@ class ChrootBackend(
     /** The uid apps run as inside: the launcher's own (not 1000, which is Android's "system"). */
     private val appUid: Int = android.os.Process.myUid(),
 ) : ContainerBackend {
-    override val name = "Chroot"
+    override val name = NAME
+
+    companion object {
+        const val NAME = "Chroot"
+    }
 
     override fun enforcement(capability: Capability, app: PermissionManifest) =
         // Root inside a chroot can mount, load modules and walk out of it.

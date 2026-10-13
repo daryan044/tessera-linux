@@ -3,19 +3,36 @@
 
 package com.daryan.linuxlauncher
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.Configuration
+import android.hardware.display.DisplayManager
+import android.hardware.usb.UsbManager
 import android.os.Bundle
 import android.os.SystemClock
+import android.provider.Settings
+import android.util.Log
+import android.view.Display
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
+import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.daryan.linuxlauncher.container.ChrootBackend
+import com.daryan.linuxlauncher.container.HostDevices
+import com.daryan.linuxlauncher.container.UsbBridge
 import com.daryan.linuxlauncher.container.X11Server
+import com.daryan.linuxlauncher.container.XWindow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -35,6 +52,17 @@ import com.termux.x11.input.InputStub
  */
 class X11Window : MainActivity.MainActivityTagged() {
     private var lastTouch = 0L
+    /** The cast to another display, while there is one; the phone is its trackpad meanwhile. */
+    private var cast: CastPresentation? = null
+    private val castState = MutableStateFlow<CastState?>(null)
+    private val castTargets = MutableStateFlow<List<CastTarget>>(emptyList())
+    private val usbDevices = MutableStateFlow<List<UsbEntry>>(emptyList())
+    /** Where the phone's keyboard types while casting; see [KeyboardProxy]. */
+    private val keyboardProxy by lazy { KeyboardProxy(this) { cast?.view } }
+    private var proxyKeyboardShown = false
+    /** Where input goes: the cast picture's view while casting, else this window's own. */
+    private val input get() = cast?.view ?: lorieView
+    private val displays get() = getSystemService(DisplayManager::class.java)
     private val container get() = (application as LauncherApplication).container
     private val windowId get() = X11Server.windowId(intent?.data)
     private val sessionTag get() = intent?.data?.let { it.host ?: it.toString() }
@@ -44,6 +72,8 @@ class X11Window : MainActivity.MainActivityTagged() {
         // Our floating button replaces Termux:X11's extra-keys bar.
         toggleExtraKeys(false, false)
         val container = (application as LauncherApplication).container
+        // Behind everything, a pixel wide: only there to take the keyboard while casting.
+        addContentView(keyboardProxy, ViewGroup.LayoutParams(1, 1))
         addContentView(
             ComposeView(this).apply {
                 setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
@@ -60,6 +90,108 @@ class X11Window : MainActivity.MainActivityTagged() {
         )
         followSession()
         followFocus()
+        followDisplays()
+        followUsb()
+    }
+
+    override fun onDestroy() {
+        endCast()
+        runCatching { displays.unregisterDisplayListener(displayListener) }
+        runCatching { unregisterReceiver(usbReceiver) }
+        super.onDestroy()
+    }
+
+    /** Keeps [castTargets] to the displays there are to cast to; a cast ends with its display. */
+    private fun followDisplays() {
+        castTargets.value = currentTargets()
+        displays.registerDisplayListener(displayListener, null)
+    }
+
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) { castTargets.value = currentTargets() }
+        override fun onDisplayRemoved(displayId: Int) { castTargets.value = currentTargets() }
+        override fun onDisplayChanged(displayId: Int) { castTargets.value = currentTargets() }
+    }
+
+    private fun currentTargets(): List<CastTarget> =
+        displays.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
+            .filter { it.displayId != Display.DEFAULT_DISPLAY }
+            .map { d ->
+                val mode = d.mode
+                CastTarget(d.displayId, d.name, "${mode.physicalWidth}×${mode.physicalHeight}")
+            }
+
+    /** Keeps [usbDevices] to what's plugged in, and what this app may use of it. */
+    private fun followUsb() {
+        usbDevices.value = currentUsb()
+        val filter = IntentFilter().apply {
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
+        ContextCompat.registerReceiver(this, usbReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
+    }
+
+    private val usbReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) { usbDevices.value = currentUsb() }
+    }
+
+    private fun currentUsb(): List<UsbEntry> {
+        val running = sessionTag?.let { container.sessions.forWindowTag(it) }
+        val granted = running?.app?.permissions?.devices.orEmpty()
+        return HostDevices.list(this).filter { it.path.startsWith(UsbBridge.USB_PATH) }.map { d ->
+            val state = when {
+                running == null || d.path !in granted -> UsbState.NOT_SHARED
+                // PRoot apps get what was opened for them at launch; chroot apps the device itself.
+                d.path in running.session.usbFds || running.backend == ChrootBackend.NAME -> UsbState.IN_USE
+                else -> UsbState.NEXT_LAUNCH
+            }
+            UsbEntry(d.path, d.label, d.detail, state)
+        }
+    }
+
+    private fun startCast(displayId: Int) {
+        if (cast != null) return
+        val display = displays.getDisplay(displayId) ?: return
+        val connection = takeDisplayConnection() ?: run {
+            Toast.makeText(this, "The app's display isn't ready yet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val presentation = CastPresentation(this, display, connection)
+        presentation.setOnDismissListener { if (cast === presentation) endCast() }
+        try {
+            presentation.show()
+        } catch (e: Exception) {
+            Log.w("X11Window", "couldn't cast to ${display.name}", e)
+            runCatching { connection.close() }
+            reclaimDisplayConnection()
+            Toast.makeText(this, "Couldn't show the app on ${display.name}", Toast.LENGTH_SHORT).show()
+            return
+        }
+        cast = presentation
+        lorieView.setKeyboardVisible(false)
+        castState.value = CastState(display.name)
+    }
+
+    /** Ends the cast, if there is one, and shows the app on the phone again. */
+    private fun endCast() {
+        val presentation = cast ?: return
+        cast = null
+        setProxyKeyboard(false)
+        runCatching { presentation.dismiss() }
+        reclaimDisplayConnection()
+        castState.value = null
+    }
+
+    private fun setProxyKeyboard(visible: Boolean) {
+        val imm = getSystemService(InputMethodManager::class.java)
+        proxyKeyboardShown = visible
+        if (visible) {
+            keyboardProxy.requestFocus()
+            imm.restartInput(keyboardProxy)
+            imm.showSoftInput(keyboardProxy, 0)
+        } else {
+            imm.hideSoftInputFromWindow(keyboardProxy.windowToken, 0)
+        }
     }
 
     /** While in front, opens and closes the keyboard as the app's focus enters and leaves text fields. */
@@ -97,6 +229,9 @@ class X11Window : MainActivity.MainActivityTagged() {
         val session = sessionTag?.let { container.sessions.forWindowTag(it) } ?: return
         // In front now: show our X window on the shared screen.
         container.sessions.windowFor(session.session.id, windowId)?.let { container.sessions.activateWindow(session.session.id, it) }
+        // Termux:X11 focuses its own view on resume; while casting, typing goes to the cast.
+        if (cast != null) keyboardProxy.requestFocus()
+        usbDevices.value = currentUsb()
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
@@ -113,28 +248,53 @@ class X11Window : MainActivity.MainActivityTagged() {
         if (SystemClock.uptimeMillis() - lastTouch > TAP_WINDOW_MS) return
         val hardKeyboard = resources.configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
         if (text && hardKeyboard) return
-        lorieView.setKeyboardVisible(text)
+        if (cast != null) setProxyKeyboard(text) else lorieView.setKeyboardVisible(text)
     }
 
     /** What the floating button can do to this window and its app. */
     private val actions = object : X11Actions {
-        override fun toggleKeyboard() = toggleKeyboardVisibility()
+        override fun toggleKeyboard() {
+            if (cast != null) setProxyKeyboard(!proxyKeyboardShown) else toggleKeyboardVisibility()
+        }
 
         override fun click(button: MouseButton) {
-            val b = when (button) {
-                MouseButton.RIGHT -> InputStub.BUTTON_RIGHT
-                MouseButton.MIDDLE -> InputStub.BUTTON_MIDDLE
-            }
             // Relative (0, 0): click where the pointer already is, i.e. where you last touched.
-            lorieView.sendMouseEvent(0f, 0f, b, true, true)
-            lorieView.sendMouseEvent(0f, 0f, b, false, true)
+            input.sendMouseEvent(0f, 0f, button.stub, true, true)
+            input.sendMouseEvent(0f, 0f, button.stub, false, true)
         }
+
+        override fun press(button: MouseButton, down: Boolean) = input.sendMouseEvent(0f, 0f, button.stub, down, true)
+
+        override fun move(dx: Float, dy: Float) = input.sendMouseEvent(dx, dy, InputStub.BUTTON_UNDEFINED, false, true)
+
+        override fun scroll(dx: Float, dy: Float) = input.sendMouseWheelEvent(dx, dy)
 
         override fun keys(vararg keyCodes: Int) {
             // Press in order, release in reverse: Ctrl+C is Ctrl down, C down, C up, Ctrl up.
-            keyCodes.forEach { lorieView.sendKeyEvent(0, it, true) }
-            keyCodes.reversed().forEach { lorieView.sendKeyEvent(0, it, false) }
+            keyCodes.forEach { input.sendKeyEvent(0, it, true) }
+            keyCodes.reversed().forEach { input.sendKeyEvent(0, it, false) }
         }
+
+        override val cast: StateFlow<CastState?> get() = castState
+        override val castTargets: StateFlow<List<CastTarget>> get() = this@X11Window.castTargets
+        override fun startCast(displayId: Int) = this@X11Window.startCast(displayId)
+        override fun stopCast() = endCast()
+
+        override fun wirelessDisplays() {
+            // Android's own cast screen connects wireless displays; once connected, they're listed.
+            val tries = listOf(Intent("android.settings.CAST_SETTINGS"), Intent(Settings.ACTION_WIRELESS_SETTINGS))
+            tries.firstOrNull { runCatching { startActivity(it) }.isSuccess }
+        }
+
+        override fun windows(): List<XWindow> =
+            sessionTag?.let { container.sessions.forWindowTag(it) }?.windows?.main.orEmpty()
+
+        override fun showWindow(id: Long) {
+            val session = sessionTag?.let { container.sessions.forWindowTag(it) } ?: return
+            container.sessions.activateWindow(session.session.id, id)
+        }
+
+        override val usbDevices: StateFlow<List<UsbEntry>> get() = this@X11Window.usbDevices
 
         override fun setTouchMode(mode: TouchMode) {
             getSharedPreferences("${packageName}_preferences", MODE_PRIVATE).edit()
@@ -170,7 +330,23 @@ class X11Window : MainActivity.MainActivityTagged() {
 
 private const val TAP_WINDOW_MS = 1500L
 
-enum class MouseButton { RIGHT, MIDDLE }
+enum class MouseButton(val stub: Int) {
+    LEFT(InputStub.BUTTON_LEFT),
+    RIGHT(InputStub.BUTTON_RIGHT),
+    MIDDLE(InputStub.BUTTON_MIDDLE),
+}
+
+/** A cast in progress, to the display named [display]. */
+data class CastState(val display: String)
+
+enum class UsbState(val label: String) {
+    IN_USE("Shared with this app"),
+    NEXT_LAUNCH("Shared from the app's next start"),
+    NOT_SHARED("Not shared with this app"),
+}
+
+/** A plugged-in USB device, as the window's side menu lists it. */
+data class UsbEntry(val path: String, val label: String, val detail: String, val state: UsbState)
 
 /** Termux:X11's touchMode preference values. */
 enum class TouchMode(val pref: String, val label: String) {
@@ -182,7 +358,24 @@ enum class TouchMode(val pref: String, val label: String) {
 interface X11Actions {
     fun toggleKeyboard()
     fun click(button: MouseButton)
+    /** Holds [button] down, or lets it go: dragging from the trackpad. */
+    fun press(button: MouseButton, down: Boolean)
+    /** Moves the pointer by ([dx], [dy]) X screen pixels. */
+    fun move(dx: Float, dy: Float)
+    fun scroll(dx: Float, dy: Float)
     fun keys(vararg keyCodes: Int)
+    /** The cast in progress, or null; while there is one, the phone is a trackpad. */
+    val cast: StateFlow<CastState?>
+    /** Displays there are to cast to, as they come and go. */
+    val castTargets: StateFlow<List<CastTarget>>
+    fun startCast(displayId: Int)
+    fun stopCast()
+    /** Opens Android's screen for connecting a wireless display. */
+    fun wirelessDisplays()
+    /** The app's own windows, to pick which one the cast shows. */
+    fun windows(): List<XWindow>
+    fun showWindow(id: Long)
+    val usbDevices: StateFlow<List<UsbEntry>>
     fun setTouchMode(mode: TouchMode)
     fun touchMode(): TouchMode
     fun openPermissions(appId: String)
