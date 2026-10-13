@@ -118,23 +118,42 @@ class BtHidSink private constructor(
             onHostChanged: (BluetoothDevice?) -> Unit,
             onFailed: (String) -> Unit,
         ) {
-            // Every call below can throw SecurityException if the phone withholds a Bluetooth
-            // permission, and a missing permission is something to explain, not to crash on.
-            runCatching { register(context, onReady, onHostChanged, onFailed) }
-                .onFailure { onFailed(it.message ?: "Bluetooth refused us: ${it::class.java.simpleName}") }
+            val adapter = runCatching {
+                context.getSystemService(BluetoothManager::class.java)?.adapter
+            }.getOrNull()
+            if (adapter == null || runCatching { !adapter.isEnabled }.getOrDefault(true)) {
+                return onFailed("Bluetooth is off")
+            }
+
+            val listener = object : BluetoothProfile.ServiceListener {
+                // Android calls this back later and on its own, so anything thrown here reaches
+                // no caller: it would take the app down. A withheld permission is a sentence to
+                // show, not a crash, so every step of the registration is caught.
+                override fun onServiceConnected(profileId: Int, proxy: BluetoothProfile?) {
+                    runCatching { register(adapter, proxy, onReady, onHostChanged) }
+                        .onFailure { onFailed(reason(it)) }
+                }
+
+                override fun onServiceDisconnected(profileId: Int) = onHostChanged(null)
+            }
+
+            val asked = runCatching {
+                adapter.getProfileProxy(context, listener, BluetoothProfile.HID_DEVICE)
+            }.getOrElse { return onFailed(reason(it)) }
+            if (!asked) onFailed("this phone has no HID device profile")
         }
 
+        /** Hands [proxy] our descriptors, and ourselves to [onReady] once Android accepts them. */
         @RequiresApi(Build.VERSION_CODES.P)
         @SuppressLint("MissingPermission")
         private fun register(
-            context: Context,
+            adapter: BluetoothAdapter,
+            proxy: BluetoothProfile?,
             onReady: (BtHidSink) -> Unit,
             onHostChanged: (BluetoothDevice?) -> Unit,
-            onFailed: (String) -> Unit,
         ) {
-            val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
-            if (adapter == null || !adapter.isEnabled) return onFailed("Bluetooth is off")
-
+            val profile = proxy as? BluetoothHidDevice ?: error("no HID device profile")
+            val sink = BtHidSink(profile, adapter)
             val sdp = BluetoothHidDeviceAppSdpSettings(
                 "Tessera",
                 "Phone as mouse and keyboard",
@@ -142,34 +161,26 @@ class BtHidSink private constructor(
                 BluetoothHidDevice.SUBCLASS1_COMBO,
                 HidReports.COMBINED_DESCRIPTOR,
             )
-            val executor = Executors.newSingleThreadExecutor()
-
-            val listener = object : BluetoothProfile.ServiceListener {
-                override fun onServiceConnected(profileId: Int, proxy: BluetoothProfile?) {
-                    val profile = proxy as? BluetoothHidDevice ?: return onFailed("no HID profile")
-                    val sink = BtHidSink(profile, adapter)
-                    val callback = object : BluetoothHidDevice.Callback() {
-                        override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
-                            if (registered) onReady(sink) else onFailed("Android would not register us")
-                        }
-
-                        override fun onConnectionStateChanged(device: BluetoothDevice?, state: Int) {
-                            val now = device?.takeIf { state == BluetoothProfile.STATE_CONNECTED }
-                            sink.host = now
-                            onHostChanged(now)
-                        }
-                    }
-                    if (!profile.registerApp(sdp, null, null, executor, callback)) {
-                        onFailed("could not register as a HID device")
-                    }
+            val callback = object : BluetoothHidDevice.Callback() {
+                override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
+                    if (registered) onReady(sink)
                 }
 
-                override fun onServiceDisconnected(profileId: Int) = onHostChanged(null)
+                override fun onConnectionStateChanged(device: BluetoothDevice?, state: Int) {
+                    val now = device?.takeIf { state == BluetoothProfile.STATE_CONNECTED }
+                    sink.host = now
+                    onHostChanged(now)
+                }
             }
+            if (!profile.registerApp(sdp, null, null, Executors.newSingleThreadExecutor(), callback)) {
+                error("Android would not register us as a HID device")
+            }
+        }
 
-            if (!adapter.getProfileProxy(context, listener, BluetoothProfile.HID_DEVICE)) {
-                onFailed("this phone has no HID device profile")
-            }
+        /** What went wrong, in the user's terms: these are nearly always a missing permission. */
+        private fun reason(e: Throwable): String = when {
+            e is SecurityException -> "Allow the Nearby devices permission to be a Bluetooth keyboard."
+            else -> e.message ?: "Bluetooth refused us: ${e::class.java.simpleName}"
         }
     }
 }

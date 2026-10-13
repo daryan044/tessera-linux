@@ -5,8 +5,12 @@
 
 package com.daryan.tessera.ui
 
+import android.content.pm.PackageManager
+import android.os.Build
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,6 +45,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.daryan.tessera.input.PcInput
 import com.daryan.tessera.input.PcLink
 
@@ -59,6 +64,14 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val pc = remember { PcInput(context, su) }
     val sink = pc.sink
+    // Being a Bluetooth keyboard needs Nearby devices, a runtime permission: declaring it in the
+    // manifest is not enough, and without it the HID profile throws rather than refusing politely.
+    val needsNearby = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+        ContextCompat.checkSelfPermission(context, NEARBY) != PackageManager.PERMISSION_GRANTED
+    val askNearby = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+        if (granted[NEARBY] == true) pc.startBluetooth()
+        else pc.note("Bluetooth needs the Nearby devices permission, which was declined.")
+    }
     BackHandler { onClose() }
     // Leaving the screen gives Android its USB gadget back; nothing is left half-configured.
     DisposableEffect(Unit) { onDispose { pc.stop() } }
@@ -100,7 +113,13 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
                     modifier = Modifier.weight(1f),
                 ) { Text(if (pc.link == PcLink.USB) "Stop USB" else "Use USB cable") }
                 FilledTonalButton(
-                    onClick = { if (pc.link == PcLink.BLUETOOTH) pc.stop() else pc.startBluetooth() },
+                    onClick = {
+                        when {
+                            pc.link == PcLink.BLUETOOTH -> pc.stop()
+                            needsNearby -> askNearby.launch(arrayOf(NEARBY))
+                            else -> pc.startBluetooth()
+                        }
+                    },
                     enabled = pc.bluetoothSupported || pc.link == PcLink.BLUETOOTH,
                     modifier = Modifier.weight(1f),
                 ) { Text(if (pc.link == PcLink.BLUETOOTH) "Stop Bluetooth" else "Use Bluetooth") }
@@ -165,3 +184,6 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
         }
     }
 }
+
+/** Android 12's name for "be a Bluetooth device"; a runtime permission, so it must be asked for. */
+private const val NEARBY = "android.permission.BLUETOOTH_CONNECT"

@@ -123,9 +123,15 @@ class UsbHidSink private constructor(
         private const val TAG = "UsbHid"
         private const val SCRIPT = "hid/gadget.sh"
 
-        /** Whether this phone could do it at all: the kernel's HID gadget function and a root shell. */
-        fun supported(su: String?): Boolean =
-            su != null && File("/config/usb_gadget/g1").isDirectory
+        /**
+         * Whether it is worth offering: a root shell, which is all we can tell from here.
+         *
+         * The gadget itself is root's (`/config/usb_gadget/g1` is `drwxrwx--- root:root`, under
+         * configfs, which SELinux keeps apps out of), so whether this kernel has the HID function
+         * is for [open]'s script to find out and say. Testing it from the app only ever produced
+         * a greyed-out button with no explanation.
+         */
+        fun supported(su: String?): Boolean = su != null
 
         /**
          * Sets the gadget up and opens the endpoints. Returns null with the reason when it can't,

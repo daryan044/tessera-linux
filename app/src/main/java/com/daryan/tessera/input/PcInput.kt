@@ -102,6 +102,11 @@ class PcInput(private val context: Context, private val su: String?) {
         )
     }
 
+    /** Says something in the status line without changing what is connected. */
+    fun note(text: String) {
+        status = text
+    }
+
     /** Puts everything back: the gadget as Android had it, the profile unregistered. */
     fun stop() {
         (sink as? AutoCloseable)?.let { closeable -> runCatching { closeable.close() } }
