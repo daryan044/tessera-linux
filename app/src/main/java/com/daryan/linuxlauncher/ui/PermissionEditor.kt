@@ -119,7 +119,8 @@ fun PermissionEditor(
             Divider()
             ListSection(
                 title = "Devices",
-                empty = "No hardware access",
+                empty = if (backend.name == "PRoot") "No hardware access. In PRoot mode Android keeps apps from opening USB devices; use chroot mode for those"
+                else "No hardware access",
                 items = p.devices,
                 enforcement = pill(Capability.DEVICES, true),
                 addLabel = "Add a device",
@@ -149,13 +150,10 @@ fun PermissionEditor(
         )
     }
     if (addingDevice) {
-        TextDialog(
-            title = "Add a device",
-            label = "Device path",
-            initial = "/dev/",
-            hint = "For example /dev/dri/renderD128 for the GPU, or a USB device under /dev/bus/usb.",
+        DeviceDialog(
+            taken = p.devices,
             onDismiss = { addingDevice = false },
-            onDone = { path -> addingDevice = false; change(p.copy(devices = p.devices + path.trim())) },
+            onAdd = { path -> addingDevice = false; change(p.copy(devices = p.devices + path)) },
         )
     }
 }
@@ -271,6 +269,38 @@ private fun FolderDialog(taken: List<String>, onDismiss: () -> Unit, onAdd: (FsG
                 onClick = { onAdd(FsGrant(host.trimEnd('/').ifEmpty { "/" }, mountAt.trimEnd('/'), readOnly)) },
                 enabled = host.isNotBlank() && mountAt.isNotBlank() && mountAt.trimEnd('/') !in taken,
             ) { Text("Share") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Pick a plugged-in USB device or the GPU, or type a device path. */
+@Composable
+private fun DeviceDialog(taken: List<String>, onDismiss: () -> Unit, onAdd: (String) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val devices = remember { com.daryan.linuxlauncher.container.HostDevices.list(context).filterNot { it.path in taken } }
+    var path by remember { mutableStateOf("/dev/") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add a device") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (devices.isEmpty()) {
+                    Text("No USB devices plugged in.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                devices.forEach { d ->
+                    Surface(onClick = { onAdd(d.path) }, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(d.label, style = MaterialTheme.typography.titleSmall)
+                            Text(d.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                OutlinedTextField(path, { path = it }, label = { Text("Or a device path") }, singleLine = true, modifier = Modifier.padding(top = 8.dp))
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onAdd(path.trim()) }, enabled = path.trim().length > 5 && path.trim() !in taken) { Text("Add path") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

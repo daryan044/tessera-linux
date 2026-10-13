@@ -92,8 +92,14 @@ else
   echo "user:x:$U:" >> "$R/etc/group"
 fi
 [ ! -f "$R/etc/shadow" ] || grep -q '^user:' "$R/etc/shadow" || echo 'user:!:19000::::::' >> "$R/etc/shadow"
-# Supplementary groups: Android's network groups when network is granted, none otherwise.
-if [ -n "$NET_GROUPS" ]; then GROUP_ARG="--groups=$NET_GROUPS"; else GROUP_ARG=--clear-groups; fi
+# Supplementary groups: Android's network groups when network is granted, and the group of
+# each granted device (USB nodes belong to root:usb, 0660), so the app can open just those.
+GROUPS_LIST=$NET_GROUPS
+DEV_GROUPS=$(printf '%s\n' "$DEVICES" | while IFS= read -r d; do
+  [ -n "$d" ] && [ -e "$d" ] && stat -c %g "$d"
+done | sort -u | tr '\n' ',' | sed 's/,$//')
+[ -n "$DEV_GROUPS" ] && GROUPS_LIST=${GROUPS_LIST:+$GROUPS_LIST,}$DEV_GROUPS
+if [ -n "$GROUPS_LIST" ]; then GROUP_ARG="--groups=$GROUPS_LIST"; else GROUP_ARG=--clear-groups; fi
 # setpriv is in util-linux (essential on Debian). --no-new-privs keeps setuid binaries inert.
 exec chroot "$R" $SETSID /usr/bin/setpriv --reuid="$U" --regid="$U" \
   "$GROUP_ARG" --no-new-privs --inh-caps=-all \
