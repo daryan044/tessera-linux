@@ -131,6 +131,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var editingShortcut by remember { mutableStateOf<Shortcut?>(null) }
     var graphicsApp by remember { mutableStateOf<PermissionManifest?>(null) }
     var execApp by remember { mutableStateOf<PermissionManifest?>(null) }
+    var showTrackpad by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     val queue by vm.queue.collectAsStateWithLifecycle()
     val catalog by vm.catalog.collectAsStateWithLifecycle()
@@ -189,6 +190,12 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         vm.launchRequests.value = null
         val app = apps.firstOrNull { it.id == id }
         if (app != null) startApp(app) else snackbar.showSnackbar("That app isn't installed anymore")
+    }
+
+    // A screen of its own, like the trackpad a cast gets: it drives a PC, not anything in here.
+    if (showTrackpad) {
+        PcTrackpadScreen(su = status?.su, onClose = { showTrackpad = false })
+        return
     }
 
     val hazeState = rememberHazeState()
@@ -322,6 +329,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     onToggleFavorite = { vm.tabStore.toggleFavorite(it.id) },
                     onEditShortcut = { app -> vm.shortcuts.value.firstOrNull { it.id == Shortcut.idOf(app) }?.let { editingShortcut = it } },
                     onNewShortcut = { editingShortcut = Shortcut(id = "", name = "", command = "") },
+                    onTrackpad = { showTrackpad = true },
                     onUninstall = { app ->
                         val shortcut = vm.shortcuts.value.firstOrNull { Shortcut.isShortcut(app) && it.id == Shortcut.idOf(app) }
                         if (shortcut != null) {

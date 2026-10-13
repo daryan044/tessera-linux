@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import com.daryan.tessera.CastState
 import com.daryan.tessera.MouseButton
 import com.daryan.tessera.X11Actions
+import com.daryan.tessera.input.InputSink
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.max
@@ -95,28 +96,8 @@ private fun frameClock() = System.nanoTime() / 1_000_000
  */
 @Composable
 fun TrackpadScreen(cast: CastState, actions: X11Actions) {
-    val haptics = LocalHapticFeedback.current
-    val density = LocalDensity.current
     val colors = MaterialTheme.colorScheme
     BackHandler { actions.stopCast() }
-
-    // Visual state, shared between the gesture handler and the drawing.
-    val fingers = remember { mutableStateMapOf<PointerId, Offset>() }
-    val trails = remember { mutableStateListOf<Trail>() }
-    val ripples = remember { mutableStateListOf<Ripple>() }
-    var now by remember { mutableLongStateOf(0L) }
-    var dragging by remember { mutableStateOf(false) }
-    // While anything is moving or fading, redraw every frame.
-    val animating = fingers.isNotEmpty() || trails.isNotEmpty() || ripples.isNotEmpty()
-    LaunchedEffect(animating) {
-        while (animating) {
-            withFrameMillis { t ->
-                now = t
-                trails.removeAll { t - it.time > TRAIL_MS }
-                ripples.removeAll { t - it.start > RIPPLE_MS }
-            }
-        }
-    }
 
     // The app's windows, to pick which one the cast shows; looked at again now and then.
     var windows by remember { mutableStateOf(actions.windows()) }
@@ -157,145 +138,18 @@ fun TrackpadScreen(cast: CastState, actions: X11Actions) {
             }
             Spacer(Modifier.height(12.dp))
 
-            // The pad.
-            Box(
-                Modifier.weight(1f).fillMaxWidth()
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(colors.surfaceContainer)
-                    .pointerInput(Unit) {
-                        val slop = viewConfiguration.touchSlop
-                        var lastTapUp = 0L
-                        var lastTapAt = Offset.Zero
-                        // Movement smaller than a pixel adds up instead of being lost.
-                        var restX = 0f
-                        var restY = 0f
-                        var scrollX = 0f
-                        var scrollY = 0f
-                        fun moveBy(d: Offset) {
-                            val dp = d / density.density
-                            val speed = dp.getDistance()
-                            // Slow and precise when moving slowly, quicker the faster the finger.
-                            val gain = 1.4f * (1f + ((speed - 1.5f) / 6f).coerceIn(0f, 2.5f))
-                            restX += dp.x * gain
-                            restY += dp.y * gain
-                            val sx = restX.toInt()
-                            val sy = restY.toInt()
-                            if (sx != 0 || sy != 0) {
-                                actions.move(sx.toFloat(), sy.toFloat())
-                                restX -= sx
-                                restY -= sy
-                            }
-                        }
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            val start = down.uptimeMillis
-                            var most = 1
-                            var travel = 0f
-                            // A tap, then straight away a finger down again: hold the button and drag.
-                            val drag = start - lastTapUp < DOUBLE_TAP_MS && (down.position - lastTapAt).getDistance() < 48.dp.toPx()
-                            if (drag) {
-                                actions.press(MouseButton.LEFT, true)
-                                dragging = true
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            }
-                            fingers[down.id] = down.position
-                            var last = down.position
-                            var up = start
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val pressed = event.changes.filter { it.pressed }
-                                most = max(most, pressed.size)
-                                event.changes.forEach { c ->
-                                    if (c.pressed) fingers[c.id] = c.position else fingers.remove(c.id)
-                                    if (c.pressed && (c.position - (trails.lastOrNull()?.at ?: Offset.Infinite)).getDistance() > 10.dp.toPx()) {
-                                        trails += Trail(c.position, frameClock())
-                                    }
-                                }
-                                if (pressed.size == 1 && most == 1) {
-                                    val c = pressed[0]
-                                    val d = c.position - c.previousPosition
-                                    travel += d.getDistance()
-                                    if (travel > slop || drag) moveBy(d)
-                                    last = c.position
-                                } else if (pressed.size >= 2) {
-                                    // Two fingers: the average of their movement scrolls, the way
-                                    // content follows the fingers on a phone.
-                                    val d = pressed.map { it.position - it.previousPosition }
-                                        .fold(Offset.Zero) { a, b -> a + b } / pressed.size.toFloat()
-                                    travel += d.getDistance()
-                                    if (travel > slop) {
-                                        scrollX -= d.x / density.density * 2f
-                                        scrollY -= d.y / density.density * 2f
-                                        if (abs(scrollX) >= 1f || abs(scrollY) >= 1f) {
-                                            actions.scroll(scrollX, scrollY)
-                                            scrollX = 0f
-                                            scrollY = 0f
-                                        }
-                                    }
-                                    last = pressed.map { it.position }.fold(Offset.Zero) { a, b -> a + b } / pressed.size.toFloat()
-                                }
-                                event.changes.forEach { it.consume() }
-                                if (pressed.isEmpty()) {
-                                    up = event.changes.first().uptimeMillis
-                                    break
-                                }
-                            }
-                            fingers.clear()
-                            if (drag) {
-                                actions.press(MouseButton.LEFT, false)
-                                dragging = false
-                            } else if (travel < slop * 1.5f && up - start < TAP_MS || travel < slop && most > 1) {
-                                val button = when (most) {
-                                    1 -> MouseButton.LEFT
-                                    2 -> MouseButton.RIGHT
-                                    else -> MouseButton.MIDDLE
-                                }
-                                actions.click(button)
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                ripples += Ripple(last, frameClock(), button)
-                                if (button == MouseButton.LEFT) {
-                                    lastTapUp = up
-                                    lastTapAt = last
-                                }
-                            }
-                        }
-                    },
-            ) {
-                DotField(fingers.values.toList(), trails, ripples, now, dragging)
-                if (!animating) {
-                    Text(
-                        "Move with one finger · tap to click\nTap, then hold to drag · two fingers scroll or right-click",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(20.dp),
-                    )
-                }
-            }
-
+            TrackpadSurface(actions, Modifier.weight(1f).fillMaxWidth())
             Spacer(Modifier.height(12.dp))
-            // Keys a desktop app wants that a phone keyboard doesn't have.
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 2.dp)) {
-                items(X11Actions.SHORTCUTS, key = { it.first }) { (label, codes) ->
-                    AssistChip(onClick = { actions.keys(*codes) }, label = { Text(label) })
-                }
-            }
+            TrackpadKeys(actions)
             Spacer(Modifier.height(8.dp))
-            // The buttons under a laptop's trackpad, with the keyboard between them.
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PadButton("Left", MouseButton.LEFT, actions, RoundedCornerShape(topStart = 12.dp, bottomStart = 28.dp, topEnd = 12.dp, bottomEnd = 12.dp), Modifier.weight(1f))
-                FilledTonalIconButton(onClick = actions::toggleKeyboard, modifier = Modifier.size(64.dp)) {
-                    Icon(LauncherIcons.Keyboard, "Keyboard")
-                }
-                PadButton("Right", MouseButton.RIGHT, actions, RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp, topEnd = 12.dp, bottomEnd = 28.dp), Modifier.weight(1f))
-            }
+            TrackpadButtons(actions, onKeyboard = actions::toggleKeyboard)
         }
     }
 }
 
 /** A mouse button you can hold: down while the finger is, so holding it and moving drags. */
 @Composable
-private fun PadButton(label: String, button: MouseButton, actions: X11Actions, shape: RoundedCornerShape, modifier: Modifier) {
+private fun PadButton(label: String, button: MouseButton, sink: InputSink, shape: RoundedCornerShape, modifier: Modifier) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val haptics = LocalHapticFeedback.current
@@ -304,9 +158,9 @@ private fun PadButton(label: String, button: MouseButton, actions: X11Actions, s
             when (it) {
                 is PressInteraction.Press -> {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    actions.press(button, true)
+                    sink.press(button, true)
                 }
-                is PressInteraction.Release, is PressInteraction.Cancel -> actions.press(button, false)
+                is PressInteraction.Release, is PressInteraction.Cancel -> sink.press(button, false)
             }
         }
     }
@@ -384,5 +238,174 @@ private fun DotField(fingers: List<Offset>, trails: List<Trail>, ripples: List<R
             drawCircle(accent.copy(alpha = 0.16f), radius = 36.dp.toPx(), center = f)
             drawCircle(accent.copy(alpha = 0.9f), radius = 7.dp.toPx(), center = f)
         }
+    }
+}
+
+
+/**
+ * The pad itself, and the only part that reads fingers: one finger moves the pointer and taps
+ * to click, a tap and then a hold drags, two fingers scroll or tap a right click, three tap a
+ * middle click. It drives any [InputSink], so the same gestures work on a cast app's X server
+ * or on a PC the phone is pretending to be a mouse for.
+ */
+@Composable
+fun TrackpadSurface(sink: InputSink, modifier: Modifier = Modifier) {
+    val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val colors = MaterialTheme.colorScheme
+
+    // Visual state, shared between the gesture handler and the drawing.
+    val fingers = remember { mutableStateMapOf<PointerId, Offset>() }
+    val trails = remember { mutableStateListOf<Trail>() }
+    val ripples = remember { mutableStateListOf<Ripple>() }
+    var now by remember { mutableLongStateOf(0L) }
+    var dragging by remember { mutableStateOf(false) }
+    // While anything is moving or fading, redraw every frame.
+    val animating = fingers.isNotEmpty() || trails.isNotEmpty() || ripples.isNotEmpty()
+    LaunchedEffect(animating) {
+        while (animating) {
+            withFrameMillis { t ->
+                now = t
+                trails.removeAll { t - it.time > TRAIL_MS }
+                ripples.removeAll { t - it.start > RIPPLE_MS }
+            }
+        }
+    }
+
+    Box(
+        modifier
+            .clip(RoundedCornerShape(32.dp))
+            .background(colors.surfaceContainer)
+            .pointerInput(Unit) {
+                val slop = viewConfiguration.touchSlop
+                var lastTapUp = 0L
+                var lastTapAt = Offset.Zero
+                // Movement smaller than a pixel adds up instead of being lost.
+                var restX = 0f
+                var restY = 0f
+                var scrollX = 0f
+                var scrollY = 0f
+                fun moveBy(d: Offset) {
+                    val dp = d / density.density
+                    val speed = dp.getDistance()
+                    // Slow and precise when moving slowly, quicker the faster the finger.
+                    val gain = 1.4f * (1f + ((speed - 1.5f) / 6f).coerceIn(0f, 2.5f))
+                    restX += dp.x * gain
+                    restY += dp.y * gain
+                    val sx = restX.toInt()
+                    val sy = restY.toInt()
+                    if (sx != 0 || sy != 0) {
+                        sink.move(sx.toFloat(), sy.toFloat())
+                        restX -= sx
+                        restY -= sy
+                    }
+                }
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val start = down.uptimeMillis
+                    var most = 1
+                    var travel = 0f
+                    // A tap, then straight away a finger down again: hold the button and drag.
+                    val drag = start - lastTapUp < DOUBLE_TAP_MS && (down.position - lastTapAt).getDistance() < 48.dp.toPx()
+                    if (drag) {
+                        sink.press(MouseButton.LEFT, true)
+                        dragging = true
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                    fingers[down.id] = down.position
+                    var last = down.position
+                    var up = start
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val pressed = event.changes.filter { it.pressed }
+                        most = max(most, pressed.size)
+                        event.changes.forEach { c ->
+                            if (c.pressed) fingers[c.id] = c.position else fingers.remove(c.id)
+                            if (c.pressed && (c.position - (trails.lastOrNull()?.at ?: Offset.Infinite)).getDistance() > 10.dp.toPx()) {
+                                trails += Trail(c.position, frameClock())
+                            }
+                        }
+                        if (pressed.size == 1 && most == 1) {
+                            val c = pressed[0]
+                            val d = c.position - c.previousPosition
+                            travel += d.getDistance()
+                            if (travel > slop || drag) moveBy(d)
+                            last = c.position
+                        } else if (pressed.size >= 2) {
+                            // Two fingers: the average of their movement scrolls, the way
+                            // content follows the fingers on a phone.
+                            val d = pressed.map { it.position - it.previousPosition }
+                                .fold(Offset.Zero) { a, b -> a + b } / pressed.size.toFloat()
+                            travel += d.getDistance()
+                            if (travel > slop) {
+                                scrollX -= d.x / density.density * 2f
+                                scrollY -= d.y / density.density * 2f
+                                if (abs(scrollX) >= 1f || abs(scrollY) >= 1f) {
+                                    sink.scroll(scrollX, scrollY)
+                                    scrollX = 0f
+                                    scrollY = 0f
+                                }
+                            }
+                            last = pressed.map { it.position }.fold(Offset.Zero) { a, b -> a + b } / pressed.size.toFloat()
+                        }
+                        event.changes.forEach { it.consume() }
+                        if (pressed.isEmpty()) {
+                            up = event.changes.first().uptimeMillis
+                            break
+                        }
+                    }
+                    fingers.clear()
+                    if (drag) {
+                        sink.press(MouseButton.LEFT, false)
+                        dragging = false
+                    } else if (travel < slop * 1.5f && up - start < TAP_MS || travel < slop && most > 1) {
+                        val button = when (most) {
+                            1 -> MouseButton.LEFT
+                            2 -> MouseButton.RIGHT
+                            else -> MouseButton.MIDDLE
+                        }
+                        sink.click(button)
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        ripples += Ripple(last, frameClock(), button)
+                        if (button == MouseButton.LEFT) {
+                            lastTapUp = up
+                            lastTapAt = last
+                        }
+                    }
+                }
+            },
+    ) {
+        DotField(fingers.values.toList(), trails, ripples, now, dragging)
+        if (!animating) {
+            Text(
+                "Move with one finger · tap to click\nTap, then hold to drag · two fingers scroll or right-click",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(20.dp),
+            )
+        }
+    }
+}
+
+/** Keys a desktop app wants that a phone keyboard doesn't have. */
+@Composable
+fun TrackpadKeys(sink: InputSink) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 2.dp)) {
+        items(X11Actions.SHORTCUTS, key = { it.first }) { (label, codes) ->
+            AssistChip(onClick = { sink.keys(*codes) }, label = { Text(label) })
+        }
+    }
+}
+
+/** The buttons under a laptop's trackpad, with the keyboard between them. */
+@Composable
+fun TrackpadButtons(sink: InputSink, onKeyboard: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        PadButton("Left", MouseButton.LEFT, sink, RoundedCornerShape(topStart = 12.dp, bottomStart = 28.dp, topEnd = 12.dp, bottomEnd = 12.dp), Modifier.weight(1f))
+        FilledTonalIconButton(onClick = onKeyboard, modifier = Modifier.size(64.dp)) {
+            Icon(LauncherIcons.Keyboard, "Keyboard")
+        }
+        PadButton("Right", MouseButton.RIGHT, sink, RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp, topEnd = 12.dp, bottomEnd = 28.dp), Modifier.weight(1f))
     }
 }
