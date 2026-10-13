@@ -105,7 +105,16 @@ jobs:
           TESSERA_KEYSTORE_PASSWORD: ${{ secrets.TESSERA_KEYSTORE_PASSWORD }}
           TESSERA_KEY_ALIAS: ${{ secrets.TESSERA_KEY_ALIAS }}
           TESSERA_KEY_PASSWORD: ${{ secrets.TESSERA_KEY_PASSWORD }}
-        run: ./gradlew --console=plain assembleRelease
+        # The tests too, as the README's build line does: assembleRelease alone never compiles
+        # them, so a broken test could sit in the tree behind a green build.
+        run: ./gradlew --console=plain assembleRelease testDebugUnitTest
+
+      - name: Test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.ref_name }}
+          path: app/build/reports/tests/
 
       - name: Name the APK
         run: |
