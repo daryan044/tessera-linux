@@ -76,7 +76,7 @@ class UsbHidSink private constructor(
         runCatching { mouse.send(HidReports.BUTTONS_UP) }
         mouse.close()
         keyboard.close()
-        runCatching { run(su, "sh ${script.absolutePath} down") }
+        runCatching { Log.i(TAG, "gadget.sh down: ${run(su, "sh ${script.absolutePath} down")}") }
     }
 
     /**

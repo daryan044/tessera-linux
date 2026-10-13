@@ -97,6 +97,13 @@ case "$ACTION" in
     # The functions themselves only go once nothing links them.
     rmdir "$MOUSE_FN" 2>/dev/null
     rmdir "$KBD_FN" 2>/dev/null
+    # Check, rather than take it on trust: this said "stopped" once while leaving both functions
+    # linked, and a teardown that only claims to have worked leaves the phone pretending to be a
+    # mouse to everything it is plugged into until it is rebooted.
+    if [ -e "$CFG/hid.0" ] || [ -e "$CFG/hid.1" ]; then
+      echo "the HID functions would not come off; rebooting clears them"
+      exit 1
+    fi
     echo "stopped"
     ;;
 
