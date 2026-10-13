@@ -51,6 +51,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -462,7 +463,9 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     }
 
     // Looked up by id so the sheet follows permission changes made in it.
-    apps.firstOrNull { it.id == openApp?.id }?.let { app ->
+    // Keyed by app: opening another app while one sheet is still sliding away gets a sheet of
+    // its own, rather than taking over the closing one (whose end would then close it too).
+    apps.firstOrNull { it.id == openApp?.id }?.let { app -> key(app.id) {
         AppSheet(
             app = app,
             backend = vm.backend(mode) ?: vm.backend(BackendMode.PROOT)!!,
@@ -489,14 +492,15 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     scope.launch { snackbar.showSnackbar("${app.name} added to installs") }
                 }
             },
-            onDismiss = { openApp = null },
+            // Only if it's still this app's sheet that's open.
+            onDismiss = { if (openApp?.id == app.id) openApp = null },
             permissionsChanged = app.id in permissionOverrides,
             onPermissions = { vm.setPermissions(app, it) },
             onResetPermissions = { vm.resetPermissions(app.id) },
             gpu = remember(app.id, gpuApps, gpuEnabled) { vm.gpuFor(app) },
             onGpu = { vm.setGpuFor(app, it) },
         )
-    }
+    } }
 
     if (addingTab) {
         var name by remember { mutableStateOf("") }
