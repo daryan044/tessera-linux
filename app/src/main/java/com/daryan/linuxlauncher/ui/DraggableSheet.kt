@@ -24,9 +24,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import kotlinx.coroutines.flow.first
@@ -178,6 +180,8 @@ fun DraggableSheet(
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .nestedScroll(connection),
         ) {
+            // What a Surface would have set: text and icons in the sheet's on-colour.
+            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
             Column(Modifier.onGloballyPositioned { sheetContent = it }.verticalScroll(scroll).navigationBarsPadding()) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
                     Box(Modifier.size(width = 32.dp, height = 4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)))
@@ -191,6 +195,7 @@ fun DraggableSheet(
                         }
                     },
                 )
+            }
             }
         }
     }
