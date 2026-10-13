@@ -98,9 +98,12 @@ class BtHidSink private constructor(
         private const val TAG = "BtHid"
 
         /** Whether this phone can be a Bluetooth keyboard at all. */
+        @SuppressLint("MissingPermission")
         fun supported(context: Context): Boolean =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
-                context.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled == true
+                runCatching {
+                    context.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled == true
+                }.getOrDefault(false)
 
         /**
          * Registers as a HID device and calls [onReady] once Android hands us the profile, then
@@ -110,6 +113,20 @@ class BtHidSink private constructor(
         @RequiresApi(Build.VERSION_CODES.P)
         @SuppressLint("MissingPermission")
         fun open(
+            context: Context,
+            onReady: (BtHidSink) -> Unit,
+            onHostChanged: (BluetoothDevice?) -> Unit,
+            onFailed: (String) -> Unit,
+        ) {
+            // Every call below can throw SecurityException if the phone withholds a Bluetooth
+            // permission, and a missing permission is something to explain, not to crash on.
+            runCatching { register(context, onReady, onHostChanged, onFailed) }
+                .onFailure { onFailed(it.message ?: "Bluetooth refused us: ${it::class.java.simpleName}") }
+        }
+
+        @RequiresApi(Build.VERSION_CODES.P)
+        @SuppressLint("MissingPermission")
+        private fun register(
             context: Context,
             onReady: (BtHidSink) -> Unit,
             onHostChanged: (BluetoothDevice?) -> Unit,
