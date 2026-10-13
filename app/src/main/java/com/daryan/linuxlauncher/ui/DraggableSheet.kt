@@ -83,26 +83,32 @@ fun DraggableSheet(
     val expanded = 0f
     fun peek() = (sheetHeight - peekBottom).coerceAtLeast(0f)
     fun hidden() = sheetHeight
-    val flick = with(density) { 600.dp.toPx() }
-    var closing by remember { mutableFloatStateOf(0f) }
+    // A release past this many px from where the sheet rested, or this fast, goes on to the
+    // next stop that way; anything less springs back.
+    val step = with(density) { 40.dp.toPx() }
+    val flick = with(density) { 300.dp.toPx() }
+    var rest by remember { mutableFloatStateOf(0f) }
+    var closing by remember { mutableStateOf(false) }
 
     fun close() = scope.launch {
-        if (closing > 0f) return@launch
-        closing = 1f
+        if (closing) return@launch
+        // Touches pass through from here on, while it slides away.
+        closing = true
         offset.animateTo(hidden(), motion.fastSpatialSpec())
         onDismissRequest()
     }
 
     fun settle(velocity: Float) = scope.launch {
         val anchors = listOf(expanded, peek(), hidden()).distinct().sorted()
-        val now = offset.value
+        val moved = offset.value - rest
         val target = when {
-            velocity < -flick -> anchors.lastOrNull { it < now - 1f } ?: expanded
-            velocity > flick -> anchors.firstOrNull { it > now + 1f } ?: hidden()
-            else -> anchors.minBy { abs(it - now) }
+            velocity < -flick || moved < -step -> anchors.lastOrNull { it < rest - 1f } ?: expanded
+            velocity > flick || moved > step -> anchors.firstOrNull { it > rest + 1f } ?: hidden()
+            else -> anchors.minBy { abs(it - rest) }
         }
-        if (target >= hidden() && hidden() > 0f) close()
-        else offset.animateTo(target, motion.defaultSpatialSpec(), initialVelocity = velocity)
+        if (target >= hidden() && hidden() > 0f) return@launch close().join()
+        rest = target
+        offset.animateTo(target, motion.defaultSpatialSpec(), initialVelocity = velocity)
     }
 
     val connection = remember {
@@ -125,15 +131,11 @@ fun DraggableSheet(
                 return Offset(0f, used)
             }
 
+            // Once per release: the sheet settles here, or (fully open) the content flings.
             override suspend fun onPreFling(available: Velocity): Velocity {
-                if (offset.value <= expanded) return Velocity.Zero
+                if (offset.value <= expanded && rest <= expanded) return Velocity.Zero
                 settle(available.y)
                 return available
-            }
-
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                if (offset.value > expanded) settle(available.y)
-                return Velocity.Zero
             }
         }
     }
@@ -142,6 +144,7 @@ fun DraggableSheet(
     LaunchedEffect(Unit) {
         snapshotFlow { sheetHeight > 0f && peekBottom > 0f }.first { it }
         offset.snapTo(hidden())
+        rest = peek()
         offset.animateTo(peek(), motion.defaultSpatialSpec())
     }
     BackHandler { close() }
@@ -156,20 +159,23 @@ fun DraggableSheet(
             Modifier.fillMaxSize()
                 .graphicsLayer { alpha = shown }
                 .background(Color.Black.copy(alpha = 0.32f))
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { close() },
+                .then(
+                    if (closing) Modifier
+                    else Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { close() },
+                ),
         )
 
-        Surface(
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            tonalElevation = 1.dp,
-            modifier = Modifier
+        // A plain Box, not a Surface: Surface swallows touches even when it isn't clickable,
+        // which would keep blocking the grid while the sheet slides away.
+        Box(
+            Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .heightIn(max = maxHeight)
                 .onSizeChanged { sheetHeight = it.height.toFloat() }
-
                 .graphicsLayer { translationY = if (offset.value == Float.MAX_VALUE) sheetHeight.coerceAtLeast(10_000f) else offset.value }
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .nestedScroll(connection),
         ) {
             Column(Modifier.onGloballyPositioned { sheetContent = it }.verticalScroll(scroll).navigationBarsPadding()) {
