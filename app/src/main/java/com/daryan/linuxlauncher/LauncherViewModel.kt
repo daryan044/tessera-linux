@@ -160,8 +160,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     /** [app]'s GPU acceleration, or null when it can't have any. */
     fun gpuFor(app: PermissionManifest): Boolean? =
-        // PRoot only for now: a chroot's minimal /dev doesn't carry the GPU device.
-        if (app.gui && gpuAvailable() && _mode.value == BackendMode.PROOT) sessions.gpuFor(app.id) else null
+        if (app.gui && gpuAvailable()) sessions.gpuFor(app.id) else null
 
     fun setGpuFor(app: PermissionManifest, on: Boolean) {
         sessions.setGpuFor(app.id, on)
@@ -236,6 +235,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             // Unpack the GPU driver ahead of launches (after Linux is installed, or an app update).
             if (s.prootRootfs && GpuDriver.available(getApplication())) {
                 withContext(Dispatchers.IO) { GpuDriver.install(getApplication(), paths.prootRootfs) }
+            }
+            if (_mode.value == BackendMode.CHROOT && s.su != null && s.chrootRootfs == true && GpuDriver.available(getApplication())) {
+                withContext(Dispatchers.IO) { GpuDriver.installAsRoot(getApplication(), paths.chrootRootfs, s.su) }
             }
             addMissingGuiHelpers()
             configStore(_status.value, _mode.value)?.let { container.registry.refreshInstalled(it) }

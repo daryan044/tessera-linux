@@ -20,7 +20,8 @@ object GpuDriver {
     const val GUEST_DIR = "/opt/linuxlauncher-gpu"
     private const val ASSET = "gpu/mesa-turnip.tgz"
     private const val VERSION_ASSET = "gpu/VERSION"
-    private const val KGSL = "/dev/kgsl-3d0"
+    /** Adreno's GPU device; world-readable and writable, so apps need no group for it. */
+    const val KGSL = "/dev/kgsl-3d0"
     private const val TAG = "GpuDriver"
 
     /**
@@ -73,6 +74,51 @@ object GpuDriver {
         marker.writeText(version)
         true
     }.onFailure { Log.w(TAG, "couldn't unpack the GPU driver", it) }.getOrDefault(false)
+
+    /** The driver version in the chroot system, as [installAsRoot] last found or left it. */
+    @Volatile private var chrootVersion: String? = null
+
+    /** Whether this build's driver is in the chroot system; known once [installAsRoot] ran. */
+    fun installedAsRoot(context: Context): Boolean = available(context) && runCatching {
+        context.assets.open(VERSION_ASSET).bufferedReader().use { it.readText().trim() } == chrootVersion
+    }.getOrDefault(false)
+
+    /**
+     * Unpacks the driver into the chroot system at [rootfs] through [su] (the app can't write
+     * there, or even look), unless that version is already there. Blocks; call off the main thread.
+     */
+    fun installAsRoot(context: Context, rootfs: File, su: String): Boolean = runCatching {
+        val version = context.assets.open(VERSION_ASSET).bufferedReader().use { it.readText().trim() }
+        val dir = "${rootfs.path}$GUEST_DIR"
+        if (runSu(su, "cat '$dir/.version' 2>/dev/null")?.trim() == version) {
+            chrootVersion = version
+            return true
+        }
+        val archive = File(context.cacheDir, "mesa-turnip.tgz")
+        context.assets.open(ASSET).use { input -> archive.outputStream().use { input.copyTo(it) } }
+        try {
+            // Magisk's busybox tar when there is one (toybox's lacks -z on older Android).
+            val script = """
+                tar=tar
+                for bb in /data/adb/magisk/busybox /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox; do
+                  [ -x "${'$'}bb" ] && tar="${'$'}bb tar" && break
+                done
+                rm -rf '$dir' && ${'$'}tar -xzf '${archive.path}' -C '${rootfs.path}' && echo '$version' > '$dir/.version' && echo ok
+            """.trimIndent()
+            check(runSu(su, script)?.lines()?.lastOrNull { it.isNotBlank() } == "ok") { "unpacking failed" }
+        } finally {
+            archive.delete()
+        }
+        chrootVersion = version
+        true
+    }.onFailure { Log.w(TAG, "couldn't unpack the GPU driver as root", it) }.getOrDefault(false)
+
+    private fun runSu(su: String, script: String): String? {
+        val p = ProcessBuilder(su, "-c", script).redirectErrorStream(true).start()
+        val out = p.inputStream.bufferedReader().readText()
+        if (!p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)) { p.destroy(); return null }
+        return out.takeIf { p.exitValue() == 0 }
+    }
 }
 
 /**

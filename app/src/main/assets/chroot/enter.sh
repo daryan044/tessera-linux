@@ -3,7 +3,7 @@
 # Runs as root inside a fresh mount namespace (and network namespace when network is denied),
 # started by ChrootBackend via:  su -c 'export ...; exec unshare -m [-n] sh enter.sh'
 #
-# Inputs (env): R, BINDS, DEVICES, X11_DIR, RUN_AS_ROOT, APP_UID, NET_GROUPS, GUEST_ENV, CMD
+# Inputs (env): R, BINDS, DEVICES, GPU_DEVICE, X11_DIR, RUN_AS_ROOT, APP_UID, NET_GROUPS, GUEST_ENV, CMD
 # Derived from termux-linux-layer/linux. Mounts made here vanish with the namespace; never
 # mount or unmount in the global namespace, Android's mounts are shared and changes propagate.
 set -e
@@ -38,6 +38,12 @@ printf '%s\n' "$DEVICES" | while IFS= read -r d; do
   [ -n "$d" ] && [ -e "$d" ] || continue
   mkdir -p "$R$(dirname "$d")"; touch "$R$d"; mount --bind "$d" "$R$d"
 done
+
+# The GPU for hardware graphics. Unlike DEVICES, its group isn't added below: it's world-usable,
+# and its group is Android's "system".
+if [ -n "$GPU_DEVICE" ] && [ -e "$GPU_DEVICE" ]; then
+  touch "$R$GPU_DEVICE"; mount --bind "$GPU_DEVICE" "$R$GPU_DEVICE"
+fi
 
 printf '%s\n' "$BINDS" | while IFS=: read -r src dst mode; do
   [ -n "$src" ] && [ -e "$src" ] || continue

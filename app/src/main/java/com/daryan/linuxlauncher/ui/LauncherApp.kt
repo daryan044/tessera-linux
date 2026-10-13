@@ -104,8 +104,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val permissionOverrides by vm.permissionOverrides.collectAsStateWithLifecycle()
     val gpuEnabled by vm.gpuEnabled.collectAsStateWithLifecycle()
     val gpuApps by vm.gpuApps.collectAsStateWithLifecycle()
-    // The GPU driver works in PRoot mode on phones that have it (see LauncherViewModel.gpuFor).
-    val gpuGraphics = remember(mode) { vm.gpuAvailable() && mode == BackendMode.PROOT }
+    // Phones that have the GPU driver (see LauncherViewModel.gpuFor).
+    val gpuGraphics = remember { vm.gpuAvailable() }
     val favorites by vm.tabStore.favorites.collectAsStateWithLifecycle()
     val tabs = remember(apps, customTabs, pinned, favorites) { vm.tabs(apps, customTabs, pinned, favorites) }
 

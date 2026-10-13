@@ -128,9 +128,12 @@ class SessionManager(
     @Throws(IOException::class)
     fun launch(app: PermissionManifest, backend: ContainerBackend): RunningSession {
         val n = nextId.getAndIncrement()
-        // Hardware graphics for windowed apps, when it's on and can be set up (PRoot only: a
-        // chroot's /dev doesn't carry the GPU device yet).
-        val gpu = app.gui && backend is ProotBackend && gpuFor(app.id) && GpuDriver.installed(context, paths.prootRootfs)
+        // Hardware graphics for windowed apps, when it's on and the driver is in that system.
+        val gpu = app.gui && gpuFor(app.id) && when (backend) {
+            is ProotBackend -> GpuDriver.installed(context, paths.prootRootfs)
+            is ChrootBackend -> GpuDriver.installedAsRoot(context)
+            else -> false
+        }
         val session = Session(
             id = "s$n",
             display = if (app.permissions.display) n else null,
