@@ -123,6 +123,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var uninstallApp by remember { mutableStateOf<PermissionManifest?>(null) }
     var editingShortcut by remember { mutableStateOf<Shortcut?>(null) }
     var graphicsApp by remember { mutableStateOf<PermissionManifest?>(null) }
+    var execApp by remember { mutableStateOf<PermissionManifest?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     val queue by vm.queue.collectAsStateWithLifecycle()
     val catalog by vm.catalog.collectAsStateWithLifecycle()
@@ -329,6 +330,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                             uninstallApp = app
                         }
                     },
+                    onEditExec = { execApp = it },
                     graphics = gpuGraphics,
                     onGraphics = { graphicsApp = it },
                 )
@@ -440,6 +442,18 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             fixes = fixes,
             onFix = { fix, on -> vm.setGpuFix(app, fix, on) },
             onDismiss = { graphicsApp = null },
+        )
+    }
+
+    execApp?.let { app ->
+        ExecDialog(
+            appName = app.name,
+            // From the apps list, so it is already the user's command where they changed it.
+            exec = app.exec,
+            default = vm.defaultExec(app.id) ?: app.exec,
+            onSave = { vm.setExec(app, it) },
+            onReset = { vm.resetExec(app.id) },
+            onDismiss = { execApp = null },
         )
     }
 

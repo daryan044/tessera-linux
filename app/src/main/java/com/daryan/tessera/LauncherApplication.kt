@@ -137,6 +137,8 @@ class LauncherContainer(private val app: Application) {
     val systemApps = com.daryan.tessera.store.SystemApps()
     /** Permissions the user changed in an app's sheet; applied over its manifest. */
     val permissions = com.daryan.tessera.container.PermissionOverrides(java.io.File(app.filesDir, "permissions.json"))
+    /** Commands the user changed from an app's long-press menu; applied over its manifest. */
+    val exec = com.daryan.tessera.container.ExecOverrides(java.io.File(app.filesDir, "exec.json"))
     /** Whether this run already looked for GUI helper packages missing from the container. */
     /** The modes (each has its own system) already checked for missing GUI helpers this run. */
     val guiHelpersChecked: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())

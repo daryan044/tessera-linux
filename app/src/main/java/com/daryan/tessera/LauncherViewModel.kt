@@ -117,12 +117,17 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteShortcut(app: PermissionManifest) {
         container.shortcuts.delete(Shortcut.idOf(app))
         container.permissions.reset(app.id)
+        container.exec.reset(app.id)
     }
 
-    /** Every app, with the permissions the user set where they changed any. */
+    /** [app] with the permissions and the command the user set, where they changed either. */
+    private fun withOverrides(app: PermissionManifest) = container.exec.apply(container.permissions.apply(app))
+
+    /** Every app, with the permissions and commands the user set where they changed any. */
     val apps: StateFlow<List<PermissionManifest>> =
-        combine(manifests, container.permissions.overrides) { list, _ -> list.map(container.permissions::apply) }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, bundled.map(container.permissions::apply))
+        combine(manifests, container.permissions.overrides, container.exec.overrides) { list, _, _ ->
+            list.map(::withOverrides)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, bundled.map(::withOverrides))
 
     /** The permissions [appId]'s manifest asks for, before any change by the user. */
     fun defaultPermissions(appId: String): Permissions? = manifests.value.firstOrNull { it.id == appId }?.permissions
@@ -134,6 +139,15 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun resetPermissions(appId: String) = container.permissions.reset(appId)
 
     val permissionOverrides: StateFlow<Map<String, Permissions>> = container.permissions.overrides
+
+    /** The command [appId]'s manifest asks for, before any change by the user. */
+    fun defaultExec(appId: String): List<String>? = manifests.value.firstOrNull { it.id == appId }?.exec
+
+    /** Changes [app]'s command from its next launch; returns what's wrong with it, if anything. */
+    fun setExec(app: PermissionManifest, exec: List<String>): List<String> =
+        container.exec.set(app, exec, defaultExec(app.id) ?: app.exec)
+
+    fun resetExec(appId: String) = container.exec.reset(appId)
 
     val catalog: StateFlow<CatalogState> = container.catalog.state
     val installedPackages: StateFlow<Set<String>?> = container.registry.installed
