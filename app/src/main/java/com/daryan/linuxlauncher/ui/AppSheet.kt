@@ -86,55 +86,9 @@ fun AppSheet(
     gpu: Boolean?,
     onGpu: (Boolean) -> Unit,
 ) {
-    // Opens compact, permissions folded; dragging up (or tapping Permissions) unfolds them and
-    // the sheet grows; dragging down closes it. Those drags are ours, watched without taking the
-    // touches: the sheet's own dragging is off, because in Material 1.5.0-beta01 a sheet that
-    // changes size during or after a drag keeps treating the next finger as that drag, and
-    // taps stop reaching its buttons (a second finger still gets through).
-    var unfolded by rememberSaveable(app.id) { mutableStateOf(false) }
-    val step = with(LocalDensity.current) { 48.dp.toPx() }
-    val sheetState = rememberBottomSheetState(
-        initialValue = SheetValue.Hidden,
-        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
-    )
-    val scope = rememberCoroutineScope()
-    val scroll = rememberScrollState()
-    fun close() {
-        scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
-    }
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        sheetGesturesEnabled = false,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
-        Column(
-            Modifier
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        var dy = 0f
-                        while (true) {
-                            val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
-                            dy += change.position.y - change.previousPosition.y
-                            if (!unfolded && dy < -step) {
-                                unfolded = true
-                                break
-                            }
-                            // Down from the top of the content: close, as the sheet itself would.
-                            if (dy > 2 * step && scroll.value == 0) {
-                                close()
-                                break
-                            }
-                            if (!change.pressed) break
-                        }
-                    }
-                }
-                .verticalScroll(scroll)
-                .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 24.dp),
-        ) {
+    // Follows the finger: opens to the Permissions heading, drags up for the rest, down to close.
+    DraggableSheet(onDismissRequest = onDismiss) { peek ->
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val (container, onContainer) = appColors(app)
                 Box(
@@ -202,32 +156,17 @@ fun AppSheet(
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
-            Surface(
-                onClick = { unfolded = !unfolded },
-                shape = MaterialTheme.shapes.large,
-                color = Color.Transparent,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Permissions", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            if (unfolded) "What ${backend.name} mode can hold this app to"
-                            else "Drag up or tap to see and change them",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Icon(
-                        Icons.Rounded.KeyboardArrowDown, if (unfolded) "Fold" else "Unfold",
-                        Modifier.graphicsLayer { rotationZ = if (unfolded) 180f else 0f },
-                    )
-                }
+            Spacer(Modifier.height(24.dp))
+            Column(peek) {
+                Text("Permissions", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "What ${backend.name} mode can hold this app to. Drag up for all of them",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            if (unfolded) {
-                Spacer(Modifier.height(8.dp))
-                PermissionEditor(app, backend, permissionsChanged, onPermissions, onResetPermissions)
-            }
+            Spacer(Modifier.height(12.dp))
+            PermissionEditor(app, backend, permissionsChanged, onPermissions, onResetPermissions)
 
             if (customTabs.isNotEmpty()) {
                 Spacer(Modifier.height(24.dp))
