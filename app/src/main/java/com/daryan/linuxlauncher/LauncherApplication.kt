@@ -137,7 +137,8 @@ class LauncherContainer(private val app: Application) {
     /** Permissions the user changed in an app's sheet; applied over its manifest. */
     val permissions = com.daryan.linuxlauncher.container.PermissionOverrides(java.io.File(app.filesDir, "permissions.json"))
     /** Whether this run already looked for GUI helper packages missing from the container. */
-    @Volatile var guiHelpersChecked = false
+    /** The modes (each has its own system) already checked for missing GUI helpers this run. */
+    val guiHelpersChecked: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
 
     /** An app whose sheet the launcher should open (set from an X11 window's Permissions tile). */
     val showAppRequests = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)

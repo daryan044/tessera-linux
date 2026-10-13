@@ -40,6 +40,10 @@ class SystemApps {
         _apps.value = found
     }
 
+    fun clear() {
+        _apps.value = emptyList()
+    }
+
     /** The package that installed [app]'s desktop file, from dpkg's file lists; null if unknown. */
     suspend fun packageOf(app: PermissionManifest, rootfs: File): String? = withContext(Dispatchers.IO) {
         val file = synchronized(sources) { sources[app.id] } ?: return@withContext null

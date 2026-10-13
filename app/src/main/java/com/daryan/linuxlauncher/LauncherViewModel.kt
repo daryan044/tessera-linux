@@ -80,7 +80,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /** Re-reads the container's menu entries; cheap, so done whenever the launcher comes back. */
     fun scanSystemApps() {
         val status = _status.value ?: return
-        if (_mode.value != BackendMode.PROOT || !status.prootRootfs) return
+        // They're the PRoot system's; chroot mode has a system of its own.
+        if (_mode.value != BackendMode.PROOT || !status.prootRootfs) return container.systemApps.clear()
         viewModelScope.launch { container.systemApps.scan(paths.prootRootfs) }
     }
 
@@ -228,6 +229,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { GpuDriver.install(getApplication(), paths.prootRootfs) }
             }
             addMissingGuiHelpers()
+            configStore(_status.value, _mode.value)?.let { container.registry.refreshInstalled(it) }
             scanSystemApps()
         }
     }
@@ -237,10 +239,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      * get it queued once: only where GUI apps are in use, i.e. the window manager is there.
      */
     private suspend fun addMissingGuiHelpers() {
-        if (container.guiHelpersChecked) return
+        if (_mode.value.name in container.guiHelpersChecked) return
         val store = configStore(_status.value, _mode.value) ?: return
         val backend = backend() ?: return
-        container.guiHelpersChecked = true
+        container.guiHelpersChecked += _mode.value.name
         container.registry.refreshInstalled(store)
         val installed = container.registry.installed.value ?: return
         if ("matchbox-window-manager" !in installed || GUI_HELPER_PACKAGES.all { it in installed }) return
@@ -252,8 +254,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun setMode(mode: BackendMode) {
         _mode.value = mode
         prefs.edit().putString(KEY_MODE, mode.name).apply()
-        // Chroot mode needs to know whether its system is in place (checked through su).
-        if (mode == BackendMode.CHROOT) refresh()
+        // Each mode has its own system: check it, and what's installed in it.
+        refresh()
     }
 
     fun backend(mode: BackendMode = _mode.value): ContainerBackend? = when (mode) {
@@ -281,6 +283,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (app.packages.isEmpty()) null
             else container.registry.installed.value?.let { have -> app.packages.all { it in have } }
         mode == BackendMode.PROOT && status?.prootRootfs == true -> PackageInstall.isInstalled(app, paths.prootRootfs)
+        // Chroot mode has its own system, read through su: its dpkg status says what's there.
+        mode == BackendMode.CHROOT && app.packages.isNotEmpty() ->
+            container.registry.installed.value?.let { have -> app.packages.all { it in have } }
         else -> null
     }
 
