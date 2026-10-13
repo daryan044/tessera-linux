@@ -145,6 +145,8 @@ fun AppsPager(
     onUninstall: (PermissionManifest) -> Unit,
     onEditShortcut: (PermissionManifest) -> Unit,
     onNewShortcut: () -> Unit,
+    /** Changes the command an app runs; shortcuts edit theirs in [onEditShortcut] instead. */
+    onEditExec: (PermissionManifest) -> Unit,
     /** Whether [onGraphics] applies to windowed apps (the phone has the GPU driver). */
     graphics: Boolean,
     onGraphics: (PermissionManifest) -> Unit,
@@ -188,6 +190,8 @@ fun AppsPager(
                         onToggleFavorite = { onToggleFavorite(app) },
                         onUninstall = { onUninstall(app) },
                         onEdit = if (Shortcut.isShortcut(app)) ({ onEditShortcut(app) }) else null,
+                        // A shortcut's "Edit" already is its command; everything else gets this.
+                        onEditExec = if (Shortcut.isShortcut(app)) null else ({ onEditExec(app) }),
                         onGraphics = if (graphics && app.gui) ({ onGraphics(app) }) else null,
                         homeScreen = homeScreen,
                         modifier = Modifier.animateItem(),
@@ -201,7 +205,7 @@ fun AppsPager(
     }
 }
 
-/** One app in the grid. Holding it opens its menu: pin, favorite, home screen, graphics, uninstall. */
+/** One app in the grid. Holding it opens its menu: pin, favorite, home screen, graphics, command, uninstall. */
 @Composable
 private fun AppTile(
     app: PermissionManifest,
@@ -215,6 +219,8 @@ private fun AppTile(
     onUninstall: () -> Unit,
     /** For shortcuts: edit it (and Delete replaces Uninstall). */
     onEdit: (() -> Unit)?,
+    /** For everything else: change the command it runs. */
+    onEditExec: (() -> Unit)?,
     /** For windowed apps with the GPU driver: their graphics settings. */
     onGraphics: (() -> Unit)?,
     /** Whether the phone's home screen takes icons. */
@@ -325,6 +331,13 @@ private fun AppTile(
                 text = { Text("Graphics fixes") },
                 leadingIcon = { Icon(LauncherIcons.Monitor, null) },
                 onClick = { menu = false; onGraphics() },
+            )
+        }
+        if (onEditExec != null) {
+            DropdownMenuItem(
+                text = { Text("Edit command") },
+                leadingIcon = { Icon(LauncherIcons.Code, null) },
+                onClick = { menu = false; onEditExec() },
             )
         }
         HorizontalDivider()
