@@ -42,11 +42,12 @@ class RootfsInstaller(
     val state: StateFlow<InstallState> = _state
     private var job: Job? = null
 
-    fun start(distro: Distro) {
+    /** Installs [distro] for PRoot mode, or with [su] for chroot mode (root's own location). */
+    fun start(distro: Distro, su: String? = null) {
         if (_state.value.running) return
         job = scope.launch(Dispatchers.IO) {
             _state.value = try {
-                install(distro)
+                if (su == null) install(distro) else installChroot(distro, su)
                 InstallState.Done
             } catch (e: CancellationException) {
                 InstallState.Idle
@@ -60,16 +61,43 @@ class RootfsInstaller(
         job?.cancel()
     }
 
-    private suspend fun install(distro: Distro) {
+    /** The distro's image, downloaded and digest-checked; kept across failed attempts. */
+    private suspend fun fetch(distro: Distro): Pair<Layer, File> {
         _state.value = InstallState.Resolving
         val layer = registry.resolve(distro, Platform.forAbi(Build.SUPPORTED_ABIS.first()))
-
-        // Kept across failed attempts: a verified tarball doesn't need downloading again.
         val tarball = File(paths.cacheDir, "rootfs-${layer.digest.substringAfter(':').take(16)}.tar.gz")
         if (tarball.length() != layer.size) {
             _state.value = InstallState.Downloading(0, layer.size)
             registry.download(distro, layer, tarball) { _state.value = InstallState.Downloading(it, layer.size) }
         }
+        return layer to tarball
+    }
+
+    /**
+     * Installs [distro] where chroot mode expects it, as root: unpacked with real ownership
+     * into a scratch directory, configured, then moved into place. An existing system there is
+     * never replaced.
+     */
+    private suspend fun installChroot(distro: Distro, su: String) {
+        val (layer, tarball) = fetch(distro)
+        _state.value = InstallState.Extracting
+        val script = File(paths.cacheDir, "chroot-install.sh")
+        script.writeText(ChrootSetup.script(paths.chrootRootfs.path, tarball.path, "${distro.name} ${layer.digest}"))
+        runInterruptible {
+            val proc = ProcessBuilder(su, "-c", "/system/bin/sh ${script.path}").redirectErrorStream(true).start()
+            try {
+                val output = proc.inputStream.bufferedReader().readLines()
+                if (proc.waitFor() != 0) throw IOException(output.lastOrNull { it.isNotBlank() } ?: "chroot install failed")
+            } finally {
+                proc.destroy()
+            }
+        }
+        script.delete()
+        tarball.delete()
+    }
+
+    private suspend fun install(distro: Distro) {
+        val (layer, tarball) = fetch(distro)
 
         // Extract straight into place: link2symlink records absolute paths, so the tree can't be
         // moved afterwards. The marker file written last is what makes it count as installed.
@@ -105,6 +133,40 @@ class RootfsInstaller(
             proc.destroy()
         }
     }
+}
+
+/**
+ * The root-side install for chroot mode, as one shell script: what [RootfsSetup] does for
+ * PRoot, but with real root (so no APT sandbox tweak is needed beyond Android's network rules)
+ * and in a directory the app can't write itself.
+ */
+object ChrootSetup {
+    fun script(root: String, tarball: String, marker: String): String = """
+        set -e
+        R='$root'
+        T="${'$'}R.partial"
+        if [ -e "${'$'}R/usr/bin/env" ]; then echo "A Linux system is already at ${'$'}R"; exit 0; fi
+        # Something unusable in the way: keep it aside rather than delete it.
+        [ -e "${'$'}R" ] && mv "${'$'}R" "${'$'}R.old-${'$'}(date +%s)"
+        rm -rf "${'$'}T"; mkdir -p "${'$'}T"
+        /system/bin/tar -xzf '$tarball' -C "${'$'}T"
+        rm -f "${'$'}T/etc/resolv.conf" "${'$'}T/etc/hosts"
+        printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > "${'$'}T/etc/resolv.conf"
+        printf '127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n' > "${'$'}T/etc/hosts"
+        # apt downloads as _apt, which isn't in Android's network groups.
+        [ -d "${'$'}T/etc/apt/apt.conf.d" ] && echo 'APT::Sandbox::User "root";' > "${'$'}T/etc/apt/apt.conf.d/99launcher"
+        for f in "${'$'}T"/etc/apt/sources.list.d/*.sources; do
+          [ -f "${'$'}f" ] && sed -i 's/^Components:.*/Components: main contrib non-free non-free-firmware/' "${'$'}f"
+        done
+        # Groups Android gives apps, named so id and bash stay quiet.
+        for g in aid_inet:3003 aid_net_raw:3004 aid_everybody:9997; do
+          grep -q "^${'$'}{g%%:*}:" "${'$'}T/etc/group" || echo "${'$'}{g%%:*}:x:${'$'}{g#*:}:" >> "${'$'}T/etc/group"
+        done
+        mkdir -p "${'$'}T/home/user" "${'$'}T/root"
+        echo '$marker' > "${'$'}T/${ContainerPaths.INSTALLED_MARKER}"
+        mv "${'$'}T" "${'$'}R"
+        echo "Installed at ${'$'}R"
+    """.trimIndent()
 }
 
 /** First-boot configuration of a freshly extracted rootfs. Plain file edits, no guest code runs. */

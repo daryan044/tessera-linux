@@ -3,8 +3,17 @@
 
 package com.daryan.linuxlauncher.store
 
-/** The parts of a freedesktop `.desktop` file needed to launch the app. */
-data class DesktopEntry(val name: String?, val exec: List<String>, val terminal: Boolean, val icon: String?) {
+/** The parts of a freedesktop `.desktop` file needed to list and launch the app. */
+data class DesktopEntry(
+    val name: String?,
+    val exec: List<String>,
+    val terminal: Boolean,
+    val icon: String?,
+    val comment: String? = null,
+    val categories: List<String> = emptyList(),
+    /** Not for menus: NoDisplay, Hidden, not an application, or only for another desktop. */
+    val hidden: Boolean = false,
+) {
     companion object {
         /** Reads the [Desktop Entry] group; null if it has no usable Exec line. */
         fun parse(text: String): DesktopEntry? {
@@ -22,7 +31,18 @@ data class DesktopEntry(val name: String?, val exec: List<String>, val terminal:
                 keys.putIfAbsent(line.substring(0, eq).trim(), line.substring(eq + 1).trim())
             }
             val exec = keys["Exec"]?.let(::splitExec)?.takeIf { it.isNotEmpty() } ?: return null
-            return DesktopEntry(keys["Name"], exec, keys["Terminal"].equals("true", ignoreCase = true), keys["Icon"])
+            fun flag(key: String) = keys[key].equals("true", ignoreCase = true)
+            val type = keys["Type"]
+            return DesktopEntry(
+                name = keys["Name"],
+                exec = exec,
+                terminal = flag("Terminal"),
+                icon = keys["Icon"],
+                comment = keys["Comment"] ?: keys["GenericName"],
+                categories = keys["Categories"].orEmpty().split(';').filter { it.isNotBlank() },
+                hidden = flag("NoDisplay") || flag("Hidden") || (type != null && type != "Application") ||
+                    !keys["OnlyShowIn"].isNullOrBlank(),
+            )
         }
 
         /**

@@ -132,6 +132,8 @@ class LauncherContainer(private val app: Application) {
     val queue = InstallQueue(scope, paths)
     /** Commands the user put on the launcher as icons (the Shortcuts tab). */
     val shortcuts = ShortcutStore(java.io.File(app.filesDir, "shortcuts.json"))
+    /** Apps installed in the container outside the Store (apt in a terminal, a .deb). */
+    val systemApps = com.daryan.linuxlauncher.store.SystemApps()
     /** Permissions the user changed in an app's sheet; applied over its manifest. */
     val permissions = com.daryan.linuxlauncher.container.PermissionOverrides(java.io.File(app.filesDir, "permissions.json"))
     /** Whether this run already looked for GUI helper packages missing from the container. */

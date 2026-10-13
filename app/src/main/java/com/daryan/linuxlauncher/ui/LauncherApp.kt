@@ -80,6 +80,7 @@ import com.daryan.linuxlauncher.store.CatalogState
 import com.daryan.linuxlauncher.store.StoreApp
 import com.daryan.linuxlauncher.container.PermissionManifest
 import com.daryan.linuxlauncher.Shortcut
+import com.daryan.linuxlauncher.store.SystemApps
 import kotlinx.coroutines.launch
 
 enum class Destination(val label: String, val title: String, val icon: ImageVector) {
@@ -97,6 +98,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val sessions by vm.sessions.sessions.collectAsStateWithLifecycle()
     val install by vm.installState.collectAsStateWithLifecycle()
     val apps by vm.apps.collectAsStateWithLifecycle()
+    // Apps installed from a terminal while the launcher was away show up when it's back.
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.scanSystemApps() }
     val pinned by vm.tabStore.pinned.collectAsStateWithLifecycle()
     val permissionOverrides by vm.permissionOverrides.collectAsStateWithLifecycle()
     val gpuEnabled by vm.gpuEnabled.collectAsStateWithLifecycle()
@@ -293,7 +296,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                                 val undo = snackbar.showSnackbar("Deleted ${app.name}", actionLabel = "Undo", duration = SnackbarDuration.Short)
                                 if (undo == SnackbarResult.ActionPerformed) vm.saveShortcut(shortcut)
                             }
-                        } else if (app.packages.isEmpty()) {
+                        } else if (app.packages.isEmpty() && !SystemApps.isSystemApp(app)) {
                             scope.launch { snackbar.showSnackbar("${app.name} is part of the Linux system and can't be uninstalled") }
                         } else {
                             uninstallApp = app
@@ -412,7 +415,15 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val ok = vm.uninstall(app)
+                    val ok = if (SystemApps.isSystemApp(app)) {
+                        // Its package is looked up from dpkg first.
+                        scope.launch {
+                            val queued = vm.uninstallSystemApp(app)
+                            snackbar.showSnackbar(if (queued) "Removing ${app.name}" else "Couldn't tell which package ${app.name} came from")
+                        }
+                        uninstallApp = null
+                        return@TextButton
+                    } else vm.uninstall(app)
                     uninstallApp = null
                     scope.launch { snackbar.showSnackbar(if (ok) "Removing ${app.name}" else "Install Linux first") }
                 }) { Text("Uninstall") }

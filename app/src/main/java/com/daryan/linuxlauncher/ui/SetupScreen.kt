@@ -119,18 +119,24 @@ fun SetupScreen(
         }
         item {
             val distro = Distro.DEBIAN
+            // Each mode has its own system: in app storage for PRoot, under /data/local for chroot.
+            val chroot = mode == BackendMode.CHROOT
+            val installed = if (chroot) status.chrootRootfs == true else status.prootRootfs
             SetupItem(
-                state = if (status.prootRootfs) ItemState.Done else ItemState.Todo,
-                title = "Linux system",
+                state = if (installed) ItemState.Done else ItemState.Todo,
+                title = if (chroot) "Linux system (chroot)" else "Linux system",
                 body = when {
-                    status.prootRootfs -> "${distro.label} is installed."
+                    installed && chroot -> "${distro.label} is in place at /data/local/linux/debian."
+                    installed -> "${distro.label} is installed."
+                    chroot && status.chrootRootfs == null -> "Couldn't check /data/local/linux/debian; was root access refused?"
                     install is InstallState.Failed -> "Install failed: ${install.message}"
                     install.running -> "Installing ${distro.label}. You can leave the app; it keeps going."
+                    chroot -> "Chroot mode has no ${distro.label} yet. It's installed as root at /data/local/linux/debian, about ${distro.downloadMb} MB to download."
                     else -> "${distro.label} isn't installed yet. About ${distro.downloadMb} MB to download."
                 },
             ) {
-                if (!status.prootRootfs) {
-                    InstallControls(install, status.prootBinary, onInstall, onCancelInstall)
+                if (!installed && !(chroot && status.chrootRootfs == null)) {
+                    InstallControls(install, if (chroot) status.su != null else status.prootBinary, onInstall, onCancelInstall)
                 }
             }
         }

@@ -34,6 +34,18 @@ class HostProbe(private val paths: ContainerPaths) {
         )
     }
 
+    /**
+     * Whether a Linux system is in place for chroot mode. Asks through [su], since the app can't
+     * look under /data/local itself; null when su refused or failed.
+     */
+    fun chrootInstalled(su: String): Boolean? = runCatching {
+        val p = ProcessBuilder(su, "-c", "test -e '${paths.chrootRootfs.path}/usr/bin/env' && echo yes || echo no")
+            .redirectErrorStream(true).start()
+        val out = p.inputStream.bufferedReader().readText().trim()
+        if (!p.waitFor(15, java.util.concurrent.TimeUnit.SECONDS)) { p.destroy(); return@runCatching null }
+        when (out.lines().lastOrNull()) { "yes" -> true; "no" -> false; else -> null }
+    }.getOrNull()
+
     companion object {
         val SU_PATHS = listOf(
             "/system/bin/su", "/system/xbin/su", "/sbin/su",

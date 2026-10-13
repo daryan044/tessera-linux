@@ -61,9 +61,28 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Bundled apps, those installed from the store and the user's shortcuts, as their manifests describe them. */
     private val manifests: StateFlow<List<PermissionManifest>> =
-        combine(container.registry.userApps, container.shortcuts.shortcuts) { user, shortcuts ->
-            bundled + user.filterNot { u -> bundled.any { it.id == u.id } } + shortcuts.map(Shortcut::toManifest)
+        combine(container.registry.userApps, container.shortcuts.shortcuts, container.systemApps.apps) { user, shortcuts, system ->
+            val known = bundled + user.filterNot { u -> bundled.any { it.id == u.id } } + shortcuts.map(Shortcut::toManifest)
+            known + newSystemApps(system, known)
         }.stateIn(viewModelScope, SharingStarted.Eagerly, bundled + container.shortcuts.shortcuts.value.map(Shortcut::toManifest))
+
+    /**
+     * The container's own menu entries, minus what the launcher lists already: same name, or
+     * the same program (Firefox's desktop file next to the bundled Firefox entry).
+     */
+    private fun newSystemApps(system: List<PermissionManifest>, known: List<PermissionManifest>): List<PermissionManifest> {
+        fun program(m: PermissionManifest) = m.exec.firstOrNull()?.substringAfterLast('/')
+        val names = known.map { it.name.lowercase() }.toSet()
+        val programs = known.mapNotNull(::program).toSet() + known.flatMap { it.packages }
+        return system.filterNot { it.name.lowercase() in names || program(it) in programs }
+    }
+
+    /** Re-reads the container's menu entries; cheap, so done whenever the launcher comes back. */
+    fun scanSystemApps() {
+        val status = _status.value ?: return
+        if (_mode.value != BackendMode.PROOT || !status.prootRootfs) return
+        viewModelScope.launch { container.systemApps.scan(paths.prootRootfs) }
+    }
 
     val shortcuts: StateFlow<List<Shortcut>> = container.shortcuts.shortcuts
 
@@ -118,7 +137,12 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun install(distro: Distro = Distro.DEBIAN) = container.installer.start(distro)
+    /** Installs Linux for the current mode: into app storage for PRoot, as root for chroot. */
+    fun install(distro: Distro = Distro.DEBIAN) {
+        val su = _status.value?.su
+        if (_mode.value == BackendMode.CHROOT && su != null) container.installer.start(distro, su)
+        else container.installer.start(distro)
+    }
 
     fun cancelInstall() = container.installer.cancel()
 
@@ -189,7 +213,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _status.value = null
             val s = withContext(Dispatchers.IO) {
-                probe.probe().let { it.copy(phantomProcessLimit = PhantomLimit.lifted(getApplication(), it.su) != true) }
+                probe.probe().let { s ->
+                    s.copy(
+                        phantomProcessLimit = PhantomLimit.lifted(getApplication(), s.su) != true,
+                        // Only in chroot mode: it takes su, which PRoot users shouldn't be asked for.
+                        chrootRootfs = if (_mode.value == BackendMode.CHROOT && s.su != null) probe.chrootInstalled(s.su) else null,
+                    )
+                }
             }
             _status.value = s
             if (s.su == null && _mode.value == BackendMode.CHROOT) _mode.value = BackendMode.PROOT
@@ -198,6 +228,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { GpuDriver.install(getApplication(), paths.prootRootfs) }
             }
             addMissingGuiHelpers()
+            scanSystemApps()
         }
     }
 
@@ -221,6 +252,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun setMode(mode: BackendMode) {
         _mode.value = mode
         prefs.edit().putString(KEY_MODE, mode.name).apply()
+        // Chroot mode needs to know whether its system is in place (checked through su).
+        if (mode == BackendMode.CHROOT) refresh()
     }
 
     fun backend(mode: BackendMode = _mode.value): ContainerBackend? = when (mode) {
@@ -234,6 +267,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         mode == BackendMode.PROOT && !status.prootBinary -> "PRoot isn't bundled in this build yet"
         mode == BackendMode.PROOT && !status.prootRootfs -> "No Linux system installed yet"
         mode == BackendMode.CHROOT && status.su == null -> "Root access not found"
+        mode == BackendMode.CHROOT && status.chrootRootfs == false -> "No Linux system for chroot mode yet"
         else -> null
     }
 
@@ -313,8 +347,18 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val fromStore = container.registry.isStoreApp(app.id)
         container.queue.enqueue(app.name, app.packages, QueueAction.REMOVE, app.iconFile, backend) {
             if (fromStore) container.registry.unregister(app.id, store) else container.registry.refreshInstalled(store)
+            scanSystemApps()
         }
         return true
+    }
+
+    /**
+     * Uninstalls an app found in the container's menus: its package is looked up from dpkg's
+     * file lists first. False when there's no container or no owning package.
+     */
+    suspend fun uninstallSystemApp(app: PermissionManifest): Boolean {
+        val pkg = container.systemApps.packageOf(app, paths.prootRootfs) ?: return false
+        return uninstall(app.copy(packages = listOf(pkg)))
     }
 
     fun cancelJob(id: Int) = container.queue.cancel(id)
