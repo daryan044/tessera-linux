@@ -26,10 +26,10 @@ object HidReports {
         0x29, 0x03, //     Usage Maximum (3)
         0x15, 0x00, //     Logical Minimum (0)
         0x25, 0x01, //     Logical Maximum (1)
-        0x95, 0x03, //     Report Count (3)
+        0x95.toByte(), 0x03, //     Report Count (3)
         0x75, 0x01, //     Report Size (1)
         0x81.toByte(), 0x02, //     Input (Data, Variable, Absolute)
-        0x95, 0x01, //     Report Count (1)
+        0x95.toByte(), 0x01, //     Report Count (1)
         0x75, 0x05, //     Report Size (5)
         0x81.toByte(), 0x01, //     Input (Constant) — padding out the byte
         0x05, 0x01, //     Usage Page (Generic Desktop)
@@ -39,7 +39,7 @@ object HidReports {
         0x15, 0x81.toByte(), //     Logical Minimum (-127)
         0x25, 0x7F, //     Logical Maximum (127)
         0x75, 0x08, //     Report Size (8)
-        0x95, 0x03, //     Report Count (3)
+        0x95.toByte(), 0x03, //     Report Count (3)
         0x81.toByte(), 0x06, //     Input (Data, Variable, Relative)
         0xC0.toByte(), //   End Collection
         0xC0.toByte(), // End Collection
@@ -56,21 +56,21 @@ object HidReports {
         0x15, 0x00, //   Logical Minimum (0)
         0x25, 0x01, //   Logical Maximum (1)
         0x75, 0x01, //   Report Size (1)
-        0x95, 0x08, //   Report Count (8)
+        0x95.toByte(), 0x08, //   Report Count (8)
         0x81.toByte(), 0x02, //   Input (Data, Variable, Absolute) — the modifier byte
-        0x95, 0x01, //   Report Count (1)
+        0x95.toByte(), 0x01, //   Report Count (1)
         0x75, 0x08, //   Report Size (8)
         0x81.toByte(), 0x01, //   Input (Constant) — the reserved byte
-        0x95, 0x05, //   Report Count (5)
+        0x95.toByte(), 0x05, //   Report Count (5)
         0x75, 0x01, //   Report Size (1)
         0x05, 0x08, //   Usage Page (LED)
         0x19, 0x01, //   Usage Minimum (Num Lock)
         0x29, 0x05, //   Usage Maximum (Kana)
         0x91.toByte(), 0x02, //   Output (Data, Variable, Absolute) — the host's LEDs
-        0x95, 0x01, //   Report Count (1)
+        0x95.toByte(), 0x01, //   Report Count (1)
         0x75, 0x03, //   Report Size (3)
         0x91.toByte(), 0x01, //   Output (Constant) — padding
-        0x95, 0x06, //   Report Count (6)
+        0x95.toByte(), 0x06, //   Report Count (6)
         0x75, 0x08, //   Report Size (8)
         0x15, 0x00, //   Logical Minimum (0)
         0x25, 0x65, //   Logical Maximum (101)
