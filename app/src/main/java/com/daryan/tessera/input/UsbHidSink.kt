@@ -99,7 +99,7 @@ class UsbHidSink private constructor(
                     stream.flush()
                 } catch (e: Exception) {
                     // The host went away, or the gadget was taken from under us.
-                    Log.i(TAG, "HID endpoint closed: ${e.message}")
+                    Log.w(TAG, "HID endpoint closed, reports stop here: ${e.message}")
                     failed = true
                     running = false
                 }
@@ -143,22 +143,34 @@ class UsbHidSink private constructor(
             context.assets.open(SCRIPT).use { input -> script.outputStream().use { input.copyTo(it) } }
             val mouseDesc = File(dir, "mouse.desc").apply { writeBytes(HidReports.MOUSE_DESCRIPTOR) }
             val kbdDesc = File(dir, "keyboard.desc").apply { writeBytes(HidReports.KEYBOARD_DESCRIPTOR) }
-            // Root reads these, so they must not be private to the app's uid.
+            // Root reads these, so they must not be private to the app's uid; a directory
+            // needs execute to be entered, which setReadable alone does not give.
             listOf(dir, script, mouseDesc, kbdDesc).forEach { it.setReadable(true, false) }
+            dir.setExecutable(true, false)
 
             val setup = run(su, "sh ${script.absolutePath} up ${mouseDesc.absolutePath} ${kbdDesc.absolutePath}")
-            if (!setup.contains("ready")) error(setup.ifBlank { "the gadget did not come up" })
+            Log.i(TAG, "gadget.sh up: $setup")
+            if (!setup.contains("ready")) error(setup.lines().lastOrNull { it.isNotBlank() } ?: "the gadget did not come up")
 
             val mouse = writer(su, "/dev/hidg0")
             val keyboard = writer(su, "/dev/hidg1")
             UsbHidSink(su, script, mouse, keyboard)
         }
 
-        /** A root process holding an endpoint open, fed reports through its stdin. */
+        /**
+         * A root process holding an endpoint open, fed reports through its stdin. `cat` would
+         * exit the moment the node refused a write, so this checks it is still there and says so
+         * rather than leaving a sink that silently swallows every gesture.
+         */
         private fun writer(su: String, node: String): Writer {
             val process = ProcessBuilder(su, "-c", "cat > $node")
                 .redirectErrorStream(true)
                 .start()
+            if (!process.isAlive) {
+                val why = runCatching { process.inputStream.bufferedReader().readText().trim() }.getOrDefault("")
+                error(why.ifBlank { "could not open $node as root" })
+            }
+            Log.i(TAG, "holding $node open")
             return Writer(process, process.outputStream)
         }
 

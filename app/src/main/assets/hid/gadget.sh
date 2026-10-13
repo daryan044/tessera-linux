@@ -70,7 +70,22 @@ case "$ACTION" in
       i=$((i + 1))
     done
     [ -e /dev/hidg0 ] && [ -e /dev/hidg1 ] || { echo "no /dev/hidg nodes appeared"; exit 1; }
-    echo "ready"
+
+    # And wait for the host to configure the interfaces, which is a separate thing: the node
+    # exists as soon as the function does, but writing to it before the PC has set up the
+    # endpoint fails, and whoever holds it open for us would die on its first report.
+    i=0
+    while [ $i -lt 100 ]; do
+      case "$(cat /sys/class/udc/*/state 2>/dev/null)" in
+        *configured*) break ;;
+      esac
+      sleep 0.1
+      i=$((i + 1))
+    done
+    case "$(cat /sys/class/udc/*/state 2>/dev/null)" in
+      *configured*) echo "ready" ;;
+      *) echo "the PC has not taken the mouse and keyboard; is the cable a data cable?"; exit 1 ;;
+    esac
     ;;
 
   down)
