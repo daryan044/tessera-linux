@@ -8,15 +8,20 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.hardware.usb.UsbManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.Display
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
@@ -311,6 +316,22 @@ class X11Window : MainActivity.MainActivityTagged() {
             startActivity(Intent(this@X11Window, com.daryan.linuxlauncher.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
 
+        override fun brightnessBehind(area: Rect, result: (Float) -> Unit) {
+            val view = lorieView
+            // Only for what's on the phone, while it's in front and drawing.
+            if (cast != null || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+            if (view.width == 0 || !view.holder.surface.isValid) return
+            val at = IntArray(2).also(view::getLocationInWindow)
+            val src = Rect(area).apply { offset(-at[0], -at[1]) }
+            if (!src.intersect(0, 0, view.width, view.height)) return
+            // A few pixels are enough: the copy is scaled down to fit.
+            val sample = Bitmap.createBitmap(4, 12, Bitmap.Config.ARGB_8888)
+            PixelCopy.request(view, src, sample, { status ->
+                if (status == PixelCopy.SUCCESS) result(luminance(sample))
+                sample.recycle()
+            }, Handler(Looper.getMainLooper()))
+        }
+
         override fun displaySettings() {
             startActivity(Intent().setClassName(this@X11Window, "com.termux.x11.LoriePreferences"))
         }
@@ -329,6 +350,14 @@ class X11Window : MainActivity.MainActivityTagged() {
 }
 
 private const val TAP_WINDOW_MS = 1500L
+
+/** Average perceived brightness of [bitmap], 0 (black) to 1 (white). */
+private fun luminance(bitmap: Bitmap): Float {
+    val pixels = IntArray(bitmap.width * bitmap.height).also { bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) }
+    return pixels.map { c ->
+        (0.2126f * (c shr 16 and 0xff) + 0.7152f * (c shr 8 and 0xff) + 0.0722f * (c and 0xff)) / 255f
+    }.average().toFloat()
+}
 
 enum class MouseButton(val stub: Int) {
     LEFT(InputStub.BUTTON_LEFT),
@@ -381,6 +410,11 @@ interface X11Actions {
     fun openPermissions(appId: String)
     fun displaySettings()
     fun close(sessionId: String?)
+    /**
+     * How bright the app's picture is in [area] (window pixels), 0 to 1, given to [result] when
+     * it's known; nothing comes back while the picture isn't on the phone.
+     */
+    fun brightnessBehind(area: Rect, result: (Float) -> Unit)
 
     companion object {
         /** Key combinations the button offers, in Android key codes. */

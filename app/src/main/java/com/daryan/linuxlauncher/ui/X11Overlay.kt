@@ -8,6 +8,7 @@ package com.daryan.linuxlauncher.ui
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -53,6 +54,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +70,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
@@ -118,6 +122,21 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
     var along by remember { mutableFloatStateOf(prefs.getFloat(KEY_ALONG, 0.4f)) }
     // While it's being moved: where the finger has taken it, in px from the top left.
     var moving by remember { mutableStateOf<Offset?>(null) }
+    // The handle stands out from what's behind it: dark over a bright app, light over a dark one.
+    var handleArea by remember { mutableStateOf<android.graphics.Rect?>(null) }
+    var overBright by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            handleArea?.let { area ->
+                actions.brightnessBehind(area) { b ->
+                    // Some leeway either way, so a mid-grey background doesn't make it flicker.
+                    if (b > 0.62f) overBright = true else if (b < 0.48f) overBright = false
+                }
+            }
+            kotlinx.coroutines.delay(500)
+        }
+    }
+    val pillColor by animateColorAsState(if (overBright) Color.Black else Color.White, motion.defaultEffectsSpec(), label = "pill")
 
     fun settle(toOpen: Boolean) = scope.launch {
         open.animateTo(if (toOpen) 1f else 0f, motion.defaultSpatialSpec())
@@ -168,6 +187,10 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
                 .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
                 .width(HANDLE_WIDTH)
                 .height(HANDLE_HEIGHT)
+                .onGloballyPositioned { c ->
+                    val b = c.boundsInWindow()
+                    handleArea = android.graphics.Rect(b.left.toInt(), b.top.toInt(), b.right.toInt(), b.bottom.toInt())
+                }
                 .graphicsLayer {
                     alpha = 1f - open.value
                     val grow = if (drag != null) 1.25f else 1f
@@ -201,7 +224,7 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
         ) {
             Box(
                 Modifier.padding(horizontal = 4.dp).width(if (drag != null) 7.dp else 5.dp).height(56.dp).clip(CircleShape)
-                    .background(Color.White.copy(alpha = if (drag != null) 0.9f else 0.55f)),
+                    .background(pillColor.copy(alpha = if (drag != null) 0.9f else 0.6f)),
             )
         }
 
