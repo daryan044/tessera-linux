@@ -8,8 +8,8 @@ plugins {
 
 /**
  * The release key: from keystore.properties at the top of the project (storeFile, storePassword,
- * keyAlias, keyPassword; never committed), or from LL_KEYSTORE, LL_KEYSTORE_PASSWORD, LL_KEY_ALIAS
- * and LL_KEY_PASSWORD in the environment (CI). Null when neither is there.
+ * keyAlias, keyPassword; never committed), or from TESSERA_KEYSTORE, TESSERA_KEYSTORE_PASSWORD, TESSERA_KEY_ALIAS
+ * and TESSERA_KEY_PASSWORD in the environment (CI). Null when neither is there.
  */
 val releaseKey: Map<String, String>? = run {
     val file = rootProject.file("keystore.properties")
@@ -17,24 +17,24 @@ val releaseKey: Map<String, String>? = run {
         val p = Properties().apply { file.inputStream().use(::load) }
         listOf("storeFile", "storePassword", "keyAlias", "keyPassword").associateWith { p.getProperty(it).orEmpty() }
     } else {
-        System.getenv("LL_KEYSTORE")?.takeIf { it.isNotBlank() }?.let { store ->
+        System.getenv("TESSERA_KEYSTORE")?.takeIf { it.isNotBlank() }?.let { store ->
             mapOf(
                 "storeFile" to store,
-                "storePassword" to System.getenv("LL_KEYSTORE_PASSWORD").orEmpty(),
-                "keyAlias" to System.getenv("LL_KEY_ALIAS").orEmpty(),
-                "keyPassword" to System.getenv("LL_KEY_PASSWORD").orEmpty(),
+                "storePassword" to System.getenv("TESSERA_KEYSTORE_PASSWORD").orEmpty(),
+                "keyAlias" to System.getenv("TESSERA_KEY_ALIAS").orEmpty(),
+                "keyPassword" to System.getenv("TESSERA_KEY_PASSWORD").orEmpty(),
             )
         }
     }
 }
 
 android {
-    namespace = "com.daryan.linuxlauncher"
+    namespace = "com.daryan.tessera"
     compileSdk = 37
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        applicationId = "com.daryan.linuxlauncher"
+        applicationId = "com.daryan.tessera"
         minSdk = 24
         // Deliberately 28: from 29 on, SELinux forbids exec() of files in the app's data dir,
         // which is where the rootfs lives. Same trade-off as Termux; blocks Play Store, not F-Droid.

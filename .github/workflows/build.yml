@@ -2,8 +2,8 @@
 # GitHub release. The native parts (PRoot, the X server, the GPU driver, the USB bridge) come from the scripts
 # in scripts/, cached by their inputs since they rarely change and take a while.
 #
-# Signing: with the repository secrets LL_KEYSTORE_BASE64 (the keystore, base64), LL_KEYSTORE_PASSWORD,
-# LL_KEY_ALIAS and LL_KEY_PASSWORD set, releases are signed with that key; otherwise with a
+# Signing: with the repository secrets TESSERA_KEYSTORE_BASE64 (the keystore, base64), TESSERA_KEYSTORE_PASSWORD,
+# TESSERA_KEY_ALIAS and TESSERA_KEY_PASSWORD set, releases are signed with that key; otherwise with a
 # throwaway debug key (fine for trying a build, not for updating an installed release).
 name: Build
 
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      KEYSTORE_BASE64: ${{ secrets.LL_KEYSTORE_BASE64 }}
+      KEYSTORE_BASE64: ${{ secrets.TESSERA_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -93,13 +93,13 @@ jobs:
         if: env.KEYSTORE_BASE64 != ''
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-          echo "LL_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "TESSERA_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
       - name: Build APK
         env:
-          LL_KEYSTORE_PASSWORD: ${{ secrets.LL_KEYSTORE_PASSWORD }}
-          LL_KEY_ALIAS: ${{ secrets.LL_KEY_ALIAS }}
-          LL_KEY_PASSWORD: ${{ secrets.LL_KEY_PASSWORD }}
+          TESSERA_KEYSTORE_PASSWORD: ${{ secrets.TESSERA_KEYSTORE_PASSWORD }}
+          TESSERA_KEY_ALIAS: ${{ secrets.TESSERA_KEY_ALIAS }}
+          TESSERA_KEY_PASSWORD: ${{ secrets.TESSERA_KEY_PASSWORD }}
         run: ./gradlew --console=plain assembleRelease
 
       - name: Name the APK

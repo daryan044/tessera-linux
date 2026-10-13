@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Builds the guest half of the USB bridge for PRoot mode, for Debian trixie arm64:
-#  - llusb.so (scripts/usb/llusb.c), preloaded into bridged apps: opening a granted
+#  - tessera-usb.so (scripts/usb/tessera-usb.c), preloaded into bridged apps: opening a granted
 #    /dev/bus/usb path returns the device the launcher opened through Android's USB permission.
 #  - libusb without udev, with scripts/usb/patches: under the bridge it finds devices in
 #    /dev/bus/usb and skips sysfs and hotplug, which Android keeps apps out of. Bridged apps
@@ -12,7 +12,7 @@
 # Cross-compiles inside a Debian trixie root (the same one as scripts/gpu/build-mesa.sh) and
 # packs the result as build/usb/assets/usb/usb-bridge.tgz (bundled into the APK by
 # app/build.gradle.kts; builds without it have no USB bridge), unpacked into a container's
-# /opt/linuxlauncher-usb.
+# /opt/tessera-usb.
 #
 # Needs a Linux host (WSL is fine) and root, for the build root:
 #   sudo scripts/usb/build-usb.sh
@@ -22,7 +22,7 @@ set -euo pipefail
 LIBUSB_VERSION=1.0.29
 LIBUSB_SHA256=5977fc950f8d1395ccea9bd48c06b3f808fd3c2c961b44b0c2e6e29fc3a70a85
 TRIXIE=${TRIXIE:-/opt/trixie}
-PREFIX=/opt/linuxlauncher-usb
+PREFIX=/opt/tessera-usb
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT="$HERE/../../build/usb/assets/usb"
 
@@ -50,10 +50,10 @@ for p in /usb/patches/*.patch; do patch -p1 < "\$p"; done
 make -j"\$(nproc)" >/dev/null
 rm -rf /stage && make install DESTDIR=/stage >/dev/null
 
-aarch64-linux-gnu-gcc -O2 -shared -fPIC -U_FORTIFY_SOURCE -o /stage$PREFIX/lib/llusb.so /usb/llusb.c -ldl
+aarch64-linux-gnu-gcc -O2 -shared -fPIC -U_FORTIFY_SOURCE -o /stage$PREFIX/lib/tessera-usb.so /usb/tessera-usb.c -ldl
 aarch64-linux-gnu-strip --strip-unneeded /stage$PREFIX/lib/*.so*
 EOF
-rm -rf "$TRIXIE/usb" && mkdir -p "$TRIXIE/usb" && cp -r "$HERE/patches" "$HERE/llusb.c" "$TRIXIE/usb/"
+rm -rf "$TRIXIE/usb" && mkdir -p "$TRIXIE/usb" && cp -r "$HERE/patches" "$HERE/tessera-usb.c" "$TRIXIE/usb/"
 cp /etc/resolv.conf "$TRIXIE/etc/resolv.conf"
 mountpoint -q "$TRIXIE/proc" || mount -t proc proc "$TRIXIE/proc"
 trap 'umount "$TRIXIE/proc" 2>/dev/null || true' EXIT
@@ -64,5 +64,5 @@ rm -rf "$TRIXIE/stage$PREFIX/include" "$TRIXIE/stage$PREFIX/lib/pkgconfig" "$TRI
 mkdir -p "$OUT"
 tar --format=ustar -C "$TRIXIE/stage" -czf "$OUT/usb-bridge.tgz" "${PREFIX#/}"
 # Bump the suffix when the shim or patches change, so phones unpack the new build.
-echo "$LIBUSB_VERSION-ll1" > "$OUT/VERSION"
+echo "$LIBUSB_VERSION-t1" > "$OUT/VERSION"
 ls -l "$OUT"

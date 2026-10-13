@@ -9,7 +9,7 @@
 # Cross-compiles inside a Debian trixie root (so the libraries match the containers exactly)
 # and packs the result as build/gpu/assets/gpu/mesa-turnip.tgz (bundled into the APK by
 # app/build.gradle.kts; builds without it just have no GPU acceleration), which the app unpacks
-# into a container's /opt/linuxlauncher-gpu when GPU acceleration is on.
+# into a container's /opt/tessera-gpu when GPU acceleration is on.
 #
 # Needs a Linux host (WSL is fine) and root, for the build root:
 #   sudo scripts/gpu/build-mesa.sh
@@ -18,7 +18,7 @@ set -euo pipefail
 
 MESA_VERSION=${MESA_VERSION:-26.2.4}
 TRIXIE=${TRIXIE:-/opt/trixie}
-PREFIX=/opt/linuxlauncher-gpu
+PREFIX=/opt/tessera-gpu
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT="$HERE/../../build/gpu/assets/gpu"
 
@@ -85,5 +85,5 @@ rm -rf "$TRIXIE/stage$PREFIX/include" "$TRIXIE/stage$PREFIX/lib/pkgconfig"
 mkdir -p "$OUT"
 tar --format=ustar -C "$TRIXIE/stage" -czf "$OUT/mesa-turnip.tgz" "${PREFIX#/}"
 # Bump the suffix when the patches change, so phones unpack the new build.
-echo "$MESA_VERSION-ll3" > "$OUT/VERSION"
+echo "$MESA_VERSION-t1" > "$OUT/VERSION"
 ls -l "$OUT"

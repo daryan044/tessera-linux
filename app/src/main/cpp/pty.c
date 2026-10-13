@@ -41,7 +41,7 @@ static void throw_io(JNIEnv *env, const char *what) {
 }
 
 JNIEXPORT jint JNICALL
-Java_com_daryan_linuxlauncher_container_Pty_spawn(JNIEnv *env, jclass clazz, jstring jpath,
+Java_com_daryan_tessera_container_Pty_spawn(JNIEnv *env, jclass clazz, jstring jpath,
                                                  jobjectArray jargv, jobjectArray jenvp,
                                                  jstring jcwd, jint rows, jint cols,
                                                  jintArray jpid) {
@@ -108,7 +108,7 @@ Java_com_daryan_linuxlauncher_container_Pty_spawn(JNIEnv *env, jclass clazz, jst
 }
 
 JNIEXPORT void JNICALL
-Java_com_daryan_linuxlauncher_container_Pty_setWindowSize(JNIEnv *env, jclass clazz, jint fd,
+Java_com_daryan_tessera_container_Pty_setWindowSize(JNIEnv *env, jclass clazz, jint fd,
                                                          jint rows, jint cols) {
     (void)env; (void)clazz;
     struct winsize ws = {.ws_row = (unsigned short)rows, .ws_col = (unsigned short)cols};
@@ -117,7 +117,7 @@ Java_com_daryan_linuxlauncher_container_Pty_setWindowSize(JNIEnv *env, jclass cl
 
 // Blocks until the process exits. Returns the exit code, or -signal if it was killed.
 JNIEXPORT jint JNICALL
-Java_com_daryan_linuxlauncher_container_Pty_waitFor(JNIEnv *env, jclass clazz, jint pid) {
+Java_com_daryan_tessera_container_Pty_waitFor(JNIEnv *env, jclass clazz, jint pid) {
     (void)env; (void)clazz;
     int status;
     while (waitpid(pid, &status, 0) < 0) {
@@ -129,7 +129,7 @@ Java_com_daryan_linuxlauncher_container_Pty_waitFor(JNIEnv *env, jclass clazz, j
 }
 
 JNIEXPORT void JNICALL
-Java_com_daryan_linuxlauncher_container_Pty_close(JNIEnv *env, jclass clazz, jint fd) {
+Java_com_daryan_tessera_container_Pty_close(JNIEnv *env, jclass clazz, jint fd) {
     (void)env; (void)clazz;
     close(fd);
 }

@@ -1,7 +1,11 @@
-# Tessera
+# Tessera: Linux apps on Android
 
-A Material 3 Expressive launcher for Linux apps on Android. Each app runs in a container that
-gets only what its manifest grants: specific folders, network, its own X display, audio, devices.
+Tessera runs Linux desktop apps on Android phones: Firefox, GIMP, VS Code, LibreOffice and the
+rest of Debian, each with its own icon, window and card in Recents, installed from a built-in
+store. It's a Material 3 Expressive launcher where each app runs in a container that gets only
+what its manifest grants: specific folders, network, its own X display, audio, devices. Adreno
+phones get GPU acceleration (Turnip and Zink), and a window can be cast to a TV with the phone as
+its trackpad.
 
 - **PRoot mode** works without root. Restrictions are best-effort; network can't be blocked.
 - **Chroot mode** (Magisk / KernelSU / APatch) enforces every permission with mount and network
@@ -67,10 +71,10 @@ everything else, including the app itself, builds on Windows, macOS or Linux.
 
 Release builds (`./gradlew assembleRelease`) are signed with the key in `keystore.properties`
 at the top of the project (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; never
-committed), or the `LL_KEYSTORE*` environment variables; without either, with the debug key.
+committed), or the `TESSERA_KEYSTORE*` environment variables; without either, with the debug key.
 GitHub Actions (`.github/workflows/build.yml`) builds everything from source on each push, and
-publishes a release for each `v*` tag, signed when the `LL_KEYSTORE_BASE64`, `LL_KEYSTORE_PASSWORD`,
-`LL_KEY_ALIAS` and `LL_KEY_PASSWORD` secrets are set.
+publishes a release for each `v*` tag, signed when the `TESSERA_KEYSTORE_BASE64`, `TESSERA_KEYSTORE_PASSWORD`,
+`TESSERA_KEY_ALIAS` and `TESSERA_KEY_PASSWORD` secrets are set.
 
 `targetSdk` is 28 on purpose: newer targets forbid executing files from app storage, which is
 where the Linux system lives. This rules out Google Play; distribute through GitHub and F-Droid.

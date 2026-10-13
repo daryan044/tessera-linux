@@ -5,7 +5,7 @@
     VkMemoryPropertyFlags req_props = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
  
 -   if (wsi->sw)
-+   /* Linux Launcher: no cached memory for frames the CPU reads back. On Adreno (KGSL) the
++   /* Tessera: no cached memory for frames the CPU reads back. On Adreno (KGSL) the
 +    * cached kind is IO-coherent, and the CPU still read stale cache lines of what the GPU
 +    * drew: blocks of old or blank pixels all over the window. Uncached memory is slower to
 +    * read but always current.

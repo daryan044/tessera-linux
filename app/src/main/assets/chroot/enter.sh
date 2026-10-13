@@ -90,7 +90,7 @@ mkdir -p "$R/home/user"
 if grep -q '^user:' "$R/etc/passwd"; then
   sed -i "s#^user:[^:]*:[0-9]*:[0-9]*:#user:x:$U:$U:#" "$R/etc/passwd"
 else
-  echo "user:x:$U:$U:Linux Launcher user:/home/user:/bin/bash" >> "$R/etc/passwd"
+  echo "user:x:$U:$U:Tessera user:/home/user:/bin/bash" >> "$R/etc/passwd"
 fi
 if grep -q '^user:' "$R/etc/group"; then
   sed -i "s#^user:[^:]*:[0-9]*:#user:x:$U:#" "$R/etc/group"

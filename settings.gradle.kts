@@ -17,7 +17,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "linux-launcher"
+rootProject.name = "tessera"
 include(":app")
 
 // Termux:X11's X server and window (our fork, see third_party/termux-x11).
