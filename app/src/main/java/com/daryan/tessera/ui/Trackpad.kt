@@ -80,6 +80,17 @@ private class Ripple(val at: Offset, val start: Long, val button: MouseButton)
 /** Where a finger has just been; these fade out behind it. */
 private class Trail(val at: Offset, val time: Long)
 
+/** Which of the two things two fingers are doing, once there is enough movement to tell. */
+private const val UNDECIDED = 0
+private const val SCROLL = 1
+private const val PINCH = 2
+
+/** Movement, in dp, before two fingers are taken to be scrolling or pinching. */
+private const val DECIDE_DP = 8f
+
+/** How far fingers must spread, in dp, for one step of zoom. */
+private const val PINCH_DP = 44f
+
 private const val TAP_MS = 220L
 private const val DOUBLE_TAP_MS = 300L
 private const val RIPPLE_MS = 520L
@@ -249,7 +260,12 @@ private fun DotField(fingers: List<Offset>, trails: List<Trail>, ripples: List<R
  * or on a PC the phone is pretending to be a mouse for.
  */
 @Composable
-fun TrackpadSurface(sink: InputSink, modifier: Modifier = Modifier) {
+fun TrackpadSurface(
+    sink: InputSink,
+    modifier: Modifier = Modifier,
+    /** Wheel notches per dp of finger travel. A PC's wheel is coarse, so it wants far less. */
+    scrollScale: Float = 2f,
+) {
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
     val colors = MaterialTheme.colorScheme
@@ -305,6 +321,12 @@ fun TrackpadSurface(sink: InputSink, modifier: Modifier = Modifier) {
                     val start = down.uptimeMillis
                     var most = 1
                     var travel = 0f
+                    var twoFingers = UNDECIDED
+                    var spreadSum = 0f
+                    var panSum = 0f
+                    var zoomRest = 0f
+                    scrollX = 0f
+                    scrollY = 0f
                     // A tap, then straight away a finger down again: hold the button and drag.
                     val drag = start - lastTapUp < DOUBLE_TAP_MS && (down.position - lastTapAt).getDistance() < 48.dp.toPx()
                     if (drag) {
@@ -332,19 +354,44 @@ fun TrackpadSurface(sink: InputSink, modifier: Modifier = Modifier) {
                             if (travel > slop || drag) moveBy(d)
                             last = c.position
                         } else if (pressed.size >= 2) {
-                            // Two fingers: the average of their movement scrolls, the way
-                            // content follows the fingers on a phone.
+                            // Two fingers either scroll or pinch. Which one is decided once and
+                            // then kept for the gesture: re-deciding every frame turns a slightly
+                            // uneven pinch into a mixture of both.
                             val d = pressed.map { it.position - it.previousPosition }
                                 .fold(Offset.Zero) { a, b -> a + b } / pressed.size.toFloat()
                             travel += d.getDistance()
-                            if (travel > slop) {
-                                scrollX -= d.x / density.density * 2f
-                                scrollY -= d.y / density.density * 2f
-                                if (abs(scrollX) >= 1f || abs(scrollY) >= 1f) {
-                                    sink.scroll(scrollX, scrollY)
-                                    scrollX = 0f
-                                    scrollY = 0f
+                            val spread = ((pressed[0].position - pressed[1].position).getDistance() -
+                                (pressed[0].previousPosition - pressed[1].previousPosition).getDistance()) / density.density
+                            spreadSum += spread
+                            panSum += d.getDistance() / density.density
+                            if (twoFingers == UNDECIDED && (abs(spreadSum) > DECIDE_DP || panSum > DECIDE_DP)) {
+                                twoFingers = if (abs(spreadSum) > panSum) PINCH else SCROLL
+                            }
+                            when (twoFingers) {
+                                PINCH -> {
+                                    // Fingers apart is zoom in, as everywhere else.
+                                    zoomRest += spread / PINCH_DP
+                                    val steps = zoomRest.toInt()
+                                    if (steps != 0) {
+                                        sink.zoom(steps)
+                                        zoomRest -= steps
+                                    }
                                 }
+                                SCROLL -> {
+                                    // Content follows the fingers, and what is left of a notch is
+                                    // carried over rather than dropped: dropping it is what made
+                                    // this feel like steps instead of a trackpad.
+                                    scrollX -= d.x / density.density * scrollScale
+                                    scrollY -= d.y / density.density * scrollScale
+                                    val sx = scrollX.toInt()
+                                    val sy = scrollY.toInt()
+                                    if (sx != 0 || sy != 0) {
+                                        sink.scroll(sx.toFloat(), sy.toFloat())
+                                        scrollX -= sx
+                                        scrollY -= sy
+                                    }
+                                }
+                                else -> Unit
                             }
                             last = pressed.map { it.position }.fold(Offset.Zero) { a, b -> a + b } / pressed.size.toFloat()
                         }

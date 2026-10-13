@@ -66,6 +66,13 @@ class UsbHidSink private constructor(
     /** True when [button] is already held: a click would contradict the drag in progress. */
     private fun down(button: MouseButton) = button in held
 
+    override fun zoom(notches: Int) {
+        if (notches == 0) return
+        keyboard.send(HidReports.keyboard(HidModifier.LEFT_CTRL, emptyList()), pauseAfterMs = CLICK_MS)
+        mouse.send(HidReports.mouse(HidReports.buttonBits(held), 0, 0, notches), pauseAfterMs = CLICK_MS)
+        keyboard.send(HidReports.KEYS_UP, pauseAfterMs = CLICK_MS)
+    }
+
     override fun keys(vararg keyCodes: Int) {
         val stroke = HidKeymap.stroke(keyCodes) ?: return
         tap(stroke)
@@ -109,18 +116,27 @@ class UsbHidSink private constructor(
         val alive: Boolean get() = running && !failed && process.isAlive
 
         private val thread = Thread {
-            while (running) {
-                val item = queue.poll(200, TimeUnit.MILLISECONDS) ?: continue
-                try {
-                    stream.write(item.report)
-                    stream.flush()
-                    if (item.pauseAfterMs > 0) Thread.sleep(item.pauseAfterMs)
-                } catch (e: Exception) {
-                    // The host went away, or the gadget was taken from under us.
-                    Log.w(TAG, "HID endpoint closed, reports stop here: ${e.message}")
-                    failed = true
-                    running = false
+            // close() ends this thread by interrupting it, and both poll and sleep answer that
+            // with InterruptedException. Caught out here, where it means "we are done": left to
+            // escape, it took the whole app down the moment a sink was closed.
+            try {
+                while (running) {
+                    val item = queue.poll(200, TimeUnit.MILLISECONDS) ?: continue
+                    try {
+                        stream.write(item.report)
+                        stream.flush()
+                        if (item.pauseAfterMs > 0) Thread.sleep(item.pauseAfterMs)
+                    } catch (e: InterruptedException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // The host went away, or the gadget was taken from under us.
+                        Log.w(TAG, "HID endpoint closed, reports stop here: ${e.message}")
+                        failed = true
+                        running = false
+                    }
                 }
+            } catch (e: InterruptedException) {
+                Log.i(TAG, "writer stopped")
             }
         }.apply { isDaemon = true; name = "hid-writer"; start() }
 

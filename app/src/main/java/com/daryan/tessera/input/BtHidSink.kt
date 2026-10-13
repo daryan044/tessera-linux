@@ -77,6 +77,13 @@ class BtHidSink private constructor(
         send(HidReports.REPORT_ID_MOUSE, HidReports.mouse(HidReports.buttonBits(held), 0, 0), CLICK_MS)
     }
 
+    override fun zoom(notches: Int) {
+        if (notches == 0) return
+        send(HidReports.REPORT_ID_KEYBOARD, HidReports.keyboard(HidModifier.LEFT_CTRL, emptyList()), CLICK_MS)
+        send(HidReports.REPORT_ID_MOUSE, HidReports.mouse(HidReports.buttonBits(held), 0, 0, notches), CLICK_MS)
+        send(HidReports.REPORT_ID_KEYBOARD, HidReports.KEYS_UP, CLICK_MS)
+    }
+
     override fun keys(vararg keyCodes: Int) {
         HidKeymap.stroke(keyCodes)?.let(::tap)
     }

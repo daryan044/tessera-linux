@@ -33,6 +33,12 @@ interface InputSink {
     fun keys(vararg keyCodes: Int)
 
     /**
+     * Zooms by [notches], positive to zoom in. Ctrl and the wheel on a PC; sinks that have no
+     * notion of zooming ignore it, which is what an X11 session does today.
+     */
+    fun zoom(notches: Int) {}
+
+    /**
      * Types [text] as keystrokes. Only the sinks that pretend to be a keyboard do anything with
      * it: an X11 session already receives what the Android keyboard sends.
      */

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +52,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -83,13 +87,16 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
         if (granted[NEARBY] == true) pc.startBluetooth()
         else pc.note("Bluetooth needs the Nearby devices permission, which was declined.")
     }
+    val typing = remember { FocusRequester() }
+    // The keyboard was never asked for, so it only appeared if the field was tapped.
+    LaunchedEffect(sink) { if (sink != null) runCatching { typing.requestFocus() } }
     BackHandler { onClose() }
     // Leaving the screen gives Android its USB gadget back; nothing is left half-configured.
     DisposableEffect(Unit) { onDispose { pc.stop() } }
 
     Surface(color = colors.surfaceContainerLowest, modifier = Modifier.fillMaxSize()) {
         Column(
-            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             // One compact bar: what it is, how it's connected, and the way out.
@@ -147,11 +154,11 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
                 }
             } else {
                 // The pad takes everything that is left.
-                TrackpadSurface(sink, Modifier.weight(1f).fillMaxWidth())
+                TrackpadSurface(sink, Modifier.weight(1f).fillMaxWidth(), scrollScale = PC_SCROLL)
                 Spacer(Modifier.height(8.dp))
                 KeyRow(sink)
                 Spacer(Modifier.height(8.dp))
-                TypeField(sink)
+                TypeField(sink, typing)
             }
         }
     }
@@ -186,15 +193,18 @@ private fun KeyChip(label: String, onClick: () -> Unit) {
 }
 
 /**
- * Where typing lands. A plain field, kept short: Android gives an app the characters its keyboard
- * produced, so each new one is sent on as a keystroke and the field is emptied again. Shrinking
- * means backspace, which produces no character of its own.
+ * Where typing lands, and the only way characters can be had: Android gives an app the text its
+ * keyboard produced, not key presses.
+ *
+ * The field is never really empty. It holds one zero-width space, so that backspace always has
+ * something to delete and therefore reports a change — on a truly empty field an IME sends
+ * nothing at all, which is why Backspace did nothing. Newlines arrive as text too, so Enter is
+ * simply a character here; both are turned back into keystrokes and the sentinel is restored.
  */
 @Composable
-private fun TypeField(sink: InputSink) {
+private fun TypeField(sink: InputSink, focus: FocusRequester) {
     val colors = MaterialTheme.colorScheme
-    val focus = remember { FocusRequester() }
-    var typed by remember { mutableStateOf("") }
+    var field by remember { mutableStateOf(blank()) }
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = colors.surfaceContainerHigh,
@@ -207,7 +217,7 @@ private fun TypeField(sink: InputSink) {
             Icon(LauncherIcons.Keyboard, null, Modifier.size(18.dp), tint = colors.onSurfaceVariant)
             Spacer(Modifier.width(10.dp))
             Box(Modifier.weight(1f)) {
-                if (typed.isEmpty()) {
+                if (field.text.length <= SENTINEL.length) {
                     Text(
                         "Type to the PC",
                         style = MaterialTheme.typography.bodyMedium,
@@ -215,13 +225,18 @@ private fun TypeField(sink: InputSink) {
                     )
                 }
                 BasicTextField(
-                    value = typed,
-                    onValueChange = { text ->
-                        if (text.length > typed.length) sink.type(text.substring(typed.length))
-                        else if (text.length < typed.length) sink.keys(KeyEvent.KEYCODE_DEL)
-                        typed = ""
+                    value = field,
+                    onValueChange = { next ->
+                        val text = next.text
+                        when {
+                            text.length > SENTINEL.length -> sink.type(text.substring(SENTINEL.length))
+                            // Shorter than the sentinel: the IME deleted it, meaning backspace.
+                            text.length < SENTINEL.length -> sink.keys(KeyEvent.KEYCODE_DEL)
+                        }
+                        field = blank()
                     },
-                    singleLine = true,
+                    // Not singleLine: Enter has to produce a newline for us to see it at all.
+                    maxLines = 1,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.onSurface),
                     cursorBrush = SolidColor(colors.primary),
                     modifier = Modifier.fillMaxWidth().focusRequester(focus),
@@ -231,12 +246,24 @@ private fun TypeField(sink: InputSink) {
     }
 }
 
+/** The field's resting state: the sentinel, with the cursor after it. */
+private fun blank() = TextFieldValue(SENTINEL, TextRange(SENTINEL.length))
+
+/** Zero-width: invisible, but something for backspace to bite on. */
+private const val SENTINEL = "\u200B"
+
+/**
+ * Wheel notches per dp of finger. A PC scrolls three lines a notch, so this is far gentler than
+ * an X11 session wants, and the leftovers are carried between frames to keep it smooth.
+ */
+private const val PC_SCROLL = 0.09f
+
 /** Android 12's name for "be a Bluetooth device"; a runtime permission, so it must be asked for. */
 private const val NEARBY = "android.permission.BLUETOOTH_CONNECT"
 
 /** Enter, Backspace and Space first: the ones a trackpad user reaches for most. */
 private val PC_KEYS: List<Pair<String, IntArray>> = listOf(
     "Enter" to intArrayOf(KeyEvent.KEYCODE_ENTER),
-    "⌫" to intArrayOf(KeyEvent.KEYCODE_DEL),
+    "\u232B" to intArrayOf(KeyEvent.KEYCODE_DEL),
     "Space" to intArrayOf(KeyEvent.KEYCODE_SPACE),
 ) + X11Actions.SHORTCUTS
