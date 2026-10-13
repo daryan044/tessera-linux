@@ -55,7 +55,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | 4.1 | USB permission listener and pass-through | 🟡 | The app sheet's Add a device lists plugged-in USB devices (and the GPU node). In chroot mode the node is bound in and its group (root:usb) added to the app's, so it can open just that device. PRoot apps can't open device nodes at all (Android); that needs 4.2. Not yet tried with a real USB device |
 | 4.2 | libusb bridge | ⬜ | |
 | 4.3 | Root detection, `/dev` device mounts | 🟡 | `su` detection and per-app device binds are built; not tested with real devices (GPU, USB) |
-| 4.4 | Chroot rootfs install from the app | 🟡 | Setup offers Debian for chroot mode when /data/local/linux/debian has none: downloaded like PRoot's, unpacked and configured as root, moved into place; an existing system is never replaced. Script checked; full run on the device pending |
+| 4.4 | Chroot rootfs install from the app | ✅ | Setup offers Debian for chroot mode when /data/local/linux/debian has none: downloaded like PRoot's, unpacked and configured as root, moved into place; an existing system is never replaced. The install script was run on the device into a test folder (ownership kept, apt update works as root, apps run as the user); the Setup button itself hasn't been pressed end to end |
 
 ## Phase 5: Performance and release
 
