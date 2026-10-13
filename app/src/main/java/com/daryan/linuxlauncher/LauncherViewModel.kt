@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 enum class BackendMode(val label: String) { PROOT("PRoot"), CHROOT("Chroot (root)") }
 
@@ -78,12 +79,28 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         return system.filterNot { it.name.lowercase() in names || program(it) in programs }
     }
 
-    /** Re-reads the container's menu entries; cheap, so done whenever the launcher comes back. */
-    fun scanSystemApps() {
+    /** When chroot's menus were last read: that takes su, so coming back doesn't always redo it. */
+    private var chrootScannedAt = 0L
+
+    /**
+     * Re-reads the container's menu entries; done whenever the launcher comes back, at most once
+     * a minute in chroot mode unless [force]d (after installs and removals).
+     */
+    fun scanSystemApps(force: Boolean = false) {
         val status = _status.value ?: return
-        // They're the PRoot system's; chroot mode has a system of its own.
-        if (_mode.value != BackendMode.PROOT || !status.prootRootfs) return container.systemApps.clear()
-        viewModelScope.launch { container.systemApps.scan(paths.prootRootfs) }
+        // Each mode lists its own system's apps; chroot's is read through su.
+        val su = status.su
+        when {
+            _mode.value == BackendMode.PROOT && status.prootRootfs ->
+                viewModelScope.launch { container.systemApps.scan(paths.prootRootfs) }
+            _mode.value == BackendMode.CHROOT && su != null && status.chrootRootfs == true -> {
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (!force && now - chrootScannedAt < 60_000) return
+                chrootScannedAt = now
+                viewModelScope.launch { container.systemApps.scanAsRoot(su, paths.chrootRootfs.path, File(getApplication<Application>().cacheDir, "chroot-icons")) }
+            }
+            else -> container.systemApps.clear()
+        }
     }
 
     val shortcuts: StateFlow<List<Shortcut>> = container.shortcuts.shortcuts
@@ -241,7 +258,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             }
             addMissingGuiHelpers()
             configStore(_status.value, _mode.value)?.let { container.registry.refreshInstalled(it) }
-            scanSystemApps()
+            scanSystemApps(force = true)
         }
     }
 
@@ -364,7 +381,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val fromStore = container.registry.isStoreApp(app.id)
         container.queue.enqueue(app.name, app.packages, QueueAction.REMOVE, app.iconFile, backend) {
             if (fromStore) container.registry.unregister(app.id, store) else container.registry.refreshInstalled(store)
-            scanSystemApps()
+            scanSystemApps(force = true)
         }
         return true
     }
@@ -374,7 +391,11 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      * file lists first. False when there's no container or no owning package.
      */
     suspend fun uninstallSystemApp(app: PermissionManifest): Boolean {
-        val pkg = container.systemApps.packageOf(app, paths.prootRootfs) ?: return false
+        val su = _status.value?.su
+        val pkg = (
+            if (_mode.value == BackendMode.CHROOT && su != null) container.systemApps.packageOfAsRoot(app, su, paths.chrootRootfs.path)
+            else container.systemApps.packageOf(app, paths.prootRootfs)
+        ) ?: return false
         return uninstall(app.copy(packages = listOf(pkg)))
     }
 
