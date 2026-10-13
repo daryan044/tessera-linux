@@ -133,7 +133,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val gpuApps: StateFlow<Int> = _gpuApps
 
     /** [app]'s GPU acceleration, or null when it can't have any. */
-    fun gpuFor(app: PermissionManifest): Boolean? = if (app.gui && gpuAvailable()) sessions.gpuFor(app.id) else null
+    fun gpuFor(app: PermissionManifest): Boolean? =
+        // PRoot only for now: a chroot's minimal /dev doesn't carry the GPU device.
+        if (app.gui && gpuAvailable() && _mode.value == BackendMode.PROOT) sessions.gpuFor(app.id) else null
 
     fun setGpuFor(app: PermissionManifest, on: Boolean) {
         sessions.setGpuFor(app.id, on)

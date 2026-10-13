@@ -497,7 +497,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             permissionsChanged = app.id in permissionOverrides,
             onPermissions = { vm.setPermissions(app, it) },
             onResetPermissions = { vm.resetPermissions(app.id) },
-            gpu = remember(app.id, gpuApps, gpuEnabled) { vm.gpuFor(app) },
+            gpu = remember(app.id, gpuApps, gpuEnabled, mode) { vm.gpuFor(app) },
             onGpu = { vm.setGpuFor(app, it) },
         )
     } }

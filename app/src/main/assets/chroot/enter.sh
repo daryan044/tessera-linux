@@ -3,7 +3,7 @@
 # Runs as root inside a fresh mount namespace (and network namespace when network is denied),
 # started by ChrootBackend via:  su -c 'export ...; exec unshare -m [-n] sh enter.sh'
 #
-# Inputs (env): R, BINDS, DEVICES, X11_DIR, RUN_AS_ROOT, NET_GROUPS, GUEST_ENV, CMD
+# Inputs (env): R, BINDS, DEVICES, X11_DIR, RUN_AS_ROOT, APP_UID, NET_GROUPS, GUEST_ENV, CMD
 # Derived from termux-linux-layer/linux. Mounts made here vanish with the namespace; never
 # mount or unmount in the global namespace, Android's mounts are shared and changes propagate.
 set -e
@@ -60,19 +60,41 @@ $GUEST_ENV
 ENVEOF
 
 # su hands us the terminal without making it our controlling tty, so bash would run without
-# job control (no Ctrl+C/Ctrl+Z). setsid -c starts a session that owns the terminal.
+# job control (no Ctrl+C/Ctrl+Z). setsid -c starts a session that owns the terminal. --wait:
+# when we already lead a process group setsid forks, and without it the parent exits at once;
+# su then returns, the launcher takes the app for finished and closes its X server while the
+# app runs on, orphaned ("Can't open display" for every GUI app in chroot mode).
 SETSID=
-[ -x "$R/usr/bin/setsid" ] && SETSID="/usr/bin/setsid -c"
+[ -x "$R/usr/bin/setsid" ] && SETSID="/usr/bin/setsid --ctty --wait"
 # Start in $HOME; expanded by the guest shell, not this one.
 START='cd "$HOME" 2>/dev/null; exec '
 
 if [ "$RUN_AS_ROOT" = 1 ]; then
   exec chroot "$R" $SETSID /usr/bin/env -i "$@" /bin/sh -c "$START$CMD"
 fi
-mkdir -p "$R/home/user"; chown 1000:1000 "$R/home/user"
+# Apps run as the launcher app's own uid (APP_UID), not Debian's usual 1000: on Android, 1000 is
+# "system", which system services trust. The app's uid carries no rights beyond the app's, and
+# is what PRoot apps run as too.
+U=${APP_UID:?APP_UID not set}
+mkdir -p "$R/home/user"
+# Homes made by earlier versions belong to 1000; hand them over once.
+[ "$(stat -c %u "$R/home/user")" = "$U" ] || chown -R "$U:$U" "$R/home/user"
+# Give the uid a name. Without one, D-Bus won't start ("Could not get password database
+# information for UID of current process") and other programs complain.
+if grep -q '^user:' "$R/etc/passwd"; then
+  sed -i "s#^user:[^:]*:[0-9]*:[0-9]*:#user:x:$U:$U:#" "$R/etc/passwd"
+else
+  echo "user:x:$U:$U:Linux Launcher user:/home/user:/bin/bash" >> "$R/etc/passwd"
+fi
+if grep -q '^user:' "$R/etc/group"; then
+  sed -i "s#^user:[^:]*:[0-9]*:#user:x:$U:#" "$R/etc/group"
+else
+  echo "user:x:$U:" >> "$R/etc/group"
+fi
+[ ! -f "$R/etc/shadow" ] || grep -q '^user:' "$R/etc/shadow" || echo 'user:!:19000::::::' >> "$R/etc/shadow"
 # Supplementary groups: Android's network groups when network is granted, none otherwise.
 if [ -n "$NET_GROUPS" ]; then GROUP_ARG="--groups=$NET_GROUPS"; else GROUP_ARG=--clear-groups; fi
 # setpriv is in util-linux (essential on Debian). --no-new-privs keeps setuid binaries inert.
-exec chroot "$R" $SETSID /usr/bin/setpriv --reuid=1000 --regid=1000 \
+exec chroot "$R" $SETSID /usr/bin/setpriv --reuid="$U" --regid="$U" \
   "$GROUP_ARG" --no-new-privs --inh-caps=-all \
   /usr/bin/env -i "$@" /bin/sh -c "$START$CMD"

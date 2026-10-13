@@ -63,7 +63,7 @@ class BackendTest {
     }
 
     @Test fun `chroot isolates network unless granted`() {
-        val chroot = ChrootBackend(paths, "/system/bin/su")
+        val chroot = ChrootBackend(paths, "/system/bin/su", appUid = 10123)
         val denied = chroot.buildLaunch(offline, Session("s1")).argv
         assertEquals("/system/bin/su", denied[0])
         assertTrue(denied[2].endsWith("exec unshare -m -n /system/bin/sh /app/files/chroot/enter.sh"))
@@ -76,7 +76,7 @@ class BackendTest {
     }
 
     @Test fun `chroot quotes the command so arguments survive the shell`() {
-        val script = ChrootBackend(paths, "su").buildLaunch(firefox, session).argv[2]
+        val script = ChrootBackend(paths, "su", appUid = 10123).buildLaunch(firefox, session).argv[2]
         // Two layers: argv joined into CMD for `sh -c`, then CMD quoted again for `export`.
         val cmd = guestCommand(firefox).joinToString(" ") { shellQuote(it) }
         assertTrue(cmd.endsWith("/usr/bin/firefox-esr --new-window 'it'\\''s'"))
@@ -84,7 +84,7 @@ class BackendTest {
     }
 
     @Test fun `chroot enforcement drops to advisory for root apps`() {
-        val chroot = ChrootBackend(paths, "su")
+        val chroot = ChrootBackend(paths, "su", appUid = 10123)
         val rootApp = offline.copy(permissions = Permissions(root = true))
         assertEquals(Enforcement.ENFORCED, chroot.enforcement(Capability.NETWORK, offline))
         assertEquals(Enforcement.ADVISORY, chroot.enforcement(Capability.NETWORK, rootApp))

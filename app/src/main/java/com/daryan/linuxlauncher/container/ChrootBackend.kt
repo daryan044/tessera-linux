@@ -11,6 +11,8 @@ package com.daryan.linuxlauncher.container
 class ChrootBackend(
     private val paths: ContainerPaths,
     private val su: String,
+    /** The uid apps run as inside: the launcher's own (not 1000, which is Android's "system"). */
+    private val appUid: Int = android.os.Process.myUid(),
 ) : ContainerBackend {
     override val name = "Chroot"
 
@@ -29,6 +31,7 @@ class ChrootBackend(
             "DEVICES" to p.devices.joinToString("\n"),
             "X11_DIR" to if (p.display) paths.x11SocketDir(session).invariantSeparatorsPath else "",
             "RUN_AS_ROOT" to if (p.root) "1" else "0",
+            "APP_UID" to appUid.toString(),
             // Android only lets members of AID_INET (3003) open sockets; grant it with network.
             "NET_GROUPS" to if (p.network) "3003,3004" else "",
             "GUEST_ENV" to guestEnv(app, session).map { (k, v) -> "$k=$v" }.joinToString("\n"),

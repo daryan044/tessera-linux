@@ -24,7 +24,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | 2.2 | Android surface | ✅ | Termux:X11's window, one Recents entry per app |
 | 2.3 | Per-app display socket | ✅ | Each GUI app gets its own X server and `:N` socket in its private /tmp |
 | 2.4 | Fullscreen, readable size | ✅ | matchbox-window-manager per display; scaled resolution from screen density; direct touch |
-| 2.5 | GUI apps in chroot mode | 🟡 | Built and wired (socket permissions for uid 1000); not run on a device yet |
+| 2.5 | GUI apps in chroot mode | ✅ | Confirmed on the device (xterm). Apps run as the launcher's own uid, not Debian's 1000 (Android's "system"); setsid --wait keeps the session alive while the app runs |
 | 2.6 | Audio | ✅ | Apps with `audio` get their own PulseAudio in the session; its pipe sink feeds an Android AudioTrack (AudioPipe). Confirmed on the device |
 | 2.7 | Clipboard between Android and X apps | ✅ | Termux:X11's clipboard sync, fixed in our fork for clips with several types (browsers) and for text copied before the window opened. Confirmed both ways on the device |
 | 2.8 | Firefox | ✅ | Runs under PRoot with a private /dev/shm and its sandbox off; touch scrolling via XInput2 |

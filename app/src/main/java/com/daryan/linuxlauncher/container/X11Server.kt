@@ -43,7 +43,10 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
 
         val socket = File(paths.x11SocketDir(session), "X$display")
         repeat(100) {
-            if (socket.exists()) return proc
+            // Accepting, not just there: the socket file exists a moment before the server
+            // listens, and a client connecting in between is refused. PRoot's slow start hid
+            // that; chroot clients are quick enough to hit it ("Can't open display").
+            if (socket.exists() && accepts(socket)) return proc
             if (!proc.isAlive) {
                 val out = proc.inputStream.bufferedReader().readText().trim().lines().takeLast(3)
                 throw IOException("X server exited (${proc.exitValue()}): ${out.joinToString(" / ")}")
@@ -53,6 +56,10 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
         proc.destroy()
         throw IOException("X server didn't create $socket within 5 s")
     }
+
+    private fun accepts(socket: File): Boolean = runCatching {
+        android.net.LocalSocket().use { it.connect(android.net.LocalSocketAddress(socket.path, android.net.LocalSocketAddress.Namespace.FILESYSTEM)) }
+    }.isSuccess
 
     /**
      * Opens (or brings back) the session's window, or with [windowId] the window of one of
