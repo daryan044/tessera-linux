@@ -32,8 +32,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -62,6 +68,7 @@ import com.daryan.tessera.X11Actions
 import com.daryan.tessera.input.InputSink
 import com.daryan.tessera.input.PcInput
 import com.daryan.tessera.input.PcLink
+import com.daryan.tessera.input.PcSettings
 
 /**
  * The phone as a mouse and keyboard for a PC: the same trackpad the cast screen uses, pointed at
@@ -78,6 +85,8 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
     val colors = MaterialTheme.colorScheme
     val pc = remember { PcInput(context, su) }
+    val settings = remember { PcSettings.of(context) }
+    var showSettings by remember { mutableStateOf(false) }
     val sink = pc.sink
     // Being a Bluetooth keyboard needs Nearby devices, a runtime permission: declaring it in the
     // manifest is not enough, and without it the HID profile throws rather than refusing politely.
@@ -89,7 +98,9 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
     }
     val typing = remember { FocusRequester() }
     // The keyboard was never asked for, so it only appeared if the field was tapped.
-    LaunchedEffect(sink) { if (sink != null) runCatching { typing.requestFocus() } }
+    LaunchedEffect(sink, settings.autoKeyboard) {
+        if (sink != null && settings.autoKeyboard) runCatching { typing.requestFocus() }
+    }
     BackHandler { onClose() }
     // Leaving the screen gives Android its USB gadget back; nothing is left half-configured.
     DisposableEffect(Unit) { onDispose { pc.stop() } }
@@ -123,6 +134,9 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
                     label = { Text("Bluetooth", style = MaterialTheme.typography.labelMedium) },
                 )
                 Spacer(Modifier.weight(1f))
+                IconButton(onClick = { showSettings = true }) {
+                    Icon(Icons.Rounded.Settings, "Settings", Modifier.size(20.dp))
+                }
                 IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, "Done", Modifier.size(20.dp)) }
             }
 
@@ -154,13 +168,91 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
                 }
             } else {
                 // The pad takes everything that is left.
-                TrackpadSurface(sink, Modifier.weight(1f).fillMaxWidth(), scrollScale = PC_SCROLL)
+                TrackpadSurface(
+                    sink,
+                    Modifier.weight(1f).fillMaxWidth(),
+                    scrollScale = PC_SCROLL * settings.scrollSpeed,
+                    pointerScale = settings.pointerSpeed,
+                    naturalScroll = settings.naturalScroll,
+                    pinchZoom = settings.pinchZoom,
+                )
                 Spacer(Modifier.height(8.dp))
                 KeyRow(sink)
                 Spacer(Modifier.height(8.dp))
                 TypeField(sink, typing)
             }
         }
+    }
+
+    if (showSettings) PcSettingsDialog(settings) { showSettings = false }
+}
+
+/**
+ * What the pad does, left to the person using it: speeds, which way scrolling goes, whether two
+ * fingers zoom, and whether the keyboard shows itself.
+ */
+@Composable
+private fun PcSettingsDialog(settings: PcSettings, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Trackpad") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                SpeedSlider("Pointer speed", settings.pointerSpeed, settings::setPointerSpeed)
+                SpeedSlider("Scroll speed", settings.scrollSpeed, settings::setScrollSpeed)
+                HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                SettingSwitch(
+                    "Natural scrolling",
+                    "Content follows your fingers",
+                    settings.naturalScroll,
+                    settings::setNaturalScroll,
+                )
+                SettingSwitch(
+                    "Pinch to zoom",
+                    "Off, two fingers always scroll",
+                    settings.pinchZoom,
+                    settings::setPinchZoom,
+                )
+                SettingSwitch(
+                    "Open the keyboard",
+                    "As soon as a PC is connected",
+                    settings.autoKeyboard,
+                    settings::setAutoKeyboard,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
+}
+
+@Composable
+private fun SpeedSlider(label: String, value: Float, onValue: (Float) -> Unit) {
+    Column {
+        Row {
+            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text(
+                // One decimal is as much as anyone needs to see.
+                "${(value * 10).toInt() / 10f}x",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValue,
+            valueRange = PcSettings.MIN_SPEED..PcSettings.MAX_SPEED,
+        )
+    }
+}
+
+@Composable
+private fun SettingSwitch(title: String, detail: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onChecked)
     }
 }
 

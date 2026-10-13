@@ -276,6 +276,12 @@ fun TrackpadSurface(
     modifier: Modifier = Modifier,
     /** Wheel notches per dp of finger travel. A PC's wheel is coarse, so it wants far less. */
     scrollScale: Float = 2f,
+    /** Pointer movement, as a multiple of the default; the user's taste, not ours. */
+    pointerScale: Float = 1f,
+    /** Content follows the fingers, rather than the other way about. */
+    naturalScroll: Boolean = true,
+    /** Whether two fingers spreading zooms, or only ever scrolls. */
+    pinchZoom: Boolean = true,
 ) {
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
@@ -319,7 +325,7 @@ fun TrackpadSurface(
                     val dp = d / density.density
                     val speed = dp.getDistance()
                     // Slow and precise when moving slowly, quicker the faster the finger.
-                    val gain = 1.4f * (1f + ((speed - 1.5f) / 6f).coerceIn(0f, 2.5f))
+                    val gain = 1.4f * pointerScale * (1f + ((speed - 1.5f) / 6f).coerceIn(0f, 2.5f))
                     restX += dp.x * gain
                     restY += dp.y * gain
                     val sx = restX.toInt()
@@ -382,7 +388,7 @@ fun TrackpadSurface(
                             spreadSum += spread
                             panSum += d.getDistance() / density.density
                             if (twoFingers == UNDECIDED && (abs(spreadSum) > DECIDE_DP || panSum > DECIDE_DP)) {
-                                twoFingers = if (abs(spreadSum) > panSum) PINCH else SCROLL
+                                twoFingers = if (pinchZoom && abs(spreadSum) > panSum) PINCH else SCROLL
                             }
                             when (twoFingers) {
                                 PINCH -> {
@@ -398,8 +404,9 @@ fun TrackpadSurface(
                                     // Content follows the fingers, and what is left of a notch is
                                     // carried over rather than dropped: dropping it is what made
                                     // this feel like steps instead of a trackpad.
-                                    scrollX -= d.x / density.density * scrollScale
-                                    scrollY -= d.y / density.density * scrollScale
+                                    val way = if (naturalScroll) -1f else 1f
+                                    scrollX += way * d.x / density.density * scrollScale
+                                    scrollY += way * d.y / density.density * scrollScale
                                     val sx = scrollX.toInt()
                                     val sy = scrollY.toInt()
                                     if (sx != 0 || sy != 0) {
