@@ -63,12 +63,15 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /** Apps that ship with the launcher. */
     private val bundled: List<PermissionManifest> = loadApps(app)
 
+    /** Where the diagnostics appear inside a container that is granted them. */
+    private fun shortcutManifest(s: Shortcut) = s.toManifest(container.diagnostics.dir)
+
     /** Bundled apps, those installed from the store and the user's shortcuts, as their manifests describe them. */
     private val manifests: StateFlow<List<PermissionManifest>> =
         combine(container.registry.userApps, container.shortcuts.shortcuts, container.systemApps.apps) { user, shortcuts, system ->
-            val known = bundled + user.filterNot { u -> bundled.any { it.id == u.id } } + shortcuts.map(Shortcut::toManifest)
+            val known = bundled + user.filterNot { u -> bundled.any { it.id == u.id } } + shortcuts.map(::shortcutManifest)
             known + newSystemApps(system, known)
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, bundled + container.shortcuts.shortcuts.value.map(Shortcut::toManifest))
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, bundled + container.shortcuts.shortcuts.value.map(::shortcutManifest))
 
     /**
      * The container's own menu entries, minus what the launcher lists already: same name, or
@@ -163,6 +166,67 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
+
+    /** The first-run introduction; also openable again from Setup. */
+    private val _introSeen = MutableStateFlow(prefs.getBoolean(LauncherContainer.KEY_INTRO_SEEN, false))
+    val introSeen: StateFlow<Boolean> = _introSeen
+
+    fun setIntroSeen(seen: Boolean) {
+        prefs.edit().putBoolean(LauncherContainer.KEY_INTRO_SEEN, seen).apply()
+        _introSeen.value = seen
+    }
+
+    private val _diagnosticsEnabled = MutableStateFlow(prefs.getBoolean(LauncherContainer.KEY_DIAGNOSTICS, true))
+
+    /** Whether ended sessions are recorded for the user (and for whoever helps them). */
+    val diagnosticsEnabled: StateFlow<Boolean> = _diagnosticsEnabled
+
+    fun setDiagnosticsEnabled(on: Boolean) {
+        prefs.edit().putBoolean(LauncherContainer.KEY_DIAGNOSTICS, on).apply()
+        _diagnosticsEnabled.value = on
+        // Off means gone, not just paused: these name the user's apps and folders.
+        if (!on) viewModelScope.launch(Dispatchers.IO) { container.diagnostics.clear() }
+    }
+
+    /**
+     * Everything an assistant needs to diagnose this phone, as Markdown: how Tessera works, how
+     * it is set up here, and the sessions that ended most recently. For the clipboard, and
+     * written where a container that was granted it can read the same thing.
+     */
+    suspend fun diagnosticsReport(): String = withContext(Dispatchers.IO) {
+        val state = diagnosticsState()
+        container.diagnostics.writeState(state)
+        container.diagnostics.report(state)
+    }
+
+    /** How this phone is set up, in the user's terms. */
+    private fun diagnosticsState(): String {
+        val status = _status.value
+        val apps = apps.value
+        val context = getApplication<Application>()
+        val version = runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull() ?: "unknown"
+        return buildString {
+            appendLine("## This phone")
+            appendLine()
+            appendLine("- Tessera $version")
+            appendLine("- ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
+            appendLine("- ABI: ${android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"}")
+            appendLine("- Engine: ${_mode.value.label}${if (status?.su != null) " (root available)" else " (no root)"}")
+            appendLine("- Debian installed: PRoot ${status?.prootRootfs}, chroot ${status?.chrootRootfs}")
+            appendLine("- PRoot binary present: ${status?.prootBinary}")
+            appendLine("- Background process limit on: ${status?.phantomProcessLimit} (on means Android may kill apps in the background)")
+            appendLine("- GPU driver available: ${gpuAvailable()}, acceleration on: ${_gpuEnabled.value}")
+            appendLine()
+            appendLine("## Apps in the launcher (${apps.size})")
+            appendLine()
+            apps.forEach { a ->
+                val overridden = if (a.id in container.permissions.overrides.value) " [permissions changed by the user]" else ""
+                appendLine("- ${a.name} (`${a.id}`): `${a.exec.joinToString(" ")}`${if (a.gui) ", windowed" else ", terminal"}$overridden")
+            }
+        }
+    }
 
     init {
         refresh()
