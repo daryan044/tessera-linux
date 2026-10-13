@@ -198,27 +198,24 @@ private fun PcSettingsDialog(settings: PcSettings, onDismiss: () -> Unit) {
         title = { Text("Trackpad") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                SpeedSlider("Pointer speed", settings.pointerSpeed, settings::setPointerSpeed)
-                SpeedSlider("Scroll speed", settings.scrollSpeed, settings::setScrollSpeed)
+                SpeedSlider("Pointer speed", settings.pointerSpeed) { settings.pointerSpeed = it }
+                SpeedSlider("Scroll speed", settings.scrollSpeed) { settings.scrollSpeed = it }
                 HorizontalDivider(Modifier.padding(vertical = 6.dp))
                 SettingSwitch(
                     "Natural scrolling",
                     "Content follows your fingers",
                     settings.naturalScroll,
-                    settings::setNaturalScroll,
-                )
+                ) { settings.naturalScroll = it }
                 SettingSwitch(
                     "Pinch to zoom",
                     "Off, two fingers always scroll",
                     settings.pinchZoom,
-                    settings::setPinchZoom,
-                )
+                ) { settings.pinchZoom = it }
                 SettingSwitch(
                     "Open the keyboard",
                     "As soon as a PC is connected",
                     settings.autoKeyboard,
-                    settings::setAutoKeyboard,
-                )
+                ) { settings.autoKeyboard = it }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },

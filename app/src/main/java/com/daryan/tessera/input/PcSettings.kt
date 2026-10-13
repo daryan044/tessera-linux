@@ -15,49 +15,55 @@ import androidx.compose.runtime.setValue
  *
  * Everything here is a preference rather than a guess on our part: how fast a pointer should move
  * and whether two fingers zoom are matters of taste, and what suits one desk does not suit
- * another.
+ * another. Assigning any of them writes it straight through.
  */
 class PcSettings(private val prefs: SharedPreferences) {
 
+    private var pointer by mutableFloatStateOf(prefs.getFloat(KEY_POINTER, 1f))
+    private var scroll by mutableFloatStateOf(prefs.getFloat(KEY_SCROLL, 1f))
+    private var natural by mutableStateOf(prefs.getBoolean(KEY_NATURAL, true))
+    private var pinch by mutableStateOf(prefs.getBoolean(KEY_PINCH, true))
+    private var keyboard by mutableStateOf(prefs.getBoolean(KEY_AUTO_KEYBOARD, true))
+
     /** Pointer movement, as a multiple of the default. */
-    var pointerSpeed by mutableFloatStateOf(prefs.getFloat(KEY_POINTER, 1f))
+    var pointerSpeed: Float
+        get() = pointer
+        set(value) {
+            pointer = value
+            prefs.edit().putFloat(KEY_POINTER, value).apply()
+        }
 
     /** Scrolling, as a multiple of the default. */
-    var scrollSpeed by mutableFloatStateOf(prefs.getFloat(KEY_SCROLL, 1f))
+    var scrollSpeed: Float
+        get() = scroll
+        set(value) {
+            scroll = value
+            prefs.edit().putFloat(KEY_SCROLL, value).apply()
+        }
 
     /** Content follows the fingers, the way a phone scrolls, rather than the other way. */
-    var naturalScroll by mutableStateOf(prefs.getBoolean(KEY_NATURAL, true))
+    var naturalScroll: Boolean
+        get() = natural
+        set(value) {
+            natural = value
+            prefs.edit().putBoolean(KEY_NATURAL, value).apply()
+        }
 
     /** Two fingers spreading zooms; off, they always scroll. */
-    var pinchZoom by mutableStateOf(prefs.getBoolean(KEY_PINCH, true))
+    var pinchZoom: Boolean
+        get() = pinch
+        set(value) {
+            pinch = value
+            prefs.edit().putBoolean(KEY_PINCH, value).apply()
+        }
 
     /** The keyboard opens as soon as a PC is connected. */
-    var autoKeyboard by mutableStateOf(prefs.getBoolean(KEY_AUTO_KEYBOARD, true))
-
-    fun setPointerSpeed(value: Float) {
-        pointerSpeed = value
-        prefs.edit().putFloat(KEY_POINTER, value).apply()
-    }
-
-    fun setScrollSpeed(value: Float) {
-        scrollSpeed = value
-        prefs.edit().putFloat(KEY_SCROLL, value).apply()
-    }
-
-    fun setNaturalScroll(on: Boolean) {
-        naturalScroll = on
-        prefs.edit().putBoolean(KEY_NATURAL, on).apply()
-    }
-
-    fun setPinchZoom(on: Boolean) {
-        pinchZoom = on
-        prefs.edit().putBoolean(KEY_PINCH, on).apply()
-    }
-
-    fun setAutoKeyboard(on: Boolean) {
-        autoKeyboard = on
-        prefs.edit().putBoolean(KEY_AUTO_KEYBOARD, on).apply()
-    }
+    var autoKeyboard: Boolean
+        get() = keyboard
+        set(value) {
+            keyboard = value
+            prefs.edit().putBoolean(KEY_AUTO_KEYBOARD, value).apply()
+        }
 
     companion object {
         const val MIN_SPEED = 0.3f
