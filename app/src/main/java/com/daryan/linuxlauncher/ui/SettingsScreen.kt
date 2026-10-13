@@ -125,8 +125,8 @@ fun SettingsScreen(
                     LauncherIcons.Monitor, "GPU acceleration",
                     when (gpuEnabled) {
                         null -> "Needs an Adreno GPU (Snapdragon); apps draw in software here"
-                        true -> "Experimental: Vulkan apps use the phone's GPU; OpenGL apps (Firefox) may show a black window. Applies to apps opened from now on"
-                        false -> "Off: apps draw in software. Experimental"
+                        true -> "Windowed apps draw with the phone's GPU (OpenGL and Vulkan, through Turnip and Zink). Applies to apps opened from now on"
+                        false -> "Off: apps draw in software"
                     },
                     action = gpuEnabled?.let { on -> { androidx.compose.material3.Switch(checked = on, onCheckedChange = onGpuEnabled) } },
                 )

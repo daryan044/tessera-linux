@@ -144,7 +144,7 @@ fun AppSheet(
                         Column(Modifier.weight(1f)) {
                             Text("GPU acceleration", style = MaterialTheme.typography.titleSmall)
                             Text(
-                                if (gpu) "Draws with the phone's GPU. Experimental: OpenGL apps may show a black window"
+                                if (gpu) "Draws with the phone's GPU"
                                 else "Draws in software",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,

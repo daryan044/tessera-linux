@@ -99,11 +99,8 @@ class SessionManager(
         if (listener == null) screenListeners.remove(id) else screenListeners[id] = listener
     }
 
-    /**
-     * The user's GPU acceleration setting. Off unless turned on: Vulkan works through the
-     * driver, but OpenGL (what Firefox and most apps draw with) doesn't present yet.
-     */
-    fun gpuEnabled() = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_GPU, false)
+    /** The user's GPU acceleration setting; on by default where it's available. */
+    fun gpuEnabled() = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_GPU, true)
 
     fun setGpuEnabled(on: Boolean) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_GPU, on).apply()
 

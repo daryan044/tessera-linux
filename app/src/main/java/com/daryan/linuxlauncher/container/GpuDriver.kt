@@ -24,8 +24,11 @@ object GpuDriver {
     private const val TAG = "GpuDriver"
 
     /**
-     * What makes apps use it. Presentation goes through the X server's image path
-     * (MESA_VK_WSI_DEBUG=sw): Termux:X11's DRI3 hangs Mesa (see LIBGL_DRI3_DISABLE).
+     * What makes apps use it. Frames reach the X server as plain images: Termux:X11's DRI3
+     * hangs Mesa (see LIBGL_DRI3_DISABLE), so GLX goes through Zink's Kopper "DRI2" path and
+     * Vulkan presents in software ("sw"), without SysV shared memory, which Android doesn't
+     * have ("noshm": with it, presenting dies of SIGBUS). Checked on an Adreno 740: glxgears
+     * at ~240 fps, Firefox and HandBrake (GTK 4, EGL) drawing.
      */
     val ENV = mapOf(
         "LD_LIBRARY_PATH" to "$GUEST_DIR/lib",
@@ -35,7 +38,8 @@ object GpuDriver {
         "LIBGL_DRIVERS_PATH" to "$GUEST_DIR/lib/dri",
         "MESA_LOADER_DRIVER_OVERRIDE" to "zink",
         "GALLIUM_DRIVER" to "zink",
-        "MESA_VK_WSI_DEBUG" to "sw",
+        "MESA_VK_WSI_DEBUG" to "sw,noshm",
+        "LIBGL_KOPPER_DRI2" to "1",
         "TU_DEBUG" to "noconform",
     )
 
