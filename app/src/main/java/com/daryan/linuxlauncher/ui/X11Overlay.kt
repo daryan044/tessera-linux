@@ -16,6 +16,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -137,6 +138,8 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
         }
     }
     val pillColor by animateColorAsState(if (overBright) Color.Black else Color.White, motion.defaultEffectsSpec(), label = "pill")
+    // A thin edge in the other color keeps it visible even where the sample is wrong or missing.
+    val pillEdge by animateColorAsState(if (overBright) Color.White else Color.Black, motion.defaultEffectsSpec(), label = "pillEdge")
 
     fun settle(toOpen: Boolean) = scope.launch {
         open.animateTo(if (toOpen) 1f else 0f, motion.defaultSpatialSpec())
@@ -224,7 +227,8 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
         ) {
             Box(
                 Modifier.padding(horizontal = 4.dp).width(if (drag != null) 7.dp else 5.dp).height(56.dp).clip(CircleShape)
-                    .background(pillColor.copy(alpha = if (drag != null) 0.9f else 0.6f)),
+                    .background(pillColor.copy(alpha = if (drag != null) 0.9f else 0.7f))
+                    .border(1.dp, pillEdge.copy(alpha = 0.45f), CircleShape),
             )
         }
 

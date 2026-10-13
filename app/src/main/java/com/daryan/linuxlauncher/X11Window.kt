@@ -327,7 +327,9 @@ class X11Window : MainActivity.MainActivityTagged() {
             // A few pixels are enough: the copy is scaled down to fit.
             val sample = Bitmap.createBitmap(4, 12, Bitmap.Config.ARGB_8888)
             PixelCopy.request(view, src, sample, { status ->
-                if (status == PixelCopy.SUCCESS) result(luminance(sample))
+                val brightness = if (status == PixelCopy.SUCCESS) luminance(sample) else null
+                Log.d("X11Window", "brightness behind the handle: copy status $status, brightness $brightness")
+                brightness?.let(result)
                 sample.recycle()
             }, Handler(Looper.getMainLooper()))
         }
@@ -351,9 +353,14 @@ class X11Window : MainActivity.MainActivityTagged() {
 
 private const val TAP_WINDOW_MS = 1500L
 
-/** Average perceived brightness of [bitmap], 0 (black) to 1 (white). */
-private fun luminance(bitmap: Bitmap): Float {
+/**
+ * Average perceived brightness of [bitmap], 0 (black) to 1 (white); null when it holds nothing
+ * to go by. A copy of a surface whose pixels carry no alpha comes back fully transparent, with
+ * its colors gone, which would read as black.
+ */
+private fun luminance(bitmap: Bitmap): Float? {
     val pixels = IntArray(bitmap.width * bitmap.height).also { bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) }
+    if (pixels.all { it ushr 24 == 0 }) return null
     return pixels.map { c ->
         (0.2126f * (c shr 16 and 0xff) + 0.7152f * (c shr 8 and 0xff) + 0.0722f * (c and 0xff)) / 255f
     }.average().toFloat()
