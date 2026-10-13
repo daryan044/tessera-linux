@@ -41,7 +41,12 @@ jobs:
       - name: Android SDK packages
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" "cmake;3.31.6" > /dev/null
+          # The NDK download sometimes arrives broken ("Error on ZipFile"): try again.
+          for try in 1 2 3; do
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" "cmake;3.31.6" > /dev/null && break
+            [ "$try" = 3 ] && exit 1
+            sleep 10
+          done
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
           echo "X11_REV=$(git -C third_party/termux-x11 rev-parse HEAD)" >> "$GITHUB_ENV"
 
