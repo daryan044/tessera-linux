@@ -40,6 +40,56 @@ object Tar {
         return count
     }
 
+    /**
+     * Extracts a ustar archive into [dest] keeping its layout: directories, regular files (with
+     * their execute bit) and symlinks, which [symlink] makes (Android and the JVM differ there).
+     * Entries that would land outside [dest] are refused. Returns how many entries were written.
+     */
+    fun extract(input: InputStream, dest: File, symlink: (target: String, link: File) -> Unit): Int {
+        dest.mkdirs()
+        val root = dest.canonicalFile
+        val header = ByteArray(BLOCK)
+        var count = 0
+        while (true) {
+            if (!readFully(input, header)) break
+            if (header.all { it == 0.toByte() }) break
+            val name = field(header, 345, 155).let { prefix ->
+                val base = field(header, 0, 100)
+                if (prefix.isEmpty()) base else "$prefix/$base"
+            }.trimEnd('/')
+            val mode = field(header, 100, 8).trim().ifEmpty { "0" }.toInt(8)
+            val size = field(header, 124, 12).trim().ifEmpty { "0" }.toLong(8)
+            val type = header[156].toInt().toChar()
+            val padded = (size + BLOCK - 1) / BLOCK * BLOCK
+            val target = File(root, name)
+            if (name.isEmpty() || name.split('/').any { it == ".." } || !target.canonicalPath.startsWith(root.path + File.separator)) {
+                skipExactly(input, padded)
+                continue
+            }
+            when (type) {
+                '5' -> target.mkdirs()
+                '0', '\u0000' -> {
+                    target.parentFile?.mkdirs()
+                    target.delete()
+                    target.outputStream().use { out -> copyExactly(input, out, size) }
+                    if (mode and 0b001_001_001 != 0) target.setExecutable(true, false)
+                    skipExactly(input, padded - size)
+                    count++
+                    continue
+                }
+                '2' -> {
+                    target.parentFile?.mkdirs()
+                    target.delete()
+                    symlink(field(header, 157, 100), target)
+                }
+                else -> {}
+            }
+            if (type == '5' || type == '2') count++
+            skipExactly(input, padded)
+        }
+        return count
+    }
+
     private fun field(h: ByteArray, off: Int, len: Int): String {
         var end = off
         while (end < off + len && h[end] != 0.toByte()) end++

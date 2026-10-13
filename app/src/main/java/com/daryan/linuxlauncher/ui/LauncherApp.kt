@@ -98,6 +98,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val apps by vm.apps.collectAsStateWithLifecycle()
     val pinned by vm.tabStore.pinned.collectAsStateWithLifecycle()
     val permissionOverrides by vm.permissionOverrides.collectAsStateWithLifecycle()
+    val gpuEnabled by vm.gpuEnabled.collectAsStateWithLifecycle()
     val favorites by vm.tabStore.favorites.collectAsStateWithLifecycle()
     val tabs = remember(apps, customTabs, pinned, favorites) { vm.tabs(apps, customTabs, pinned, favorites) }
 
@@ -357,6 +358,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             activeInstalls = queue.count { it.active },
             onOpenQueue = { showQueue = true },
             onDisplaySettings = { context.startActivity(Intent().setClassName(context, "com.termux.x11.LoriePreferences")) },
+            gpuEnabled = gpuEnabled.takeIf { vm.gpuAvailable() },
+            onGpuEnabled = vm::setGpuEnabled,
             runningSessions = running,
             onStopAll = vm.sessions::stopAll,
             onAbout = { showAbout = true },

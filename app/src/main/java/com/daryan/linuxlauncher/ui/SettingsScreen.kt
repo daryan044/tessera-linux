@@ -69,6 +69,9 @@ fun SettingsScreen(
     activeInstalls: Int,
     onOpenQueue: () -> Unit,
     onDisplaySettings: () -> Unit,
+    /** Null when this phone or build can't use hardware graphics. */
+    gpuEnabled: Boolean?,
+    onGpuEnabled: (Boolean) -> Unit,
     runningSessions: Int,
     onStopAll: () -> Unit,
     onAbout: () -> Unit,
@@ -118,6 +121,15 @@ fun SettingsScreen(
 
             Group("Display") {
                 Row(Icons.Rounded.Settings, "X11 display settings", "Resolution, touch mode, keyboard", onClick = onDisplaySettings)
+                Row(
+                    LauncherIcons.Monitor, "GPU acceleration",
+                    when (gpuEnabled) {
+                        null -> "Needs an Adreno GPU (Snapdragon); apps draw in software here"
+                        true -> "Experimental: Vulkan apps use the phone's GPU; OpenGL apps (Firefox) may show a black window. Applies to apps opened from now on"
+                        false -> "Off: apps draw in software. Experimental"
+                    },
+                    action = gpuEnabled?.let { on -> { androidx.compose.material3.Switch(checked = on, onCheckedChange = onGpuEnabled) } },
+                )
             }
 
             Group("Sessions") {

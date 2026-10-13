@@ -99,11 +99,22 @@ class SessionManager(
         if (listener == null) screenListeners.remove(id) else screenListeners[id] = listener
     }
 
+    /**
+     * The user's GPU acceleration setting. Off unless turned on: Vulkan works through the
+     * driver, but OpenGL (what Firefox and most apps draw with) doesn't present yet.
+     */
+    fun gpuEnabled() = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_GPU, false)
+
+    fun setGpuEnabled(on: Boolean) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_GPU, on).apply()
+
     /** Must be called on the main thread: TerminalSession binds to the caller's Looper. */
     @Throws(IOException::class)
     fun launch(app: PermissionManifest, backend: ContainerBackend): RunningSession {
         val n = nextId.getAndIncrement()
-        val session = Session(id = "s$n", display = if (app.permissions.display) n else null)
+        // Hardware graphics for windowed apps, when it's on and can be set up (PRoot only: a
+        // chroot's /dev doesn't carry the GPU device yet).
+        val gpu = app.gui && backend is ProotBackend && gpuEnabled() && GpuDriver.installed(context, paths.prootRootfs)
+        val session = Session(id = "s$n", display = if (app.permissions.display) n else null, gpu = gpu)
         // Ids restart with the process, so a previous run's s1 may have left a dead X socket here.
         paths.sessionTmp(session).apply {
             deleteRecursively()
@@ -310,6 +321,8 @@ class SessionManager(
 
     private companion object {
         const val TAG = "Sessions"
+        const val PREFS = "launcher"
+        const val KEY_GPU = "gpu_acceleration"
         const val MAX_OUTPUT = 16 * 1024
         const val TRANSCRIPT_ROWS = 5000
     }

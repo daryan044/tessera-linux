@@ -111,6 +111,7 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
         // server never signals: once Mesa is installed (Qt apps pull it in), every GTK app,
         // Firefox included, hangs at startup with a black window. Mesa's other path works.
         put("LIBGL_DRI3_DISABLE", "1")
+        if (session.gpu) putAll(GpuDriver.ENV)
     }
     if (p.audio && p.display && session.display != null) {
         // The session's own PulseAudio, started by guestCommand; see AudioPipe for the rest.

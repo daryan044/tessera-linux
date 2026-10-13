@@ -60,7 +60,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 
 | | Item | Status | Notes |
 |---|---|---|---|
-| 5.1 | GPU acceleration (VirGL / Zink) | ⬜ | X11 apps currently render in software |
+| 5.1 | GPU acceleration (Turnip / Zink) | 🟡 | Our Mesa build (scripts/gpu/build-mesa.sh: Turnip for Android's KGSL, Zink) ships in the APK and unpacks to /opt/linuxlauncher-gpu. Vulkan works on the device (Turnip Adreno 740). OpenGL through Zink doesn't present under Termux:X11 yet (no GLX visual without DRI3; DRI3 hangs Mesa), so it's an experimental Settings switch, off by default |
 | 5.2 | Phantom process killer safeguards | ✅ | Foreground service, plus lifting the limit from Setup (one tap with root, an adb command without) |
 | 5.3 | Open source release | 🟡 | Public GitHub repo, GPL-3.0, copyright headers, third-party credits. No CI, no signed release, not on F-Droid yet |
 

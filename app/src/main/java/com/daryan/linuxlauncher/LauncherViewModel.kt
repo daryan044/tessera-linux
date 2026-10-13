@@ -30,6 +30,7 @@ import com.daryan.linuxlauncher.container.InstallState
 import com.daryan.linuxlauncher.container.PackageInstall
 import com.daryan.linuxlauncher.container.PermissionManifest
 import com.daryan.linuxlauncher.container.PhantomLimit
+import com.daryan.linuxlauncher.container.GpuDriver
 import com.daryan.linuxlauncher.container.Permissions
 import com.daryan.linuxlauncher.container.RunningSession
 import kotlinx.coroutines.Dispatchers
@@ -121,6 +122,17 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancelInstall() = container.installer.cancel()
 
+    /** Whether this phone and build can use hardware graphics at all. */
+    fun gpuAvailable() = GpuDriver.available(getApplication())
+
+    private val _gpuEnabled = MutableStateFlow(sessions.gpuEnabled())
+    val gpuEnabled: StateFlow<Boolean> = _gpuEnabled
+
+    fun setGpuEnabled(on: Boolean) {
+        sessions.setGpuEnabled(on)
+        _gpuEnabled.value = on
+    }
+
     /** Lifts Android's background process limit through su, then checks again. */
     fun liftPhantomLimit() {
         val su = _status.value?.su ?: return
@@ -167,6 +179,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             }
             _status.value = s
             if (s.su == null && _mode.value == BackendMode.CHROOT) _mode.value = BackendMode.PROOT
+            // Unpack the GPU driver ahead of launches (after Linux is installed, or an app update).
+            if (s.prootRootfs && GpuDriver.available(getApplication())) {
+                withContext(Dispatchers.IO) { GpuDriver.install(getApplication(), paths.prootRootfs) }
+            }
             addMissingGuiHelpers()
         }
     }

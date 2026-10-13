@@ -44,6 +44,8 @@ android {
 
     // xkb keyboard data for the X server, staged by scripts/x11/build-native.sh.
     sourceSets.getByName("main").assets.directories.add(rootProject.file("build/x11/assets").path)
+    // The GPU driver (Mesa Turnip + Zink), staged by scripts/gpu/build-mesa.sh; optional.
+    sourceSets.getByName("main").assets.directories.add(rootProject.file("build/gpu/assets").path)
 
     packaging {
         // proot & friends ship as lib*.so and must exist as real files in nativeLibraryDir

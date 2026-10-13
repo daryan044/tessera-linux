@@ -38,6 +38,8 @@ data class Session(
     /** X display number, when the app has the display permission. */
     val display: Int? = null,
     val term: String = "xterm-256color",
+    /** Use the hardware graphics driver ([GpuDriver]). */
+    val gpu: Boolean = false,
 )
 
 /** Host-side locations a backend needs. Built from a Context in the app, by hand in tests. */
