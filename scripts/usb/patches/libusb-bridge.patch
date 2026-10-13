@@ -1,0 +1,62 @@
+--- a/libusb/os/linux_usbfs.c
++++ b/libusb/os/linux_usbfs.c
+@@ -92,6 +92,16 @@
+ /* is sysfs available (mounted) ? */
+ static int sysfs_available = -1;
+ 
++/* Linux Launcher: under the USB bridge (LL_USB_FDS set), the devices are the ones the launcher
++ * opened through Android's USB permission, served at /dev/bus/usb by its shim. Android keeps
++ * apps out of sysfs and uevents, so find them there and don't watch for hotplug. */
++static int bridged(void)
++{
++	const char *fds = getenv("LL_USB_FDS");
++	return fds && *fds;
++}
++static int event_monitor_started;
++
+ /* how many times have we initted (and not exited) ? */
+ static int init_count = 0;
+ 
+@@ -387,6 +397,8 @@
+ 
+ 	usbi_dbg(ctx, "max iso packet length is (likely) %u bytes", max_iso_packet_len);
+ 
++	if (sysfs_available == -1 && bridged())
++		sysfs_available = 0;
+ 	if (sysfs_available == -1) {
+ 		struct statfs statfsbuf;
+ 
+@@ -405,16 +417,19 @@
+ 	}
+ 
+ 	r = LIBUSB_SUCCESS;
+-	if (init_count == 0) {
++	if (init_count == 0 && !bridged()) {
+ 		/* start up hotplug event handler */
+ 		r = linux_start_event_monitor();
++		event_monitor_started = r == LIBUSB_SUCCESS;
+ 	}
+ 	if (r == LIBUSB_SUCCESS) {
+ 		r = linux_scan_devices(ctx);
+ 		if (r == LIBUSB_SUCCESS)
+ 			init_count++;
+-		else if (init_count == 0)
++		else if (init_count == 0 && event_monitor_started) {
+ 			linux_stop_event_monitor();
++			event_monitor_started = 0;
++		}
+ 	} else {
+ 		usbi_err(ctx, "error starting hotplug event monitor");
+ 	}
+@@ -431,9 +446,10 @@
+ 	}
+ 
+ 	assert(init_count != 0);
+-	if (!--init_count) {
++	if (!--init_count && event_monitor_started) {
+ 		/* tear down event handler */
+ 		linux_stop_event_monitor();
++		event_monitor_started = 0;
+ 	}
+ }
+ 

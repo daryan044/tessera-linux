@@ -49,11 +49,19 @@ class ProotBackend(
             bind(paths.sessionShm(session).invariantSeparatorsPath, "/dev/shm")
             // proot has no read-only binds; FsGrant.readOnly is advisory here.
             p.filesystem.filter { exists(it.path) }.forEach { bind(it.path, it.mountAt) }
-            p.devices.filter(exists).forEach { bind(it) }
+            if (session.usbFds.isEmpty()) {
+                p.devices.filter(exists).forEach { bind(it) }
+            } else {
+                // Bridged USB devices are opened through the shim, which these stand-ins list.
+                p.devices.filter { exists(it) && !it.startsWith(UsbBridge.USB_PATH) }.forEach { bind(it) }
+                bind(paths.sessionUsb(session).invariantSeparatorsPath, UsbBridge.USB_PATH.removeSuffix("/"))
+            }
 
             add("/usr/bin/env")
             add("-i")
-            addAll((guestEnv(app, session) + SANDBOX_OFF).map { (k, v) -> "$k=$v" })
+            val env = guestEnv(app, session) + SANDBOX_OFF
+            val usb = if (session.usbFds.isEmpty()) emptyMap() else UsbBridge.env(session.usbFds, env)
+            addAll((env + usb).map { (k, v) -> "$k=$v" })
             addAll(guestCommand(app))
         }
         val hostEnv = buildMap {

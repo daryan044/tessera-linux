@@ -1,5 +1,5 @@
 # Builds the APK from source on every push and pull request; a v* tag also publishes it as a
-# GitHub release. The native parts (PRoot, the X server, the GPU driver) come from the scripts
+# GitHub release. The native parts (PRoot, the X server, the GPU driver, the USB bridge) come from the scripts
 # in scripts/, cached by their inputs since they rarely change and take a while.
 #
 # Signing: with the repository secrets LL_KEYSTORE_BASE64 (the keystore, base64), LL_KEYSTORE_PASSWORD,
@@ -76,6 +76,18 @@ jobs:
         run: |
           sudo --preserve-env=PATH scripts/gpu/build-mesa.sh
           sudo chown -R "$(id -u):$(id -g)" build/gpu
+
+      - name: Cache USB bridge
+        id: usb
+        uses: actions/cache@v4
+        with:
+          path: build/usb
+          key: usb-${{ hashFiles('scripts/usb/**') }}
+      - name: Build USB bridge
+        if: steps.usb.outputs.cache-hit != 'true'
+        run: |
+          sudo --preserve-env=PATH scripts/usb/build-usb.sh
+          sudo chown -R "$(id -u):$(id -g)" build/usb
 
       - name: Release key
         if: env.KEYSTORE_BASE64 != ''

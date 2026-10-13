@@ -42,6 +42,8 @@ data class Session(
     val gpu: Boolean = false,
     /** Workarounds for the driver's drawing bugs, when [gpu] is on. */
     val gpuFixes: Set<GpuFix> = emptySet(),
+    /** USB devices opened for a PRoot app ([UsbBridge]): guest path -> inherited fd. */
+    val usbFds: Map<String, Int> = emptyMap(),
 )
 
 /** Host-side locations a backend needs. Built from a Context in the app, by hand in tests. */
@@ -64,6 +66,8 @@ data class ContainerPaths(
     fun x11SocketDir(session: Session) = File(sessionTmp(session), ".X11-unix")
     /** Private /dev/shm per session; Android has none, and browsers' IPC needs one. */
     fun sessionShm(session: Session) = File(cacheDir, "sessions/${session.id}/shm")
+    /** Stand-ins for a PRoot session's bridged USB devices, bound at /dev/bus/usb ([UsbBridge]). */
+    fun sessionUsb(session: Session) = File(cacheDir, "sessions/${session.id}/usb")
     /** Stand-ins for /proc files Android hides from apps; see [FakeProc]. */
     val fakeProcDir get() = File(filesDir, "proc")
 

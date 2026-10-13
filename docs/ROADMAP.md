@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of 2026-10-12 (evening). ✅ done and verified on a device · 🟡 partly done or built but untested · ⬜ not started.
+Status as of 2026-10-13. ✅ done and verified on a device · 🟡 partly done or built but untested · ⬜ not started.
 
 Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 
@@ -37,7 +37,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | | Item | Status | Notes |
 |---|---|---|---|
 | 3.1 | Launcher UI and tabs | ✅ | Material 3 Expressive, dynamic color, blur, floating dock, category and custom tabs |
-| 3.2 | App store | 🟡 | Store tab built on Debian's AppStream catalog (1,951 desktop apps in main, plus contrib and non-free), with icons, search and categories. Installing reads the app's `.desktop` file and adds a launcher entry with category-based permissions. Installs run in a background queue shown under the app bar. No screenshots (Debian's links are broken) |
+| 3.2 | App store | 🟡 | Store tab built on Debian's AppStream catalog (1,951 desktop apps in main, plus contrib and non-free), with icons, search, categories and screenshots (from Flathub, matched by AppStream id or exact name; Debian's own screenshot links are broken). Installing reads the app's `.desktop` file and adds a launcher entry with category-based permissions. Installs run in a background queue shown under the app bar. Screenshots untested on a device |
 | 3.3 | One app per window | ✅ | Separate X server, display and Android window per app |
 | 3.4 | Install apps from the launcher | 🟡 | Manifests list their packages; the app sheet offers Install (apt in a root terminal) when the app is missing. Built, untested on a device. Only checked in PRoot mode |
 | 3.5 | Edit permissions in the UI | ✅ | The app sheet's switches (network, sound, root) and lists (shared Android folders with read-only, devices) change an app's permissions from its next launch. Stored apart from the manifest (`files/permissions.json`), so Reset restores the manifest's and store reinstalls keep the user's |
@@ -46,15 +46,15 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | 3.9 | Pin and favorite apps | ✅ | Hold an app: pin it (pinned apps lead every tab) or add it to Favorites (a tab after All) |
 | 3.12 | Icons on the phone's home screen | 🟡 | Hold an app: Add to home screen pins an icon (its launcher colors and glyph) that starts it through the launcher. Built, untested on a device |
 | 3.10 | Shortcuts | ✅ | A Shortcuts tab of commands as icons (terminal or window, optionally root), made and edited from the tab and the long-press menu. Starts with Claude Code, which installs itself on first run (curl, git and CA certificates are offered for install first). Confirmed on the device |
-| 3.11 | Apps installed outside the Store | ✅ | The launcher lists the container's own menu entries (/usr/share/applications), so apps installed with apt in a terminal or from a .deb show up, rescanned whenever the launcher comes back; uninstalling finds their package from dpkg. PRoot mode for now |
+| 3.11 | Apps installed outside the Store | ✅ | The launcher lists the container's own menu entries (/usr/share/applications), so apps installed with apt in a terminal or from a .deb show up, rescanned whenever the launcher comes back; uninstalling finds their package from dpkg. In chroot mode the menus, icons and dpkg lists are read through su (rescans at most once a minute); that part is untested on a device |
 | 3.7 | Config editor (side menu) | 🟡 | Hamburger menu: .bashrc (root, user), bash.bashrc, profile, environment, apt sources and settings, resolv.conf, hosts, and Termux:X11's settings. PRoot edits files directly, chroot via su; first save keeps a .bak-launcher. Built, untested on a device |
 
 ## Phase 4: Hardware and root
 
 | | Item | Status | Notes |
 |---|---|---|---|
-| 4.1 | USB permission listener and pass-through | 🟡 | The app sheet's Add a device lists plugged-in USB devices (and the GPU node). In chroot mode the node is bound in and its group (root:usb) added to the app's, so it can open just that device. PRoot apps can't open device nodes at all (Android); that needs 4.2. Not yet tried with a real USB device |
-| 4.2 | libusb bridge | ⬜ | |
+| 4.1 | USB permission listener and pass-through | 🟡 | The app sheet's Add a device lists plugged-in USB devices (and the GPU node). In chroot mode the node is bound in and its group (root:usb) added to the app's, so it can open just that device. PRoot apps go through the libusb bridge (4.2). Not yet tried with a real USB device |
+| 4.2 | libusb bridge | 🟡 | For PRoot apps: at launch the launcher asks Android's USB permission for each granted device, opens it, and the app's processes inherit the files. Inside, a preloaded shim (scripts/usb/llusb.c) answers opens of those /dev/bus/usb paths with them, stand-in files there let scans find them, and our libusb build (no udev; patched to skip sysfs and hotplug under the bridge) finds them through usbfs. The shim was checked on Linux with a file in place of a device; untested with a real USB device |
 | 4.3 | Root detection, `/dev` device mounts | 🟡 | `su` detection and per-app device binds are built; not tested with real devices (GPU, USB) |
 | 4.4 | Chroot rootfs install from the app | ✅ | Setup offers Debian for chroot mode when /data/local/linux/debian has none: downloaded like PRoot's, unpacked and configured as root, moved into place; an existing system is never replaced. The install script was run on the device into a test folder (ownership kept, apt update works as root, apps run as the user); the Setup button itself hasn't been pressed end to end |
 
@@ -62,12 +62,12 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 
 | | Item | Status | Notes |
 |---|---|---|---|
-| 5.1 | GPU acceleration (Turnip / Zink) | ✅ | Our Mesa build (scripts/gpu/build-mesa.sh: Turnip for Android's KGSL, Zink) ships in the APK and unpacks to /opt/linuxlauncher-gpu; on by default on Adreno phones, switchable globally and per app. Frames reach Termux:X11 as images (Kopper DRI2 for GLX, Vulkan WSI sw without SysV shm). On an Adreno 740: OpenGL 4.6, glxgears ~240 fps, Firefox and HandBrake draw. Hold a windowed app for Graphics fixes: per-app GPU switch and Turnip workarounds. UBWC is off by default (VS Code frames came out as a grid of black blocks; confirmed fixed on the device) |
+| 5.1 | GPU acceleration (Turnip / Zink) | ✅ | Our Mesa build (scripts/gpu/build-mesa.sh: Turnip for Android's KGSL, Zink) ships in the APK and unpacks to /opt/linuxlauncher-gpu; on by default on Adreno phones, switchable globally and per app. Chroot mode too: the driver is unpacked there through su and GPU sessions get /dev/kgsl-3d0 (untested on a device). Frames reach Termux:X11 as images (Kopper DRI2 for GLX, Vulkan WSI sw without SysV shm). On an Adreno 740: OpenGL 4.6, glxgears ~240 fps, Firefox and HandBrake draw. Hold a windowed app for Graphics fixes: per-app GPU switch and Turnip workarounds. UBWC is off by default (VS Code frames came out as a grid of black blocks; confirmed fixed on the device) |
 | 5.2 | Phantom process killer safeguards | ✅ | Foreground service, plus lifting the limit from Setup (one tap with root, an adb command without) |
-| 5.3 | Open source release | 🟡 | Public GitHub repo, GPL-3.0, copyright headers, third-party credits. No CI, no signed release, not on F-Droid yet |
+| 5.3 | Open source release | 🟡 | Public GitHub repo, GPL-3.0, copyright headers, third-party credits. Release builds signed with a key from keystore.properties or the environment (the debug key without one). GitHub Actions (.github/workflows/build.yml) builds every native part from source and the APK, and publishes v* tags as releases; not run yet. No release key or published release yet, not on F-Droid |
 
 ## Known issues
 
-- An app's installed state can't be checked in chroot mode (the app can't read that rootfs), so Install is only offered in PRoot mode.
+- Alpine isn't offered: the Store, the app manifests, package installs and the GPU driver (built against glibc) are all Debian's.
 - Session ids restart at `s1` with each app process; stale session directories are cleared at startup.
 - Builds need WSL (or Linux) once for the X server's native library.

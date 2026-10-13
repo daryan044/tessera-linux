@@ -32,6 +32,8 @@ import com.daryan.linuxlauncher.container.PermissionManifest
 import com.daryan.linuxlauncher.container.PhantomLimit
 import com.daryan.linuxlauncher.container.GpuDriver
 import com.daryan.linuxlauncher.container.GpuFix
+import com.daryan.linuxlauncher.container.ProotBackend
+import com.daryan.linuxlauncher.container.UsbBridge
 import com.daryan.linuxlauncher.container.Permissions
 import com.daryan.linuxlauncher.container.RunningSession
 import kotlinx.coroutines.Dispatchers
@@ -253,6 +255,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (s.prootRootfs && GpuDriver.available(getApplication())) {
                 withContext(Dispatchers.IO) { GpuDriver.install(getApplication(), paths.prootRootfs) }
             }
+            if (s.prootRootfs && UsbBridge.available(getApplication())) {
+                withContext(Dispatchers.IO) { UsbBridge.install(getApplication(), paths.prootRootfs) }
+            }
             if (_mode.value == BackendMode.CHROOT && s.su != null && s.chrootRootfs == true && GpuDriver.available(getApplication())) {
                 withContext(Dispatchers.IO) { GpuDriver.installAsRoot(getApplication(), paths.chrootRootfs, s.su) }
             }
@@ -427,10 +432,22 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 _messages.send(problem ?: "Backend unavailable")
                 return@launch
             }
+            // PRoot apps reach their USB devices through the bridge: open them first (this may
+            // ask the user for each device's permission).
+            val usb = if (backend is ProotBackend && app.permissions.devices.any { it.startsWith(UsbBridge.USB_PATH) }) {
+                UsbBridge.open(getApplication(), app.permissions.devices).also { opened ->
+                    if (opened.missing.isNotEmpty()) {
+                        _messages.send("${app.name}: couldn't open ${opened.missing.joinToString()} (unplugged, or permission refused)")
+                    }
+                }
+            } else null
             // Main thread: TerminalSession binds to the caller's Looper. Spawning is a quick fork.
-            runCatching { sessions.launch(app, backend) }
+            runCatching { sessions.launch(app, backend, usb) }
                 .onSuccess(onLaunched)
-                .onFailure { _messages.send("Couldn't start ${app.name}: ${it.message}") }
+                .onFailure {
+                    usb?.close()
+                    _messages.send("Couldn't start ${app.name}: ${it.message}")
+                }
         }
     }
 

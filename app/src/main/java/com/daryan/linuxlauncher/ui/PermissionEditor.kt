@@ -119,7 +119,7 @@ fun PermissionEditor(
             Divider()
             ListSection(
                 title = "Devices",
-                empty = if (backend.name == "PRoot") "No hardware access. In PRoot mode Android keeps apps from opening USB devices; use chroot mode for those"
+                empty = if (backend.name == "PRoot") "No hardware access. USB devices added here are opened with Android's permission when the app starts"
                 else "No hardware access",
                 items = p.devices,
                 enforcement = pill(Capability.DEVICES, true),

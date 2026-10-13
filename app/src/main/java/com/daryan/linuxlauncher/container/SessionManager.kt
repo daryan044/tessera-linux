@@ -125,8 +125,12 @@ class SessionManager(
             .putStringSet(KEY_GPU_FIXES + appId, fixes.map { it.name }.toSet()).apply()
 
     /** Must be called on the main thread: TerminalSession binds to the caller's Looper. */
+    /** USB devices open for running sessions, closed when they end. */
+    private val usbDevices = ConcurrentHashMap<String, UsbBridge.Opened>()
+
+    /** [usb]: the app's USB devices, opened for it when it runs in PRoot ([UsbBridge]). */
     @Throws(IOException::class)
-    fun launch(app: PermissionManifest, backend: ContainerBackend): RunningSession {
+    fun launch(app: PermissionManifest, backend: ContainerBackend, usb: UsbBridge.Opened? = null): RunningSession {
         val n = nextId.getAndIncrement()
         // Hardware graphics for windowed apps, when it's on and the driver is in that system.
         val gpu = app.gui && gpuFor(app.id) && when (backend) {
@@ -139,6 +143,7 @@ class SessionManager(
             display = if (app.permissions.display) n else null,
             gpu = gpu,
             gpuFixes = if (gpu) gpuFixesFor(app.id) else emptySet(),
+            usbFds = if (backend is ProotBackend) usb?.fds.orEmpty() else emptyMap(),
         )
         // Ids restart with the process, so a previous run's s1 may have left a dead X socket here.
         paths.sessionTmp(session).apply {
@@ -150,6 +155,8 @@ class SessionManager(
             mkdirs()
         }
         if (app.permissions.display) paths.x11SocketDir(session).mkdirs()
+        if (session.usbFds.isNotEmpty()) UsbBridge.makeTree(paths.sessionUsb(session), session.usbFds)
+        usb?.let { usbDevices[session.id] = it }
         // A stopped Firefox leaves a profile lock naming a pid Android will soon reuse.
         if (backend is ProotBackend) runCatching { StaleLocks.clean(paths.prootRootfs, android.os.Process.myUid()) }
         val spec = backend.buildLaunch(app, session)
@@ -170,6 +177,7 @@ class SessionManager(
         )
         // Start the process now rather than when a view first attaches; the view resizes it.
         terminal.initializeEmulator(80, 24, 12, 24)
+        usbDevices[session.id]?.closeInherited()
         return RunningSession(session, app, backend.name, terminal.pid, terminal = terminal)
     }
 
@@ -186,7 +194,11 @@ class SessionManager(
                 audio?.let { launch { it.run() } }
                 withContext(Dispatchers.Main) { x11.showWindow(session) }
                 val pid = IntArray(1)
-                val fd = Pty.spawn(spec, rows = 24, cols = 80, pidOut = pid)
+                val fd = try {
+                    Pty.spawn(spec, rows = 24, cols = 80, pidOut = pid)
+                } finally {
+                    usbDevices[session.id]?.closeInherited()
+                }
                 update(session.id) { it.copy(pid = pid[0]) }
                 launch { readOutput(session.id, fd) }
                 val code = Pty.waitFor(pid[0])
@@ -203,6 +215,7 @@ class SessionManager(
                 // The app is gone; its session's detached daemons go with it.
                 ProcessTree.killSession(session.id)
                 servers.remove(session.id)?.destroy()
+                usbDevices.remove(session.id)?.close()
                 withContext(Dispatchers.Main + NonCancellable) { x11.closeWindow(session) }
             }
         }
@@ -315,6 +328,7 @@ class SessionManager(
             screenListeners[id]?.invoke()
             update(id) { it.copy(exitCode = finishedSession.exitStatus) }
             ProcessTree.killSession(id)
+            usbDevices.remove(id)?.close()
         }
 
         override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {

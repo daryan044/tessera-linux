@@ -84,6 +84,8 @@ android {
     sourceSets.getByName("main").assets.directories.add(rootProject.file("build/x11/assets").path)
     // The GPU driver (Mesa Turnip + Zink), staged by scripts/gpu/build-mesa.sh; optional.
     sourceSets.getByName("main").assets.directories.add(rootProject.file("build/gpu/assets").path)
+    // The USB bridge's guest half (libusb + shim), staged by scripts/usb/build-usb.sh; optional.
+    sourceSets.getByName("main").assets.directories.add(rootProject.file("build/usb/assets").path)
 
     packaging {
         // proot & friends ship as lib*.so and must exist as real files in nativeLibraryDir
