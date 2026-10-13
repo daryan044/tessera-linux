@@ -1,0 +1,109 @@
+# Builds the APK from source on every push and pull request; a v* tag also publishes it as a
+# GitHub release. The native parts (PRoot, the X server, the GPU driver) come from the scripts
+# in scripts/, cached by their inputs since they rarely change and take a while.
+#
+# Signing: with the repository secrets LL_KEYSTORE_BASE64 (the keystore, base64), LL_KEYSTORE_PASSWORD,
+# LL_KEY_ALIAS and LL_KEY_PASSWORD set, releases are signed with that key; otherwise with a
+# throwaway debug key (fine for trying a build, not for updating an installed release).
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  NDK_VERSION: 28.2.13676358
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      KEYSTORE_BASE64: ${{ secrets.LL_KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" "cmake;3.31.6" "platforms;android-37" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "X11_REV=$(git -C third_party/termux-x11 rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Cache PRoot
+        id: proot
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/jniLibs
+          key: proot-${{ env.NDK_VERSION }}-${{ hashFiles('scripts/proot/**') }}
+      - name: Build PRoot
+        if: steps.proot.outputs.cache-hit != 'true'
+        run: scripts/proot/build.sh
+
+      - name: Cache X server
+        id: x11
+        uses: actions/cache@v4
+        with:
+          path: build/x11
+          key: x11-${{ hashFiles('scripts/x11/**') }}-${{ env.X11_REV }}
+      - name: Build X server
+        if: steps.x11.outputs.cache-hit != 'true'
+        run: scripts/x11/build-native.sh
+
+      - name: Cache GPU driver
+        id: gpu
+        uses: actions/cache@v4
+        with:
+          path: build/gpu
+          key: gpu-${{ hashFiles('scripts/gpu/**') }}
+      - name: Build GPU driver
+        if: steps.gpu.outputs.cache-hit != 'true'
+        run: |
+          sudo --preserve-env=PATH scripts/gpu/build-mesa.sh
+          sudo chown -R "$(id -u):$(id -g)" build/gpu
+
+      - name: Release key
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "LL_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        env:
+          LL_KEYSTORE_PASSWORD: ${{ secrets.LL_KEYSTORE_PASSWORD }}
+          LL_KEY_ALIAS: ${{ secrets.LL_KEY_ALIAS }}
+          LL_KEY_PASSWORD: ${{ secrets.LL_KEY_PASSWORD }}
+        run: ./gradlew --console=plain assembleRelease
+
+      - name: Name the APK
+        run: |
+          name="linux-launcher-${GITHUB_REF_NAME//\//-}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$name"
+          echo "APK=$name" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK }}
+          path: ${{ env.APK }}
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APK }}
+          generate_release_notes: true

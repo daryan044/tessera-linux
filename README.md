@@ -65,6 +65,13 @@ scripts/x11/build-native.sh           # once, on Linux or WSL: X server + xkb da
 The X server's native build needs a Linux host (it compiles helper tools with the host gcc);
 everything else, including the app itself, builds on Windows, macOS or Linux.
 
+Release builds (`./gradlew assembleRelease`) are signed with the key in `keystore.properties`
+at the top of the project (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; never
+committed), or the `LL_KEYSTORE*` environment variables; without either, with the debug key.
+GitHub Actions (`.github/workflows/build.yml`) builds everything from source on each push, and
+publishes a release for each `v*` tag, signed when the `LL_KEYSTORE_BASE64`, `LL_KEYSTORE_PASSWORD`,
+`LL_KEY_ALIAS` and `LL_KEY_PASSWORD` secrets are set.
+
 `targetSdk` is 28 on purpose: newer targets forbid executing files from app storage, which is
 where the Linux system lives. This rules out Google Play; distribute through GitHub and F-Droid.
 

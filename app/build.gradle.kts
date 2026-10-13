@@ -1,7 +1,31 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+}
+
+/**
+ * The release key: from keystore.properties at the top of the project (storeFile, storePassword,
+ * keyAlias, keyPassword; never committed), or from LL_KEYSTORE, LL_KEYSTORE_PASSWORD, LL_KEY_ALIAS
+ * and LL_KEY_PASSWORD in the environment (CI). Null when neither is there.
+ */
+val releaseKey: Map<String, String>? = run {
+    val file = rootProject.file("keystore.properties")
+    if (file.isFile) {
+        val p = Properties().apply { file.inputStream().use(::load) }
+        listOf("storeFile", "storePassword", "keyAlias", "keyPassword").associateWith { p.getProperty(it).orEmpty() }
+    } else {
+        System.getenv("LL_KEYSTORE")?.takeIf { it.isNotBlank() }?.let { store ->
+            mapOf(
+                "storeFile" to store,
+                "storePassword" to System.getenv("LL_KEYSTORE_PASSWORD").orEmpty(),
+                "keyAlias" to System.getenv("LL_KEY_ALIAS").orEmpty(),
+                "keyPassword" to System.getenv("LL_KEY_PASSWORD").orEmpty(),
+            )
+        }
+    }
 }
 
 android {
@@ -22,12 +46,23 @@ android {
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=none" } }
     }
 
+    signingConfigs {
+        if (releaseKey != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseKey.getValue("storeFile"))
+                storePassword = releaseKey.getValue("storePassword")
+                keyAlias = releaseKey.getValue("keyAlias")
+                keyPassword = releaseKey.getValue("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Until there's a release key: the debug key lets it install over a debug build (same
-            // signature, data kept), and it isn't debuggable, which makes Compose much smoother.
-            signingConfig = signingConfigs.getByName("debug")
+            // Without a release key, the debug key: it still installs over a debug build (same
+            // signature, data kept), and isn't debuggable, which makes Compose much smoother.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
