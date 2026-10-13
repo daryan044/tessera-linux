@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
@@ -68,7 +69,9 @@ import com.daryan.tessera.CastState
 import com.daryan.tessera.MouseButton
 import com.daryan.tessera.X11Actions
 import com.daryan.tessera.input.InputSink
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -93,6 +96,14 @@ private const val PINCH_DP = 44f
 
 private const val TAP_MS = 220L
 private const val DOUBLE_TAP_MS = 300L
+
+/**
+ * How long a tap's button stays down before being let go. A finger that comes back inside this
+ * window keeps it down instead, which is how a laptop trackpad drags: the release is withheld,
+ * never sent and then contradicted. Sending the release and pressing again is a double click, and
+ * the host is right to read it as one.
+ */
+private const val TAP_HOLD_MS = 180L
 private const val RIPPLE_MS = 520L
 private const val TRAIL_MS = 380L
 
@@ -269,6 +280,8 @@ fun TrackpadSurface(
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
     val colors = MaterialTheme.colorScheme
+    // Outlives a gesture, because withholding a tap's release outlives the gesture that made it.
+    val scope = rememberCoroutineScope()
 
     // Visual state, shared between the gesture handler and the drawing.
     val fingers = remember { mutableStateMapOf<PointerId, Offset>() }
@@ -294,8 +307,9 @@ fun TrackpadSurface(
             .background(colors.surfaceContainer)
             .pointerInput(Unit) {
                 val slop = viewConfiguration.touchSlop
-                var lastTapUp = 0L
                 var lastTapAt = Offset.Zero
+                // A tap whose release has not been sent yet; cancelling it turns it into a drag.
+                var heldByTap: Job? = null
                 // Movement smaller than a pixel adds up instead of being lost.
                 var restX = 0f
                 var restY = 0f
@@ -327,10 +341,13 @@ fun TrackpadSurface(
                     var zoomRest = 0f
                     scrollX = 0f
                     scrollY = 0f
-                    // A tap, then straight away a finger down again: hold the button and drag.
-                    val drag = start - lastTapUp < DOUBLE_TAP_MS && (down.position - lastTapAt).getDistance() < 48.dp.toPx()
+                    // A finger back down while the last tap's button is still held: keep it
+                    // held and drag. Nothing is pressed here; it never came up.
+                    val drag = heldByTap?.isActive == true &&
+                        (down.position - lastTapAt).getDistance() < 48.dp.toPx()
                     if (drag) {
-                        sink.press(MouseButton.LEFT, true)
+                        heldByTap?.cancel()
+                        heldByTap = null
                         dragging = true
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     }
@@ -411,12 +428,19 @@ fun TrackpadSurface(
                             2 -> MouseButton.RIGHT
                             else -> MouseButton.MIDDLE
                         }
-                        sink.click(button)
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         ripples += Ripple(last, frameClock(), button)
                         if (button == MouseButton.LEFT) {
-                            lastTapUp = up
+                            // Down now, up shortly: a finger returning first cancels the release
+                            // and the press simply carries on as a drag.
                             lastTapAt = last
+                            sink.press(MouseButton.LEFT, true)
+                            heldByTap = scope.launch {
+                                delay(TAP_HOLD_MS)
+                                sink.press(MouseButton.LEFT, false)
+                            }
+                        } else {
+                            sink.click(button)
                         }
                     }
                 }

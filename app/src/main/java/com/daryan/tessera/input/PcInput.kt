@@ -5,6 +5,7 @@ package com.daryan.tessera.input
 
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -65,6 +66,7 @@ class PcInput(private val context: Context, private val su: String?) {
                     status = "The PC sees a USB mouse and keyboard."
                 },
                 onFailure = {
+                    Log.w("PcInput", "usb: ${it.message}", it)
                     link = PcLink.OFF
                     status = it.message ?: "The USB gadget would not take a HID function."
                 },
@@ -96,6 +98,7 @@ class PcInput(private val context: Context, private val su: String?) {
                 }
             },
             onFailed = {
+                Log.w("PcInput", "bluetooth: $it")
                 link = PcLink.OFF
                 status = it
             },

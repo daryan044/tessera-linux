@@ -163,6 +163,7 @@ class BtHidSink private constructor(
             val asked = runCatching {
                 adapter.getProfileProxy(context, listener, BluetoothProfile.HID_DEVICE)
             }.getOrElse { return onFailed(reason(it)) }
+            Log.i(TAG, "asked Android for the HID device profile: $asked")
             if (!asked) onFailed("this phone has no HID device profile")
         }
 
@@ -176,6 +177,7 @@ class BtHidSink private constructor(
             onHostChanged: (BluetoothDevice?) -> Unit,
         ) {
             val profile = proxy as? BluetoothHidDevice ?: error("no HID device profile")
+            Log.i(TAG, "got the HID device profile")
             val sink = BtHidSink(profile, adapter)
             val sdp = BluetoothHidDeviceAppSdpSettings(
                 "Tessera",
@@ -186,18 +188,20 @@ class BtHidSink private constructor(
             )
             val callback = object : BluetoothHidDevice.Callback() {
                 override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
+                    Log.i(TAG, "registered=$registered, plugged=${pluggedDevice?.name}")
                     if (registered) onReady(sink)
                 }
 
                 override fun onConnectionStateChanged(device: BluetoothDevice?, state: Int) {
+                    Log.i(TAG, "connection state $state from ${device?.name}")
                     val now = device?.takeIf { state == BluetoothProfile.STATE_CONNECTED }
                     sink.host = now
                     onHostChanged(now)
                 }
             }
-            if (!profile.registerApp(sdp, null, null, Executors.newSingleThreadExecutor(), callback)) {
-                error("Android would not register us as a HID device")
-            }
+            val registering = profile.registerApp(sdp, null, null, Executors.newSingleThreadExecutor(), callback)
+            Log.i(TAG, "registerApp returned $registering")
+            if (!registering) error("Android would not register us as a HID device")
         }
 
         /** What went wrong, in the user's terms: these are nearly always a missing permission. */
