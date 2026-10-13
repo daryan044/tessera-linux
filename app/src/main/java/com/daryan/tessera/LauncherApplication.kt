@@ -124,7 +124,16 @@ class LauncherApplication : LorieApp() {
 class LauncherContainer(private val app: Application) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val paths = HostProbe.pathsFor(app)
-    val sessions = SessionManager(app, scope, paths)
+    private val prefs = app.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+
+    /**
+     * What Tessera knows about itself, for the user and for whoever helps them: bound into the
+     * Claude Code shortcut, and copied out of Setup for any other assistant.
+     */
+    val diagnostics = com.daryan.tessera.container.Diagnostics(java.io.File(app.filesDir, "diagnostics")) {
+        prefs.getBoolean(KEY_DIAGNOSTICS, true)
+    }
+    val sessions = SessionManager(app, scope, paths, diagnostics)
     val catalog = StoreCatalog(java.io.File(app.filesDir, "store"), scope)
     val screenshots = com.daryan.tessera.store.Screenshots(java.io.File(app.cacheDir, "screenshots"))
     val registry = StoreRegistry(java.io.File(app.filesDir, "apps"), catalog)
@@ -158,6 +167,8 @@ class LauncherContainer(private val app: Application) {
             HostProbe.installChrootScript(app, paths)
             // Refreshed every start so btime and the CPU count stay current.
             FakeProc.write(paths.fakeProcDir)
+            // So the notes beside the logs are always this version's.
+            diagnostics.install(app)
         }
         scope.launch {
             busy.collect { if (it) ContainerService.start(app) }
@@ -166,4 +177,10 @@ class LauncherContainer(private val app: Application) {
 
     fun proot() = ProotBackend(paths, FakeProc.NAMES, appId = Process.myUid() to Process.myUid())
     fun chroot(su: String) = ChrootBackend(paths, su)
+
+    companion object {
+        const val PREFS = "launcher"
+        const val KEY_DIAGNOSTICS = "diagnostics"
+        const val KEY_INTRO_SEEN = "intro_seen"
+    }
 }

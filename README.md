@@ -87,6 +87,11 @@ That's it. Everything below happens on its own.
   Android's background process limit in one tap (with root) or shows the adb command.
 - **Material 3 Expressive** design with dynamic colors, blur and your own tabs, pins and
   favorites.
+- **Help that knows how Tessera works:** an intro on first run, and when an app misbehaves, the
+  Claude Code shortcut is handed Tessera's architecture, its known failure modes and the output of
+  the apps that just closed — a container can't read Android's log, so Tessera reaches it in.
+  Setup → **Copy diagnostics** puts the same thing on your clipboard for any other assistant. A bug
+  report is drafted for you; posting it stays your decision.
 
 ## Getting started
 
@@ -219,6 +224,12 @@ whether the limit is on, and lifts it in one tap with root, or gives you the adb
 
 **An app draws wrong with the GPU on.** Hold its icon, open Graphics fixes, and try the fix that
 matches what you see, or switch its GPU off.
+
+**An app won't start and I can't tell why.** The error is usually in Android's log, which a
+container can't read, so Tessera keeps the output of recently closed apps next to notes on how it
+all works. Open the Claude Code shortcut, which reads both, or use Setup → Copy diagnostics and
+paste it into any AI. Turn it off in Setup if you'd rather nothing were kept; the files never leave
+the phone on their own, and they do name your apps and folders.
 
 ## License
 

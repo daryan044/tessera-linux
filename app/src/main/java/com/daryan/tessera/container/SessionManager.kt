@@ -70,6 +70,8 @@ class SessionManager(
     private val context: Context,
     private val scope: CoroutineScope,
     private val paths: ContainerPaths,
+    /** Where ended sessions are recorded for the user to read; null turns that off. */
+    private val diagnostics: Diagnostics? = null,
 ) {
     private val nextId = AtomicInteger(1)
     private val _sessions = MutableStateFlow<List<RunningSession>>(emptyList())
@@ -203,8 +205,10 @@ class SessionManager(
                 launch { readOutput(session.id, fd) }
                 val code = Pty.waitFor(pid[0])
                 update(session.id) { it.copy(exitCode = code) }
-                val tail = _sessions.value.firstOrNull { it.session.id == session.id }?.output?.takeLast(600)
-                Log.i(TAG, "GUI session ${session.id} (${app.id}) exited $code: $tail")
+                val output = _sessions.value.firstOrNull { it.session.id == session.id }?.output.orEmpty()
+                Log.i(TAG, "GUI session ${session.id} (${app.id}) exited $code: ${output.takeLast(600)}")
+                // The whole output, not just the tail: logcat is out of reach from inside.
+                diagnostics?.recordSession(app, session, backend.name, code, output)
             } catch (e: Exception) {
                 Log.w(TAG, "GUI session ${session.id} failed", e)
                 update(session.id) { it.copy(output = "Couldn't start: ${e.message}", exitCode = -1) }
@@ -327,6 +331,10 @@ class SessionManager(
         override fun onSessionFinished(finishedSession: TerminalSession) {
             screenListeners[id]?.invoke()
             update(id) { it.copy(exitCode = finishedSession.exitStatus) }
+            byId(id)?.let { s ->
+                val transcript = finishedSession.emulator?.screen?.transcriptText.orEmpty()
+                diagnostics?.recordSession(s.app, s.session, s.backend, s.exitCode, transcript.trim())
+            }
             ProcessTree.killSession(id)
             usbDevices.remove(id)?.close()
         }

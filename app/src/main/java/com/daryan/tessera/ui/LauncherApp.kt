@@ -92,6 +92,12 @@ enum class Destination(val label: String, val title: String, val icon: ImageVect
 
 @Composable
 fun LauncherApp(vm: LauncherViewModel = viewModel()) {
+    val introSeen by vm.introSeen.collectAsStateWithLifecycle()
+    // Before anything else on a first run: the launcher behind it has nothing in it yet.
+    if (!introSeen) {
+        IntroScreen(onDone = { vm.setIntroSeen(true) })
+        return
+    }
     val status by vm.status.collectAsStateWithLifecycle()
     val mode by vm.mode.collectAsStateWithLifecycle()
     val customTabs by vm.tabStore.tabs.collectAsStateWithLifecycle()
@@ -103,6 +109,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val pinned by vm.tabStore.pinned.collectAsStateWithLifecycle()
     val permissionOverrides by vm.permissionOverrides.collectAsStateWithLifecycle()
     val gpuEnabled by vm.gpuEnabled.collectAsStateWithLifecycle()
+    val diagnosticsEnabled by vm.diagnosticsEnabled.collectAsStateWithLifecycle()
     val gpuApps by vm.gpuApps.collectAsStateWithLifecycle()
     // Phones that have the GPU driver (see LauncherViewModel.gpuFor).
     val gpuGraphics = remember { vm.gpuAvailable() }
@@ -366,6 +373,17 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     onInstall = { vm.install() },
                     onCancelInstall = vm::cancelInstall,
                     onLiftPhantomLimit = vm::liftPhantomLimit,
+                    diagnosticsEnabled = diagnosticsEnabled,
+                    onDiagnostics = vm::setDiagnosticsEnabled,
+                    onCopyDiagnostics = {
+                        scope.launch {
+                            val report = vm.diagnosticsReport()
+                            context.getSystemService(android.content.ClipboardManager::class.java)
+                                .setPrimaryClip(android.content.ClipData.newPlainText("Tessera diagnostics", report))
+                            snackbar.showSnackbar("Diagnostics copied, ready to paste")
+                        }
+                    },
+                    onShowIntro = { vm.setIntroSeen(false) },
                 )
             }
         }
