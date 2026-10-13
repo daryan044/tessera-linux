@@ -104,6 +104,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val permissionOverrides by vm.permissionOverrides.collectAsStateWithLifecycle()
     val gpuEnabled by vm.gpuEnabled.collectAsStateWithLifecycle()
     val gpuApps by vm.gpuApps.collectAsStateWithLifecycle()
+    // The GPU driver works in PRoot mode on phones that have it (see LauncherViewModel.gpuFor).
+    val gpuGraphics = remember(mode) { vm.gpuAvailable() && mode == BackendMode.PROOT }
     val favorites by vm.tabStore.favorites.collectAsStateWithLifecycle()
     val tabs = remember(apps, customTabs, pinned, favorites) { vm.tabs(apps, customTabs, pinned, favorites) }
 
@@ -120,6 +122,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var logSession by remember { mutableStateOf<String?>(null) }
     var uninstallApp by remember { mutableStateOf<PermissionManifest?>(null) }
     var editingShortcut by remember { mutableStateOf<Shortcut?>(null) }
+    var graphicsApp by remember { mutableStateOf<PermissionManifest?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     val queue by vm.queue.collectAsStateWithLifecycle()
     val catalog by vm.catalog.collectAsStateWithLifecycle()
@@ -139,6 +142,20 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         pendingLaunch?.let(launchApp)
         pendingLaunch = null
     }
+    val startApp: (PermissionManifest) -> Unit = { app ->
+        val storage = app.permissions.filesystem.any { it.path.startsWith("/storage") || it.path.startsWith("/sdcard") }
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+            PackageManager.PERMISSION_GRANTED
+        if (storage && !granted) {
+            pendingLaunch = app
+            storageRequest.launch(
+                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE),
+            )
+        } else {
+            launchApp(app)
+        }
+    }
+
 
     // An X11 window's Permissions tile asks for an app's sheet.
     val requestedApp by vm.showAppRequests.collectAsStateWithLifecycle()
@@ -155,6 +172,16 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
 
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+
+    // An app's icon on the phone's home screen asks for it to start, once Linux is checked.
+    val launchRequest by vm.launchRequests.collectAsStateWithLifecycle()
+    LaunchedEffect(launchRequest, apps, status) {
+        val id = launchRequest ?: return@LaunchedEffect
+        if (status == null || apps.isEmpty()) return@LaunchedEffect
+        vm.launchRequests.value = null
+        val app = apps.firstOrNull { it.id == id }
+        if (app != null) startApp(app) else snackbar.showSnackbar("That app isn't installed anymore")
+    }
 
     val hazeState = rememberHazeState()
     val glass = HazeMaterials.thin(MaterialTheme.colorScheme.surfaceContainer)
@@ -302,6 +329,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                             uninstallApp = app
                         }
                     },
+                    graphics = gpuGraphics,
+                    onGraphics = { graphicsApp = it },
                 )
                 Destination.Store -> StoreScreen(
                     catalog = catalog,
@@ -398,6 +427,21 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         )
     }
 
+    graphicsApp?.let { app ->
+        // Read again whenever a switch changes (gpuApps), so the dialog follows them.
+        val gpu = remember(app.id, gpuApps, gpuEnabled, mode) { vm.gpuFor(app) }
+        val fixes = remember(app.id, gpuApps) { vm.gpuFixesFor(app) }
+        if (gpu == null) graphicsApp = null
+        else GraphicsFixesDialog(
+            appName = app.name,
+            gpu = gpu,
+            onGpu = { vm.setGpuFor(app, it) },
+            fixes = fixes,
+            onFix = { fix, on -> vm.setGpuFix(app, fix, on) },
+            onDismiss = { graphicsApp = null },
+        )
+    }
+
     editingShortcut?.let { s ->
         ShortcutDialog(s, onDismiss = { editingShortcut = null }, onSave = { vm.saveShortcut(it); editingShortcut = null })
     }
@@ -484,19 +528,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             installed = vm.installed(app, status, mode),
             customTabs = customTabs,
             onToggleTab = { vm.tabStore.toggle(it, app.id) },
-            onLaunch = {
-                val storage = app.permissions.filesystem.any { it.path.startsWith("/storage") || it.path.startsWith("/sdcard") }
-                val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
-                    PackageManager.PERMISSION_GRANTED
-                if (storage && !granted) {
-                    pendingLaunch = app
-                    storageRequest.launch(
-                        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE),
-                    )
-                } else {
-                    launchApp(app)
-                }
-            },
+            onLaunch = { startApp(app) },
             onInstall = {
                 if (vm.install(app)) {
                     openApp = null

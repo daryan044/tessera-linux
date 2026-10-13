@@ -35,7 +35,7 @@ dpkg --add-architecture arm64
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
   crossbuild-essential-arm64 meson ninja-build pkgconf pkgconf:arm64 bison flex xz-utils curl \
-  python3-mako python3-yaml python3-packaging glslang-tools \
+  python3-mako python3-yaml python3-packaging glslang-tools patch \
   libdrm-dev:arm64 libexpat1-dev:arm64 zlib1g-dev:arm64 libzstd-dev:arm64 \
   libx11-dev:arm64 libxext-dev:arm64 libxfixes-dev:arm64 libxrandr-dev:arm64 libxxf86vm-dev:arm64 \
   libxshmfence-dev:arm64 libx11-xcb-dev:arm64 libxcb1-dev:arm64 libxcb-glx0-dev:arm64 libxcb-shm0-dev:arm64 \
@@ -45,6 +45,8 @@ apt-get install -y -qq --no-install-recommends \
 mkdir -p /src && cd /src
 [ -d mesa-$MESA_VERSION ] || curl -fsSL https://archive.mesa3d.org/mesa-$MESA_VERSION.tar.xz | tar xJ
 cd mesa-$MESA_VERSION
+# Our fixes (scripts/gpu/patches); -N skips ones a reused source tree already has.
+for p in /patches/*.patch; do patch -p1 -N < "\$p" || true; done
 
 cat > /src/arm64.cross <<CROSS
 [binaries]
@@ -72,6 +74,7 @@ ninja -C build
 rm -rf /stage && DESTDIR=/stage ninja -C build install
 aarch64-linux-gnu-strip --strip-unneeded \$(find /stage -name '*.so*' -type f)
 EOF
+rm -rf "$TRIXIE/patches" && cp -r "$HERE/patches" "$TRIXIE/patches"
 cp /etc/resolv.conf "$TRIXIE/etc/resolv.conf"
 mountpoint -q "$TRIXIE/proc" || mount -t proc proc "$TRIXIE/proc"
 trap 'umount "$TRIXIE/proc" 2>/dev/null || true' EXIT
@@ -81,5 +84,6 @@ chroot "$TRIXIE" /bin/bash /build-mesa.sh
 rm -rf "$TRIXIE/stage$PREFIX/include" "$TRIXIE/stage$PREFIX/lib/pkgconfig"
 mkdir -p "$OUT"
 tar --format=ustar -C "$TRIXIE/stage" -czf "$OUT/mesa-turnip.tgz" "${PREFIX#/}"
-echo "$MESA_VERSION" > "$OUT/VERSION"
+# Bump the suffix when the patches change, so phones unpack the new build.
+echo "$MESA_VERSION-ll3" > "$OUT/VERSION"
 ls -l "$OUT"

@@ -5,6 +5,7 @@
 
 package com.daryan.linuxlauncher.ui
 
+import android.os.SystemClock
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -58,6 +60,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
@@ -142,9 +145,20 @@ fun AppsPager(
     onUninstall: (PermissionManifest) -> Unit,
     onEditShortcut: (PermissionManifest) -> Unit,
     onNewShortcut: () -> Unit,
+    /** Whether [onGraphics] applies to windowed apps (the phone has the GPU driver). */
+    graphics: Boolean,
+    onGraphics: (PermissionManifest) -> Unit,
 ) {
-    HorizontalPager(pagerState, Modifier.fillMaxSize(), key = { tabs[it].title }) { page ->
+    val context = LocalContext.current
+    val homeScreen = remember { HomeShortcuts.supported(context) }
+    // Tabs whose tiles already rose in: coming back to one (or swiping past it) shouldn't replay it.
+    val shown = remember { mutableSetOf<String>() }
+    // The tabs either side are composed ahead, so a swipe doesn't build a whole grid mid-gesture.
+    HorizontalPager(pagerState, Modifier.fillMaxSize(), beyondViewportPageCount = 1, key = { tabs[it].title }) { page ->
         val tab = tabs[page]
+        val animate = remember(tab.title) { shown.add(tab.title) && page == pagerState.currentPage }
+        // Only the first screenful rises in; tiles scrolled to later just appear.
+        val enteredAt = remember(tab.title) { SystemClock.uptimeMillis() }
         val shortcuts = tab.title == SHORTCUTS_TAB && !tab.custom
         if (tab.apps.isEmpty() && !shortcuts) {
             EmptyState(
@@ -166,7 +180,7 @@ fun AppsPager(
             ) {
                 itemsIndexed(tab.apps, key = { _, app -> app.id }) { index, app ->
                     AppTile(
-                        app, index,
+                        app, index.takeIf { animate && SystemClock.uptimeMillis() - enteredAt < 1000 },
                         pinned = app.id in pinned,
                         favorite = app.id in favorites,
                         onClick = { onOpen(app) },
@@ -174,6 +188,8 @@ fun AppsPager(
                         onToggleFavorite = { onToggleFavorite(app) },
                         onUninstall = { onUninstall(app) },
                         onEdit = if (Shortcut.isShortcut(app)) ({ onEditShortcut(app) }) else null,
+                        onGraphics = if (graphics && app.gui) ({ onGraphics(app) }) else null,
+                        homeScreen = homeScreen,
                         modifier = Modifier.animateItem(),
                     )
                 }
@@ -185,11 +201,12 @@ fun AppsPager(
     }
 }
 
-/** One app in the grid. Holding it opens its menu: pin, favorite, uninstall. */
+/** One app in the grid. Holding it opens its menu: pin, favorite, home screen, graphics, uninstall. */
 @Composable
 private fun AppTile(
     app: PermissionManifest,
-    index: Int,
+    /** Its place in the grid, for the staggered entrance; null shows it at once. */
+    index: Int?,
     pinned: Boolean,
     favorite: Boolean,
     onClick: () -> Unit,
@@ -198,6 +215,10 @@ private fun AppTile(
     onUninstall: () -> Unit,
     /** For shortcuts: edit it (and Delete replaces Uninstall). */
     onEdit: (() -> Unit)?,
+    /** For windowed apps with the GPU driver: their graphics settings. */
+    onGraphics: (() -> Unit)?,
+    /** Whether the phone's home screen takes icons. */
+    homeScreen: Boolean,
     modifier: Modifier = Modifier,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -209,10 +230,12 @@ private fun AppTile(
     val spin by animateFloatAsState(if (pressed) 30f else 0f, motion.defaultSpatialSpec(), label = "spin")
 
     // Staggered entrance: tiles rise and fade in one after another.
-    val appear = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        delay(index * 40L)
-        appear.animateTo(1f, motion.slowSpatialSpec())
+    val appear = remember { Animatable(if (index == null) 1f else 0f) }
+    if (index != null) {
+        LaunchedEffect(Unit) {
+            delay(index * 40L)
+            appear.animateTo(1f, motion.slowSpatialSpec())
+        }
     }
 
     val (container, onContainer) = appColors(app)
@@ -288,6 +311,22 @@ private fun AppTile(
             leadingIcon = { Icon(Icons.Rounded.Star, null) },
             onClick = { menu = false; onToggleFavorite() },
         )
+        if (homeScreen) {
+            val context = LocalContext.current
+            val homeIcon = rememberHomeIcon(app)
+            DropdownMenuItem(
+                text = { Text("Add to home screen") },
+                leadingIcon = { Icon(Icons.Rounded.Home, null) },
+                onClick = { menu = false; HomeShortcuts.pin(context, app, homeIcon()) },
+            )
+        }
+        if (onGraphics != null) {
+            DropdownMenuItem(
+                text = { Text("Graphics fixes") },
+                leadingIcon = { Icon(LauncherIcons.Monitor, null) },
+                onClick = { menu = false; onGraphics() },
+            )
+        }
         HorizontalDivider()
         if (onEdit != null) {
             DropdownMenuItem(

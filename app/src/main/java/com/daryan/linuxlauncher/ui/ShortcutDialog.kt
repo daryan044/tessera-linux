@@ -20,6 +20,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,7 +37,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.daryan.linuxlauncher.Shortcut
 
-private val ICON_CHOICES = listOf("terminal", "code", "globe", "monitor", "folder", "spark")
+private val ICON_CHOICES = listOf(
+    "terminal" to "Terminal", "code" to "Code", "globe" to "Web", "monitor" to "Desktop",
+    "folder" to "Files", "spark" to "AI",
+)
 
 /** Makes a new shortcut ([shortcut] with an empty id) or edits one. */
 @Composable
@@ -62,16 +68,33 @@ fun ShortcutDialog(shortcut: Shortcut, onDismiss: () -> Unit, onSave: (Shortcut)
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text("Type", style = MaterialTheme.typography.labelLarge)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    listOf(false to "Terminal", true to "Window").forEachIndexed { i, (value, label) ->
+                        SegmentedButton(
+                            selected = window == value,
+                            onClick = { window = value },
+                            shape = SegmentedButtonDefaults.itemShape(i, 2),
+                        ) { Text(label) }
+                    }
+                }
+                Text(
+                    if (window) "Opens in a window with a display and sound, for graphical programs."
+                    else "Opens in a terminal, for command-line programs.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text("Icon", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ICON_CHOICES.forEach { key ->
+                    ICON_CHOICES.forEach { (key, label) ->
                         FilterChip(
                             selected = icon == key,
                             onClick = { icon = key },
-                            label = { Icon(appIcon(key), key, Modifier.size(20.dp)) },
+                            leadingIcon = { Icon(appIcon(key), null, Modifier.size(18.dp)) },
+                            label = { Text(label) },
                         )
                     }
                 }
-                SwitchLine("Open in a window", "For graphical programs; otherwise a terminal", window) { window = it }
                 SwitchLine("Run as root", "Root inside the container", root) { root = it }
             }
         },

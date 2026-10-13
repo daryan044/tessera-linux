@@ -113,7 +113,7 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
         put("LIBGL_DRI3_DISABLE", "1")
         // That covers GLX only. GTK 4 apps (HandBrake) set up EGL, which takes the same path and
         // draws black; Mesa's software rasterizer presents through plain X images instead.
-        if (session.gpu) putAll(GpuDriver.ENV) else put("LIBGL_ALWAYS_SOFTWARE", "1")
+        if (session.gpu) putAll(GpuDriver.env(session.gpuFixes)) else put("LIBGL_ALWAYS_SOFTWARE", "1")
     }
     if (p.audio && p.display && session.display != null) {
         // The session's own PulseAudio, started by guestCommand; see AudioPipe for the rest.

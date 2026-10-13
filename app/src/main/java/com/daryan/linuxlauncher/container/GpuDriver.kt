@@ -28,9 +28,10 @@ object GpuDriver {
      * hangs Mesa (see LIBGL_DRI3_DISABLE), so GLX goes through Zink's Kopper "DRI2" path and
      * Vulkan presents in software ("sw"), without SysV shared memory, which Android doesn't
      * have ("noshm": with it, presenting dies of SIGBUS). Checked on an Adreno 740: glxgears
-     * at ~240 fps, Firefox and HandBrake (GTK 4, EGL) drawing.
+     * at ~240 fps, Firefox and HandBrake (GTK 4, EGL) drawing. Turnip's own options come from
+     * the app's [GpuFix]es; see [env].
      */
-    val ENV = mapOf(
+    private val ENV = mapOf(
         "LD_LIBRARY_PATH" to "$GUEST_DIR/lib",
         "__GLX_VENDOR_LIBRARY_NAME" to "mesa",
         "__EGL_VENDOR_LIBRARY_FILENAMES" to "$GUEST_DIR/share/glvnd/egl_vendor.d/50_mesa.json",
@@ -40,8 +41,11 @@ object GpuDriver {
         "GALLIUM_DRIVER" to "zink",
         "MESA_VK_WSI_DEBUG" to "sw,noshm",
         "LIBGL_KOPPER_DRI2" to "1",
-        "TU_DEBUG" to "noconform",
     )
+
+    /** What makes an app use the driver, with [fixes] for its drawing bugs. */
+    fun env(fixes: Set<GpuFix>): Map<String, String> =
+        ENV + ("TU_DEBUG" to (listOf("noconform") + fixes.map { it.tuDebug }).joinToString(","))
 
     /** Whether this build carries the driver and the phone has an Adreno GPU the app can open. */
     fun available(context: Context): Boolean =
@@ -69,4 +73,23 @@ object GpuDriver {
         marker.writeText(version)
         true
     }.onFailure { Log.w(TAG, "couldn't unpack the GPU driver", it) }.getOrDefault(false)
+}
+
+/**
+ * Workarounds for drawing bugs in the driver, chosen per app from its Graphics fixes menu. Each
+ * is a Turnip option (TU_DEBUG); [default] ones are on until the user turns them off.
+ */
+enum class GpuFix(val tuDebug: String, val default: Boolean) {
+    /**
+     * UBWC, Adreno's framebuffer compression, off. With it, some frames of Chromium-based apps
+     * (VS Code) reach the window with only every sixth 16x16 block drawn, the rest black, until
+     * the next frame. Costs memory bandwidth.
+     */
+    NO_COMPRESSION("noubwc", true),
+
+    /** Draws straight to memory instead of in tiles (GMEM), for parts drawn wrong or missing. */
+    DIRECT_RENDERING("sysmem", false),
+
+    /** Flushes caches and waits after every draw, for flicker and half-drawn frames. Slow. */
+    SYNC_DRAWS("flushall,syncdraw", false),
 }

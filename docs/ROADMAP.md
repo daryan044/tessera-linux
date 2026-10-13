@@ -44,6 +44,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 | 3.6 | Storage permission prompt | ✅ | Asked when an app is granted a folder under /storage |
 | 3.8 | Installs page | ✅ | From Settings, the install bar, or the Store's history button: running, waiting and finished jobs with live apt output; failed ones can be retried, and a failed apt run first finishes interrupted package setup and tries once more |
 | 3.9 | Pin and favorite apps | ✅ | Hold an app: pin it (pinned apps lead every tab) or add it to Favorites (a tab after All) |
+| 3.12 | Icons on the phone's home screen | 🟡 | Hold an app: Add to home screen pins an icon (its launcher colors and glyph) that starts it through the launcher. Built, untested on a device |
 | 3.10 | Shortcuts | ✅ | A Shortcuts tab of commands as icons (terminal or window, optionally root), made and edited from the tab and the long-press menu. Starts with Claude Code, which installs itself on first run (curl, git and CA certificates are offered for install first). Confirmed on the device |
 | 3.11 | Apps installed outside the Store | ✅ | The launcher lists the container's own menu entries (/usr/share/applications), so apps installed with apt in a terminal or from a .deb show up, rescanned whenever the launcher comes back; uninstalling finds their package from dpkg. PRoot mode for now |
 | 3.7 | Config editor (side menu) | 🟡 | Hamburger menu: .bashrc (root, user), bash.bashrc, profile, environment, apt sources and settings, resolv.conf, hosts, and Termux:X11's settings. PRoot edits files directly, chroot via su; first save keeps a .bak-launcher. Built, untested on a device |
@@ -61,7 +62,7 @@ Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
 
 | | Item | Status | Notes |
 |---|---|---|---|
-| 5.1 | GPU acceleration (Turnip / Zink) | ✅ | Our Mesa build (scripts/gpu/build-mesa.sh: Turnip for Android's KGSL, Zink) ships in the APK and unpacks to /opt/linuxlauncher-gpu; on by default on Adreno phones, switchable globally and per app. Frames reach Termux:X11 as images (Kopper DRI2 for GLX, Vulkan WSI sw without SysV shm). On an Adreno 740: OpenGL 4.6, glxgears ~240 fps, Firefox and HandBrake draw |
+| 5.1 | GPU acceleration (Turnip / Zink) | ✅ | Our Mesa build (scripts/gpu/build-mesa.sh: Turnip for Android's KGSL, Zink) ships in the APK and unpacks to /opt/linuxlauncher-gpu; on by default on Adreno phones, switchable globally and per app. Frames reach Termux:X11 as images (Kopper DRI2 for GLX, Vulkan WSI sw without SysV shm). On an Adreno 740: OpenGL 4.6, glxgears ~240 fps, Firefox and HandBrake draw. Hold a windowed app for Graphics fixes: per-app GPU switch and Turnip workarounds. UBWC is off by default (VS Code frames came out as a grid of black blocks; confirmed fixed on the device) |
 | 5.2 | Phantom process killer safeguards | ✅ | Foreground service, plus lifting the limit from Setup (one tap with root, an adb command without) |
 | 5.3 | Open source release | 🟡 | Public GitHub repo, GPL-3.0, copyright headers, third-party credits. No CI, no signed release, not on F-Droid yet |
 

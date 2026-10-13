@@ -25,6 +25,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Until there's a release key: the debug key lets it install over a debug build (same
+            // signature, data kept), and it isn't debuggable, which makes Compose much smoother.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

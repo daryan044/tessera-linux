@@ -143,6 +143,9 @@ class LauncherContainer(private val app: Application) {
     /** An app whose sheet the launcher should open (set from an X11 window's Permissions tile). */
     val showAppRequests = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
+    /** An app the launcher should start (set from its icon on the phone's home screen). */
+    val launchRequests = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
     val busy: StateFlow<Boolean> = combine(installer.state, sessions.sessions, queue.jobs) { install, list, jobs ->
         install.running || list.any { it.exitCode == null } || jobs.any { it.active }
     }.stateIn(scope, SharingStarted.Eagerly, false)

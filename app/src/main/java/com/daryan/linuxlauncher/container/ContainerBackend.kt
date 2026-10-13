@@ -40,6 +40,8 @@ data class Session(
     val term: String = "xterm-256color",
     /** Use the hardware graphics driver ([GpuDriver]). */
     val gpu: Boolean = false,
+    /** Workarounds for the driver's drawing bugs, when [gpu] is on. */
+    val gpuFixes: Set<GpuFix> = emptySet(),
 )
 
 /** Host-side locations a backend needs. Built from a Context in the app, by hand in tests. */
@@ -127,7 +129,15 @@ if command -v matchbox-window-manager >/dev/null 2>&1; then
     ( sleep 0.5; exec python3 -c "${'$'}windows" "${'$'}windows_out" ) & ww=${'$'}!
   fi
 fi
+started=${'$'}(date +%s)
 "${'$'}@"; status=${'$'}?
+# Launchers such as VS Code's `code` start the real app in the background and exit at once.
+# After such a quick, clean exit, the session lasts while the app's windows are open.
+if [ "${'$'}status" = 0 ] && [ -n "${'$'}ww" ] && [ ${'$'}((${'$'}(date +%s) - started)) -lt 5 ]; then
+  i=0
+  while [ ${'$'}i -lt 30 ] && ! grep -q '"id"' "${'$'}windows_out" 2>/dev/null; do sleep 0.5; i=${'$'}((i + 1)); done
+  while grep -q '"id"' "${'$'}windows_out" 2>/dev/null; do sleep 1; done
+fi
 kill ${'$'}ww ${'$'}wm ${'$'}fw ${'$'}pa ${'$'}bus 2>/dev/null
 exit ${'$'}status
 """

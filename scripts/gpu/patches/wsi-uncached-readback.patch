@@ -1,0 +1,16 @@
+--- a/src/vulkan/wsi/wsi_common.c	2026-10-13 17:05:44.864590746 +0300
++++ b/src/vulkan/wsi/wsi_common.c	2026-10-13 17:05:44.866046148 +0300
+@@ -3084,7 +3084,12 @@
+ {
+    VkMemoryPropertyFlags req_props = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+ 
+-   if (wsi->sw)
++   /* Linux Launcher: no cached memory for frames the CPU reads back. On Adreno (KGSL) the
++    * cached kind is IO-coherent, and the CPU still read stale cache lines of what the GPU
++    * drew: blocks of old or blank pixels all over the window. Uncached memory is slower to
++    * read but always current.
++    */
++   if (wsi->sw && !getenv("MESA_VK_WSI_DEBUG"))
+       req_props |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+ 
+    return wsi_select_memory_type(wsi, req_props, 0 /* deny_props */, type_bits);

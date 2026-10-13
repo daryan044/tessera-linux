@@ -31,6 +31,7 @@ import com.daryan.linuxlauncher.container.PackageInstall
 import com.daryan.linuxlauncher.container.PermissionManifest
 import com.daryan.linuxlauncher.container.PhantomLimit
 import com.daryan.linuxlauncher.container.GpuDriver
+import com.daryan.linuxlauncher.container.GpuFix
 import com.daryan.linuxlauncher.container.Permissions
 import com.daryan.linuxlauncher.container.RunningSession
 import kotlinx.coroutines.Dispatchers
@@ -154,7 +155,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val gpuEnabled: StateFlow<Boolean> = _gpuEnabled
 
     private val _gpuApps = MutableStateFlow(0)
-    /** Bumped when an app's own GPU switch changes, so sheets re-read it. */
+    /** Bumped when an app's own GPU switch or fixes change, so sheets re-read them. */
     val gpuApps: StateFlow<Int> = _gpuApps
 
     /** [app]'s GPU acceleration, or null when it can't have any. */
@@ -164,6 +165,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setGpuFor(app: PermissionManifest, on: Boolean) {
         sessions.setGpuFor(app.id, on)
+        _gpuApps.value++
+    }
+
+    fun gpuFixesFor(app: PermissionManifest): Set<GpuFix> = sessions.gpuFixesFor(app.id)
+
+    fun setGpuFix(app: PermissionManifest, fix: GpuFix, on: Boolean) {
+        val fixes = sessions.gpuFixesFor(app.id)
+        sessions.setGpuFixesFor(app.id, if (on) fixes + fix else fixes - fix)
         _gpuApps.value++
     }
 
@@ -316,6 +325,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     val queue: StateFlow<List<QueueJob>> = container.queue.jobs
     val showAppRequests = container.showAppRequests
+    val launchRequests = container.launchRequests
 
     /**
      * Queues a store app's install; it runs in the background after any before it, and its

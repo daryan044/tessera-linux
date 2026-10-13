@@ -113,6 +113,17 @@ class SessionManager(
     fun setGpuFor(appId: String, on: Boolean) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_GPU_APP + appId, on).apply()
 
+    /** [appId]'s graphics fixes: the ones the user chose, else the defaults. */
+    fun gpuFixesFor(appId: String): Set<GpuFix> {
+        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(KEY_GPU_FIXES + appId, null)
+            ?: return GpuFix.entries.filter { it.default }.toSet()
+        return GpuFix.entries.filter { it.name in saved }.toSet()
+    }
+
+    fun setGpuFixesFor(appId: String, fixes: Set<GpuFix>) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putStringSet(KEY_GPU_FIXES + appId, fixes.map { it.name }.toSet()).apply()
+
     /** Must be called on the main thread: TerminalSession binds to the caller's Looper. */
     @Throws(IOException::class)
     fun launch(app: PermissionManifest, backend: ContainerBackend): RunningSession {
@@ -120,7 +131,12 @@ class SessionManager(
         // Hardware graphics for windowed apps, when it's on and can be set up (PRoot only: a
         // chroot's /dev doesn't carry the GPU device yet).
         val gpu = app.gui && backend is ProotBackend && gpuFor(app.id) && GpuDriver.installed(context, paths.prootRootfs)
-        val session = Session(id = "s$n", display = if (app.permissions.display) n else null, gpu = gpu)
+        val session = Session(
+            id = "s$n",
+            display = if (app.permissions.display) n else null,
+            gpu = gpu,
+            gpuFixes = if (gpu) gpuFixesFor(app.id) else emptySet(),
+        )
         // Ids restart with the process, so a previous run's s1 may have left a dead X socket here.
         paths.sessionTmp(session).apply {
             deleteRecursively()
@@ -330,6 +346,7 @@ class SessionManager(
         const val PREFS = "launcher"
         const val KEY_GPU = "gpu_acceleration"
         const val KEY_GPU_APP = "gpu_acceleration_"
+        const val KEY_GPU_FIXES = "gpu_fixes_"
         const val MAX_OUTPUT = 16 * 1024
         const val TRANSCRIPT_ROWS = 5000
     }
