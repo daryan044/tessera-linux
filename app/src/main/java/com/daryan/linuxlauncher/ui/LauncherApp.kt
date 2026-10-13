@@ -99,6 +99,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val pinned by vm.tabStore.pinned.collectAsStateWithLifecycle()
     val permissionOverrides by vm.permissionOverrides.collectAsStateWithLifecycle()
     val gpuEnabled by vm.gpuEnabled.collectAsStateWithLifecycle()
+    val gpuApps by vm.gpuApps.collectAsStateWithLifecycle()
     val favorites by vm.tabStore.favorites.collectAsStateWithLifecycle()
     val tabs = remember(apps, customTabs, pinned, favorites) { vm.tabs(apps, customTabs, pinned, favorites) }
 
@@ -492,6 +493,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             permissionsChanged = app.id in permissionOverrides,
             onPermissions = { vm.setPermissions(app, it) },
             onResetPermissions = { vm.resetPermissions(app.id) },
+            gpu = remember(app.id, gpuApps, gpuEnabled) { vm.gpuFor(app) },
+            onGpu = { vm.setGpuFor(app, it) },
         )
     }
 

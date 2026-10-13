@@ -128,6 +128,18 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     private val _gpuEnabled = MutableStateFlow(sessions.gpuEnabled())
     val gpuEnabled: StateFlow<Boolean> = _gpuEnabled
 
+    private val _gpuApps = MutableStateFlow(0)
+    /** Bumped when an app's own GPU switch changes, so sheets re-read it. */
+    val gpuApps: StateFlow<Int> = _gpuApps
+
+    /** [app]'s GPU acceleration, or null when it can't have any. */
+    fun gpuFor(app: PermissionManifest): Boolean? = if (app.gui && gpuAvailable()) sessions.gpuFor(app.id) else null
+
+    fun setGpuFor(app: PermissionManifest, on: Boolean) {
+        sessions.setGpuFor(app.id, on)
+        _gpuApps.value++
+    }
+
     fun setGpuEnabled(on: Boolean) {
         sessions.setGpuEnabled(on)
         _gpuEnabled.value = on

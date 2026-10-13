@@ -107,13 +107,22 @@ class SessionManager(
 
     fun setGpuEnabled(on: Boolean) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_GPU, on).apply()
 
+    /** GPU acceleration for [appId]: its own switch when the user set one, else the global setting. */
+    fun gpuFor(appId: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return if (prefs.contains(KEY_GPU_APP + appId)) prefs.getBoolean(KEY_GPU_APP + appId, false) else gpuEnabled()
+    }
+
+    fun setGpuFor(appId: String, on: Boolean) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_GPU_APP + appId, on).apply()
+
     /** Must be called on the main thread: TerminalSession binds to the caller's Looper. */
     @Throws(IOException::class)
     fun launch(app: PermissionManifest, backend: ContainerBackend): RunningSession {
         val n = nextId.getAndIncrement()
         // Hardware graphics for windowed apps, when it's on and can be set up (PRoot only: a
         // chroot's /dev doesn't carry the GPU device yet).
-        val gpu = app.gui && backend is ProotBackend && gpuEnabled() && GpuDriver.installed(context, paths.prootRootfs)
+        val gpu = app.gui && backend is ProotBackend && gpuFor(app.id) && GpuDriver.installed(context, paths.prootRootfs)
         val session = Session(id = "s$n", display = if (app.permissions.display) n else null, gpu = gpu)
         // Ids restart with the process, so a previous run's s1 may have left a dead X socket here.
         paths.sessionTmp(session).apply {
@@ -323,6 +332,7 @@ class SessionManager(
         const val TAG = "Sessions"
         const val PREFS = "launcher"
         const val KEY_GPU = "gpu_acceleration"
+        const val KEY_GPU_APP = "gpu_acceleration_"
         const val MAX_OUTPUT = 16 * 1024
         const val TRANSCRIPT_ROWS = 5000
     }
