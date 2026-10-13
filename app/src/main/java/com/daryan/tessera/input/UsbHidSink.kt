@@ -47,13 +47,24 @@ class UsbHidSink private constructor(
 
     override fun press(button: MouseButton, down: Boolean) {
         if (down) held += button else held -= button
-        mouse.send(HidReports.mouse(HidReports.buttonBits(held), 0, 0))
+        // A gap after the change too, so a drag's opening press is not lost in the report that
+        // follows it: the first movement arrives within a frame of this.
+        mouse.send(HidReports.mouse(HidReports.buttonBits(held), 0, 0), pauseAfterMs = CLICK_MS)
+        Log.i(TAG, "${if (down) "press" else "release"} $button, held=$held")
     }
 
     override fun click(button: MouseButton) {
-        press(button, true)
-        press(button, false)
+        if (down(button)) return
+        // Held for a moment, the way a finger holds a real button. Down and up in consecutive
+        // reports is a click of no duration at all, which a host may merge with whatever comes
+        // next -- the press that starts a tap-then-hold drag, for one.
+        mouse.send(HidReports.mouse(HidReports.buttonBits(held + button), 0, 0), pauseAfterMs = CLICK_MS)
+        mouse.send(HidReports.mouse(HidReports.buttonBits(held), 0, 0), pauseAfterMs = CLICK_MS)
+        Log.i(TAG, "click $button")
     }
+
+    /** True when [button] is already held: a click would contradict the drag in progress. */
+    private fun down(button: MouseButton) = button in held
 
     override fun keys(vararg keyCodes: Int) {
         val stroke = HidKeymap.stroke(keyCodes) ?: return
@@ -64,10 +75,13 @@ class UsbHidSink private constructor(
         HidKeymap.strokes(text).forEach(::tap)
     }
 
-    /** Down, then up: a host takes a key as held until a report says otherwise. */
+    /**
+     * Down, then up: a host takes a key as held until a report says otherwise. Held briefly, for
+     * the same reason a click is: a keypress of no duration can be dropped outright.
+     */
     private fun tap(stroke: HidKeymap.Stroke) {
-        keyboard.send(HidReports.keyboard(stroke.modifiers, listOf(stroke.usage)))
-        keyboard.send(HidReports.KEYS_UP)
+        keyboard.send(HidReports.keyboard(stroke.modifiers, listOf(stroke.usage)), pauseAfterMs = CLICK_MS)
+        keyboard.send(HidReports.KEYS_UP, pauseAfterMs = CLICK_MS)
     }
 
     /** Lets everything go, stops the writers, and gives Android its gadget back. */
@@ -85,7 +99,10 @@ class UsbHidSink private constructor(
      * a pointer update that arrives late is worse than one that never arrives.
      */
     class Writer(private val process: Process, private val stream: OutputStream) : AutoCloseable {
-        private val queue = ArrayBlockingQueue<ByteArray>(64)
+        /** A report, and how long to wait after it before sending the next. */
+        private class Item(val report: ByteArray, val pauseAfterMs: Long)
+
+        private val queue = ArrayBlockingQueue<Item>(64)
         @Volatile private var running = true
         @Volatile private var failed = false
 
@@ -93,10 +110,11 @@ class UsbHidSink private constructor(
 
         private val thread = Thread {
             while (running) {
-                val report = queue.poll(200, TimeUnit.MILLISECONDS) ?: continue
+                val item = queue.poll(200, TimeUnit.MILLISECONDS) ?: continue
                 try {
-                    stream.write(report)
+                    stream.write(item.report)
                     stream.flush()
+                    if (item.pauseAfterMs > 0) Thread.sleep(item.pauseAfterMs)
                 } catch (e: Exception) {
                     // The host went away, or the gadget was taken from under us.
                     Log.w(TAG, "HID endpoint closed, reports stop here: ${e.message}")
@@ -106,9 +124,9 @@ class UsbHidSink private constructor(
             }
         }.apply { isDaemon = true; name = "hid-writer"; start() }
 
-        fun send(report: ByteArray) {
+        fun send(report: ByteArray, pauseAfterMs: Long = 0) {
             if (!alive) return
-            queue.offer(report)
+            queue.offer(Item(report, pauseAfterMs))
         }
 
         override fun close() {
@@ -121,6 +139,9 @@ class UsbHidSink private constructor(
 
     companion object {
         private const val TAG = "UsbHid"
+
+        /** How long a button stays down for a click, and the gap after any button change. */
+        private const val CLICK_MS = 24L
         private const val SCRIPT = "hid/gadget.sh"
 
         /**

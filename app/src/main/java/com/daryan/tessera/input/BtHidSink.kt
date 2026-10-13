@@ -38,11 +38,22 @@ class BtHidSink private constructor(
 
     override val connected: Boolean get() = host != null
 
+    /**
+     * Reports go out on one thread of their own, in order, so a press can be held for a moment
+     * before its release without blocking a gesture. Down and up in the same instant is a click
+     * of no duration, which a host may drop or merge into whatever follows it.
+     */
+    private val sender = Executors.newSingleThreadExecutor()
+
     @SuppressLint("MissingPermission")
-    private fun send(id: Int, report: ByteArray) {
+    private fun send(id: Int, report: ByteArray, pauseAfterMs: Long = 0) {
         val device = host ?: return
-        runCatching { profile.sendReport(device, id, report) }
-            .onFailure { Log.i(TAG, "report not sent: ${it.message}") }
+        sender.execute {
+            runCatching {
+                profile.sendReport(device, id, report)
+                if (pauseAfterMs > 0) Thread.sleep(pauseAfterMs)
+            }.onFailure { Log.i(TAG, "report not sent: ${it.message}") }
+        }
     }
 
     override fun move(dx: Float, dy: Float) =
@@ -57,12 +68,13 @@ class BtHidSink private constructor(
 
     override fun press(button: MouseButton, down: Boolean) {
         if (down) held += button else held -= button
-        send(HidReports.REPORT_ID_MOUSE, HidReports.mouse(HidReports.buttonBits(held), 0, 0))
+        send(HidReports.REPORT_ID_MOUSE, HidReports.mouse(HidReports.buttonBits(held), 0, 0), CLICK_MS)
     }
 
     override fun click(button: MouseButton) {
-        press(button, true)
-        press(button, false)
+        if (button in held) return
+        send(HidReports.REPORT_ID_MOUSE, HidReports.mouse(HidReports.buttonBits(held + button), 0, 0), CLICK_MS)
+        send(HidReports.REPORT_ID_MOUSE, HidReports.mouse(HidReports.buttonBits(held), 0, 0), CLICK_MS)
     }
 
     override fun keys(vararg keyCodes: Int) {
@@ -72,8 +84,8 @@ class BtHidSink private constructor(
     override fun type(text: String) = HidKeymap.strokes(text).forEach(::tap)
 
     private fun tap(stroke: HidKeymap.Stroke) {
-        send(HidReports.REPORT_ID_KEYBOARD, HidReports.keyboard(stroke.modifiers, listOf(stroke.usage)))
-        send(HidReports.REPORT_ID_KEYBOARD, HidReports.KEYS_UP)
+        send(HidReports.REPORT_ID_KEYBOARD, HidReports.keyboard(stroke.modifiers, listOf(stroke.usage)), CLICK_MS)
+        send(HidReports.REPORT_ID_KEYBOARD, HidReports.KEYS_UP, CLICK_MS)
     }
 
     /** Offers ourselves to [device]; the host may also connect to us on its own. */
@@ -91,11 +103,15 @@ class BtHidSink private constructor(
         runCatching { send(HidReports.REPORT_ID_KEYBOARD, HidReports.KEYS_UP) }
         runCatching { host?.let { profile.disconnect(it) } }
         runCatching { profile.unregisterApp() }
+        runCatching { sender.shutdownNow() }
         host = null
     }
 
     companion object {
         private const val TAG = "BtHid"
+
+        /** How long a button or key stays down, and the gap after any such change. */
+        private const val CLICK_MS = 24L
 
         /** Whether this phone can be a Bluetooth keyboard at all. */
         @SuppressLint("MissingPermission")
