@@ -126,6 +126,7 @@ class LauncherContainer(private val app: Application) {
     val paths = HostProbe.pathsFor(app)
     val sessions = SessionManager(app, scope, paths)
     val catalog = StoreCatalog(java.io.File(app.filesDir, "store"), scope)
+    val screenshots = com.daryan.linuxlauncher.store.Screenshots(java.io.File(app.cacheDir, "screenshots"))
     val registry = StoreRegistry(java.io.File(app.filesDir, "apps"), catalog)
     val installer = RootfsInstaller(paths, OciRegistry(), scope, Process.myUid(), Process.myUid())
 

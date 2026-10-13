@@ -342,6 +342,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun storeIcon(app: StoreApp) = container.catalog.iconFile(app)
 
+    /** [app]'s screenshots, downloaded; empty when there are none. */
+    suspend fun storeScreenshots(app: StoreApp): List<File> = container.screenshots.forApp(app)
+
     val queue: StateFlow<List<QueueJob>> = container.queue.jobs
     val showAppRequests = container.showAppRequests
     val launchRequests = container.launchRequests

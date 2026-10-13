@@ -407,6 +407,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         StoreAppSheet(
             app = app,
             icon = vm.storeIcon(app),
+            screenshots = { vm.storeScreenshots(app) },
             installed = installedPackages?.contains(app.pkg),
             blocker = blocker,
             job = queue.lastOrNull { app.pkg in it.packages && it.active },

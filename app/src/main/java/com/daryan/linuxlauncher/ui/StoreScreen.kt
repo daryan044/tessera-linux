@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -56,12 +58,14 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -217,6 +221,8 @@ private fun StoreIcon(file: File?, sizeDp: Int) {
 fun StoreAppSheet(
     app: StoreApp,
     icon: File?,
+    /** Downloads the app's screenshots; empty when it has none. */
+    screenshots: suspend () -> List<File>,
     /** null when unknown (container's package list not readable yet). */
     installed: Boolean?,
     /** Why installing isn't possible right now, or null. */
@@ -280,6 +286,29 @@ fun StoreAppSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp),
                     )
+                }
+            }
+
+            val shots by produceState(emptyList<File>(), app.id) { value = screenshots() }
+            if (shots.isNotEmpty()) {
+                Spacer(Modifier.height(20.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(shots, key = { it.path }) { file ->
+                        val bitmap = rememberFileBitmap(file.path)
+                        val shape = MaterialTheme.shapes.large
+                        if (bitmap != null) {
+                            Image(
+                                bitmap,
+                                contentDescription = "Screenshot",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.height(200.dp)
+                                    .aspectRatio(bitmap.width.toFloat() / bitmap.height)
+                                    .clip(shape),
+                            )
+                        } else {
+                            Box(Modifier.height(200.dp).width(320.dp).clip(shape).background(MaterialTheme.colorScheme.surfaceContainerHigh))
+                        }
+                    }
                 }
             }
 
