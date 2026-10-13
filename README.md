@@ -1,4 +1,4 @@
-# Linux Launcher
+# Tessera
 
 A Material 3 Expressive launcher for Linux apps on Android. Each app runs in a container that
 gets only what its manifest grants: specific folders, network, its own X display, audio, devices.

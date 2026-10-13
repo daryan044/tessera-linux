@@ -104,7 +104,7 @@ jobs:
 
       - name: Name the APK
         run: |
-          name="linux-launcher-${GITHUB_REF_NAME//\//-}.apk"
+          name="tessera-${GITHUB_REF_NAME//\//-}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$name"
           echo "APK=$name" >> "$GITHUB_ENV"
 

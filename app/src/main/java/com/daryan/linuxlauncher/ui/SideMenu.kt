@@ -26,7 +26,7 @@ fun SideMenu(onSettings: () -> Unit, onAbout: () -> Unit) {
     ModalDrawerSheet {
         Column {
             Text(
-                "Linux Launcher",
+                "Tessera",
                 style = MaterialTheme.typography.headlineSmall,
                 modifier = Modifier.padding(start = 28.dp, top = 24.dp, end = 28.dp, bottom = 16.dp),
             )

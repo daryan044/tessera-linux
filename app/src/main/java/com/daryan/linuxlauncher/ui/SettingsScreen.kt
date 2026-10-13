@@ -140,7 +140,7 @@ fun SettingsScreen(
             }
 
 
-            Group("Linux Launcher") {
+            Group("Tessera") {
                 Row(Icons.Rounded.Info, "About", "Version, creator and licenses", onClick = onAbout)
             }
         }

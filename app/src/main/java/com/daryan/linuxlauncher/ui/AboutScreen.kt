@@ -94,7 +94,7 @@ fun AboutScreen(onClose: () -> Unit) {
                 Image(painterResource(R.drawable.ic_launcher), contentDescription = null, modifier = Modifier.size(96.dp))
             }
             Spacer(Modifier.height(16.dp))
-            Text("Linux Launcher", style = MaterialTheme.typography.headlineMedium)
+            Text("Tessera", style = MaterialTheme.typography.headlineMedium)
             if (version.isNotEmpty()) {
                 Text("Version $version", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
