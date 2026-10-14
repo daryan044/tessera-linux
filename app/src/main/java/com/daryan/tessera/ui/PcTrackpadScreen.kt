@@ -5,6 +5,15 @@
 
 package com.daryan.tessera.ui
 
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.bluetooth.BluetoothAdapter
+import android.content.Intent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.ui.draw.clip
 import android.content.pm.PackageManager
 import android.os.Build
 import android.view.KeyEvent
@@ -96,6 +105,22 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
         if (granted[NEARBY] == true) pc.startBluetooth()
         else pc.note("Bluetooth needs the Nearby devices permission, which was declined.")
     }
+    // A PC finds the phone only while it's discoverable, which Android asks the user about.
+    val askVisible = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_CANCELED) pc.stayedHidden()
+    }
+    fun makeVisible() = runCatching {
+        askVisible.launch(
+            Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
+                .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, DISCOVERABLE_SECONDS),
+        )
+    }
+    LaunchedEffect(pc.wantsDiscoverable) {
+        if (pc.wantsDiscoverable) {
+            pc.wantsDiscoverable = false
+            makeVisible()
+        }
+    }
     val typing = remember { FocusRequester() }
     // The keyboard was never asked for, so it only appeared if the field was tapped.
     LaunchedEffect(sink, settings.autoKeyboard) {
@@ -104,6 +129,8 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
     BackHandler { onClose() }
     // Leaving the screen gives Android its USB gadget back; nothing is left half-configured.
     DisposableEffect(Unit) { onDispose { pc.stop() } }
+    // And opening it takes off what a run that died left on.
+    LaunchedEffect(Unit) { pc.cleanUp(scope) }
 
     Surface(color = colors.surfaceContainerLowest, modifier = Modifier.fillMaxSize()) {
         Column(
@@ -166,6 +193,9 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
                         color = colors.onSurfaceVariant,
                     )
                 }
+            } else if (pc.link == PcLink.BLUETOOTH && pc.host == null) {
+                // Registered, but no PC yet: the ways to get one, rather than a pad going nowhere.
+                BluetoothConnect(pc, onMakeVisible = { makeVisible() }, Modifier.weight(1f).fillMaxWidth())
             } else {
                 // The pad takes everything that is left.
                 TrackpadSurface(
@@ -186,6 +216,50 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
     }
 
     if (showSettings) PcSettingsDialog(settings) { showSettings = false }
+}
+
+/**
+ * Getting a PC onto the Bluetooth keyboard: a new PC pairs with the phone while it's visible; a
+ * PC paired before is connected to from here, since it rarely reaches out by itself.
+ */
+@SuppressLint("MissingPermission")
+@Composable
+private fun BluetoothConnect(pc: PcInput, onMakeVisible: () -> Unit, modifier: Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Column(modifier.verticalScroll(rememberScrollState()).padding(4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Surface(color = colors.secondaryContainer, shape = RoundedCornerShape(24.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Text("A new PC", style = MaterialTheme.typography.titleSmall, color = colors.onSecondaryContainer)
+                Text(
+                    "Make the phone visible, then add a Bluetooth device on the PC and pick this phone. If the PC " +
+                        "paired with this phone before Tessera was set up, remove it there first and pair again.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSecondaryContainer,
+                )
+                Spacer(Modifier.height(10.dp))
+                FilledTonalButton(onClick = onMakeVisible) { Text("Make visible") }
+            }
+        }
+        if (pc.pairedPcs.isNotEmpty()) {
+            Text("Paired computers", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
+            pc.pairedPcs.forEach { device ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                        .background(colors.surfaceContainerHigh).padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        runCatching { device.name }.getOrNull() ?: device.address,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { pc.connect(device) }) { Text("Connect") }
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -348,6 +422,9 @@ private const val SENTINEL = "\u200B"
  * an X11 session wants, and the leftovers are carried between frames to keep it smooth.
  */
 private const val PC_SCROLL = 0.09f
+
+/** How long the phone stays visible to new PCs once the user allows it. */
+private const val DISCOVERABLE_SECONDS = 300
 
 /** Android 12's name for "be a Bluetooth device"; a runtime permission, so it must be asked for. */
 private const val NEARBY = "android.permission.BLUETOOTH_CONNECT"

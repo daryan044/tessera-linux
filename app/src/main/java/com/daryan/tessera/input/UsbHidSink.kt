@@ -32,6 +32,9 @@ class UsbHidSink private constructor(
 
     private val held = mutableSetOf<MouseButton>()
 
+    /** For remembering that the gadget is back to normal once [close] has put it back. */
+    private var context: Context? = null
+
     override val connected: Boolean
         get() = mouse.alive && keyboard.alive
 
@@ -91,13 +94,16 @@ class UsbHidSink private constructor(
         keyboard.send(HidReports.KEYS_UP, pauseAfterMs = CLICK_MS)
     }
 
-    /** Lets everything go, stops the writers, and gives Android its gadget back. */
+    /**
+     * Lets everything go, stops the writers, and gives Android its gadget back. Blocks for as
+     * long as root takes; call it off the main thread.
+     */
     override fun close() {
         runCatching { keyboard.send(HidReports.KEYS_UP) }
         runCatching { mouse.send(HidReports.BUTTONS_UP) }
         mouse.close()
         keyboard.close()
-        runCatching { Log.i(TAG, "gadget.sh down: ${run(su, "sh ${script.absolutePath} down")}") }
+        down(su, script, context)
     }
 
     /**
@@ -145,11 +151,15 @@ class UsbHidSink private constructor(
             queue.offer(Item(report, pauseAfterMs))
         }
 
+        /** Stops writing and waits for the process to go: the gadget mustn't change under it. */
         override fun close() {
             running = false
             thread.interrupt()
             runCatching { stream.close() }
-            runCatching { process.destroy() }
+            runCatching {
+                process.destroyForcibly()
+                process.waitFor(1, TimeUnit.SECONDS)
+            }
         }
     }
 
@@ -185,14 +195,43 @@ class UsbHidSink private constructor(
             listOf(dir, script, mouseDesc, kbdDesc).forEach { it.setReadable(true, false) }
             dir.setExecutable(true, false)
 
+            // Remembered before the gadget changes, and forgotten only once it's put back: if the
+            // app dies in between, the next start takes the functions off (see cleanUp).
+            prefs(context).edit().putBoolean(KEY_UP, true).commit()
             val setup = run(su, "sh ${script.absolutePath} up ${mouseDesc.absolutePath} ${kbdDesc.absolutePath}")
             Log.i(TAG, "gadget.sh up: $setup")
             if (!setup.contains("ready")) error(setup.lines().lastOrNull { it.isNotBlank() } ?: "the gadget did not come up")
 
             val mouse = writer(su, "/dev/hidg0")
             val keyboard = writer(su, "/dev/hidg1")
-            UsbHidSink(su, script, mouse, keyboard)
+            UsbHidSink(su, script, mouse, keyboard).also { it.context = context.applicationContext }
         }
+
+        /**
+         * Takes the HID functions off if an earlier run left them on (the app was killed while
+         * the phone was a USB mouse). Left on, the phone stays a mouse to anything it's plugged
+         * into, a charger included, which is where the kernel copes worst. Blocks; call it off
+         * the main thread.
+         */
+        fun cleanUp(context: Context, su: String) {
+            if (!prefs(context).getBoolean(KEY_UP, false)) return
+            val script = File(File(context.filesDir, "hid"), "gadget.sh")
+            if (!script.isFile) {
+                prefs(context).edit().remove(KEY_UP).apply()
+                return
+            }
+            Log.i(TAG, "taking off HID functions an earlier run left on")
+            down(su, script, context)
+        }
+
+        private fun down(su: String, script: File, context: Context? = null) {
+            val out = runCatching { run(su, "sh ${script.absolutePath} down") }.getOrDefault("")
+            Log.i(TAG, "gadget.sh down: $out")
+            if (out.contains("stopped")) context?.let { prefs(it).edit().remove(KEY_UP).apply() }
+        }
+
+        private fun prefs(context: Context) = context.getSharedPreferences("usb_hid", Context.MODE_PRIVATE)
+        private const val KEY_UP = "functions_up"
 
         /**
          * A root process holding an endpoint open, fed reports through its stdin. `cat` would

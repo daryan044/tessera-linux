@@ -5,6 +5,7 @@ package com.daryan.tessera.input
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHidDevice
 import android.bluetooth.BluetoothHidDeviceAppSdpSettings
@@ -101,9 +102,21 @@ class BtHidSink private constructor(
         runCatching { profile.connect(device) }
     }
 
-    /** Devices already paired with this phone, as candidates to drive. */
+    /**
+     * Computers already paired with this phone, as candidates to drive: a PC paired before rarely
+     * opens a keyboard connection by itself, so the phone offers to. Devices that don't say what
+     * they are count as computers; headphones, watches and the like don't.
+     */
     @SuppressLint("MissingPermission")
-    fun paired(): List<BluetoothDevice> = runCatching { adapter.bondedDevices.toList() }.getOrDefault(emptyList())
+    fun paired(): List<BluetoothDevice> = runCatching {
+        adapter.bondedDevices.filter { d ->
+            val major = d.bluetoothClass?.majorDeviceClass
+            major == null || major == BluetoothClass.Device.Major.COMPUTER || major == BluetoothClass.Device.Major.UNCATEGORIZED
+        }.sortedBy { it.name.orEmpty().lowercase() }
+    }.getOrDefault(emptyList())
+
+    /** The name a PC lists this phone under: its own Bluetooth name, not "Tessera". */
+    val phoneName: String @SuppressLint("MissingPermission") get() = runCatching { adapter.name }.getOrNull() ?: "this phone"
 
     @SuppressLint("MissingPermission")
     override fun close() {

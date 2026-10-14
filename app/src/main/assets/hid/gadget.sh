@@ -89,6 +89,13 @@ case "$ACTION" in
     ;;
 
   down)
+    # First, whatever still holds an endpoint open goes (our writers, if the app couldn't stop
+    # them): unbinding a HID function while a writer sits in it, blocked on a host that's gone,
+    # is what the kernel's HID gadget handles worst; it can hang the whole phone.
+    for p in /proc/[0-9]*; do
+      ls -l "$p/fd" 2>/dev/null | grep -q /dev/hidg && kill -9 "${p#/proc/}" 2>/dev/null
+    done
+    sleep 0.2
     UDC=$(cat "$G/UDC")
     [ -n "$UDC" ] || UDC=$(ls /sys/class/udc | head -n 1)
     echo "" > "$G/UDC"
