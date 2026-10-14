@@ -9,7 +9,7 @@
 set -e
 
 for bb in /data/adb/magisk/busybox /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox; do
-  [ -x "$bb" ] && break
+  if [ -x "$bb" ]; then break; fi
 done
 [ -x "$bb" ] || { echo "busybox from Magisk/KernelSU/APatch not found" >&2; exit 1; }
 mount() { "$bb" mount "$@"; }
@@ -49,7 +49,9 @@ printf '%s\n' "$BINDS" | while IFS=: read -r src dst mode; do
   [ -n "$src" ] && [ -e "$src" ] || continue
   if [ -d "$src" ]; then mkdir -p "$R$dst"; else mkdir -p "$R$(dirname "$dst")"; touch "$R$dst"; fi
   mount --bind "$src" "$R$dst"
-  [ "$mode" = ro ] && mount -o remount,bind,ro "$R$dst"
+  # An if, not "&&": a false test as the loop's last command fails the loop, and set -e then
+  # ends the script without a word (every app sharing a folder read-write exited 1 silently).
+  if [ "$mode" = ro ]; then mount -o remount,bind,ro "$R$dst"; fi
 done
 
 if [ -n "$X11_DIR" ]; then

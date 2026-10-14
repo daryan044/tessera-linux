@@ -195,6 +195,7 @@ class SessionManager(
                 followWindows(session)
                 audio?.let { launch { it.run() } }
                 withContext(Dispatchers.Main) { x11.showWindow(session) }
+                awaitWindow(session)
                 val pid = IntArray(1)
                 val fd = try {
                     Pty.spawn(spec, rows = 24, cols = 80, pidOut = pid)
@@ -224,6 +225,25 @@ class SessionManager(
             }
         }
         return RunningSession(session, app, backend.name, pid = 0)
+    }
+
+    /**
+     * Waits (up to 3 s) for the session's Android window to connect to its X server. Only then
+     * does the X screen get its real size and a monitor: an app started before that finds none,
+     * and GIMP, restoring its windows onto "the" monitor, crashed on a cold start in chroot mode,
+     * where apps start quicker than the window does.
+     */
+    private suspend fun awaitWindow(session: Session) {
+        val tag = X11Server.windowTag(session)
+        val connected = kotlinx.coroutines.withTimeoutOrNull(3000) {
+            while (withContext(Dispatchers.Main) { com.termux.x11.MainActivity.getInstance(tag)?.lorieView?.connected() } != true) {
+                kotlinx.coroutines.delay(50)
+            }
+            true
+        }
+        // The size goes over with the connection's first messages; give it a moment to land.
+        if (connected == true) kotlinx.coroutines.delay(250)
+        else Log.w(TAG, "session ${session.id}: its window hadn't connected after 3 s; starting the app anyway")
     }
 
     private fun readOutput(id: String, fd: Int) {
