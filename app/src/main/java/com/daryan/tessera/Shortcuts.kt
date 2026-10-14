@@ -3,6 +3,7 @@
 
 package com.daryan.tessera
 
+import com.daryan.tessera.container.FsGrant
 import com.daryan.tessera.container.PermissionManifest
 import com.daryan.tessera.container.Permissions
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +34,11 @@ data class Shortcut(
     /** Shown under the name; the command's first line when empty. */
     val description: String = "",
 ) {
-    fun toManifest() = PermissionManifest(
+    /**
+     * [tesseraDir]: where Tessera keeps its notes and the logs of sessions that just ended. Only
+     * the Claude Code shortcut is shown them, read-only, so it can diagnose what the user sees.
+     */
+    fun toManifest(tesseraDir: File? = null) = PermissionManifest(
         id = ID_PREFIX + id,
         name = name,
         description = description.ifEmpty { command.lines().firstOrNull { it.isNotBlank() }?.trim().orEmpty() },
@@ -42,10 +47,21 @@ data class Shortcut(
         exec = listOf("/bin/bash", "-lc", command),
         gui = window,
         packages = packages,
-        permissions = Permissions(network = true, display = window, audio = window, root = root),
+        permissions = Permissions(
+            network = true,
+            display = window,
+            audio = window,
+            root = root,
+            filesystem = listOfNotNull(
+                tesseraDir?.takeIf { id == CLAUDE_CODE.id }?.let { FsGrant(it.path, TESSERA_DIR, readOnly = true) },
+            ),
+        ),
     )
 
     companion object {
+        /** Where [com.daryan.tessera.container.Diagnostics] appears inside the container. */
+        const val TESSERA_DIR = "/home/user/.tessera"
+
         fun isShortcut(app: PermissionManifest) = app.id.startsWith(ID_PREFIX)
 
         fun idOf(app: PermissionManifest) = app.id.removePrefix(ID_PREFIX)
@@ -59,12 +75,20 @@ data class Shortcut(
         /**
          * Claude Code in a terminal. The first run installs it with Anthropic's installer
          * (into ~/.local/bin, no root needed), later runs start it straight away.
+         *
+         * Before it starts, Tessera's notes about itself are added to ~/CLAUDE.md, which Claude
+         * Code reads from the directory it runs in: how the container is built, what it cannot
+         * see from inside, the problems that recur, and that a bug report is the user's to post.
+         * Appended once, by a marker, so an edited CLAUDE.md is never overwritten.
          */
         val CLAUDE_CODE = Shortcut(
             id = "claude-code",
             name = "Claude Code",
             command = """
                 export PATH="${'$'}HOME/.local/bin:${'$'}PATH"
+                if [ -f ~/.tessera/TESSERA.md ] && ! grep -q TESSERA-CONTEXT ~/CLAUDE.md 2>/dev/null; then
+                  cat ~/.tessera/TESSERA.md >> ~/CLAUDE.md
+                fi
                 if ! command -v claude >/dev/null 2>&1; then
                   echo "Installing Claude Code (first run only)..."
                   curl -fsSL https://claude.ai/install.sh | bash || { echo "Install failed; see above."; exec bash -l; }
@@ -73,7 +97,7 @@ data class Shortcut(
             """.trimIndent(),
             icon = "spark",
             packages = listOf("curl", "ca-certificates", "git"),
-            description = "Anthropic's coding agent, in a terminal. Installs itself on first run.",
+            description = "Anthropic's coding agent, in a terminal. Knows how Tessera works, and reads what just failed.",
         )
     }
 }
@@ -100,7 +124,20 @@ class ShortcutStore(private val file: File) {
 
     private fun load(): List<Shortcut> =
         if (!file.exists()) listOf(Shortcut.CLAUDE_CODE)
-        else runCatching { json.decodeFromString(SERIALIZER, file.readText()) }.getOrDefault(emptyList())
+        else runCatching { json.decodeFromString(SERIALIZER, file.readText()) }.getOrDefault(emptyList()).map(::refreshed)
+
+    /**
+     * Tessera's own Claude Code shortcut gains abilities between versions (latest: the notes that
+     * tell it how Tessera works). A stored copy that still runs the installer but lacks them is
+     * replaced by the current one, keeping the user's icon and window choices. A command rewritten
+     * past recognition is left alone — as is anything the user wrote themselves.
+     */
+    private fun refreshed(s: Shortcut): Shortcut =
+        if (s.id == Shortcut.CLAUDE_CODE.id && "claude.ai/install.sh" in s.command && "TESSERA-CONTEXT" !in s.command) {
+            Shortcut.CLAUDE_CODE.copy(window = s.window, root = s.root, icon = s.icon)
+        } else {
+            s
+        }
 
     private companion object {
         val json = Json { ignoreUnknownKeys = true; prettyPrint = true }

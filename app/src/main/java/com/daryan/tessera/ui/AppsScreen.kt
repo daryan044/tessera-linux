@@ -145,6 +145,10 @@ fun AppsPager(
     onUninstall: (PermissionManifest) -> Unit,
     onEditShortcut: (PermissionManifest) -> Unit,
     onNewShortcut: () -> Unit,
+    /** Opens the trackpad, which drives a PC rather than anything in the container. */
+    onTrackpad: () -> Unit,
+    /** Changes the command an app runs; shortcuts edit theirs in [onEditShortcut] instead. */
+    onEditExec: (PermissionManifest) -> Unit,
     /** Whether [onGraphics] applies to windowed apps (the phone has the GPU driver). */
     graphics: Boolean,
     onGraphics: (PermissionManifest) -> Unit,
@@ -188,12 +192,15 @@ fun AppsPager(
                         onToggleFavorite = { onToggleFavorite(app) },
                         onUninstall = { onUninstall(app) },
                         onEdit = if (Shortcut.isShortcut(app)) ({ onEditShortcut(app) }) else null,
+                        // A shortcut's "Edit" already is its command; everything else gets this.
+                        onEditExec = if (Shortcut.isShortcut(app)) null else ({ onEditExec(app) }),
                         onGraphics = if (graphics && app.gui) ({ onGraphics(app) }) else null,
                         homeScreen = homeScreen,
                         modifier = Modifier.animateItem(),
                     )
                 }
                 if (shortcuts) {
+                    item(key = "trackpad") { TrackpadTile(onTrackpad, Modifier.animateItem()) }
                     item(key = "new-shortcut") { NewShortcutTile(onNewShortcut, Modifier.animateItem()) }
                 }
             }
@@ -201,7 +208,7 @@ fun AppsPager(
     }
 }
 
-/** One app in the grid. Holding it opens its menu: pin, favorite, home screen, graphics, uninstall. */
+/** One app in the grid. Holding it opens its menu: pin, favorite, home screen, graphics, command, uninstall. */
 @Composable
 private fun AppTile(
     app: PermissionManifest,
@@ -215,6 +222,8 @@ private fun AppTile(
     onUninstall: () -> Unit,
     /** For shortcuts: edit it (and Delete replaces Uninstall). */
     onEdit: (() -> Unit)?,
+    /** For everything else: change the command it runs. */
+    onEditExec: (() -> Unit)?,
     /** For windowed apps with the GPU driver: their graphics settings. */
     onGraphics: (() -> Unit)?,
     /** Whether the phone's home screen takes icons. */
@@ -327,6 +336,13 @@ private fun AppTile(
                 onClick = { menu = false; onGraphics() },
             )
         }
+        if (onEditExec != null) {
+            DropdownMenuItem(
+                text = { Text("Edit command") },
+                leadingIcon = { Icon(LauncherIcons.Code, null) },
+                onClick = { menu = false; onEditExec() },
+            )
+        }
         HorizontalDivider()
         if (onEdit != null) {
             DropdownMenuItem(
@@ -360,6 +376,25 @@ private fun NewShortcutTile(onClick: () -> Unit, modifier: Modifier = Modifier) 
         Spacer(Modifier.height(10.dp))
         Text("New shortcut", style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
         Text("A command", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** The phone as a mouse and keyboard for a PC: not a Linux app, so it gets a tile of its own. */
+@Composable
+private fun TrackpadTile(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.clip(MaterialTheme.shapes.large).clickable(onClick = onClick).padding(vertical = 14.dp, horizontal = 4.dp),
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(72.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer),
+        ) {
+            Icon(LauncherIcons.Mouse, null, Modifier.size(30.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+        }
+        Spacer(Modifier.height(10.dp))
+        Text("Trackpad", style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+        Text("For a PC", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

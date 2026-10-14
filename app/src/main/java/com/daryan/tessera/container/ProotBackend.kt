@@ -79,8 +79,9 @@ class ProotBackend(
 
 /**
  * Firefox's per-process sandboxes install seccomp filters that clash with PRoot's ptrace, and
- * its child processes die with SIGSEGV. PRoot mode can't offer that isolation anyway; chroot
- * mode keeps the sandbox.
+ * its child processes die with SIGSEGV. Electron's does the same and dies with SIGTRAP, taking
+ * VS Code and every other Electron app with it. PRoot mode can't offer that isolation anyway;
+ * chroot mode keeps the sandbox.
  */
 private val SANDBOX_OFF = mapOf(
     "MOZ_DISABLE_CONTENT_SANDBOX" to "1",
@@ -88,6 +89,8 @@ private val SANDBOX_OFF = mapOf(
     "MOZ_DISABLE_RDD_SANDBOX" to "1",
     "MOZ_DISABLE_SOCKET_PROCESS_SANDBOX" to "1",
     "MOZ_DISABLE_UTILITY_SANDBOX" to "1",
+    // Electron turns this into --no-sandbox itself; it has no MOZ_-style per-process switches.
+    "ELECTRON_DISABLE_SANDBOX" to "1",
 )
 
 /** Environment inside the container; shared by both backends. */

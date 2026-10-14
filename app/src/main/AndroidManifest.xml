@@ -6,6 +6,15 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Being a Bluetooth mouse and keyboard for a PC (the trackpad). No maxSdkVersion on the
+         old pair: Tessera targets API 28 on purpose (see the README), and Android keeps asking a
+         legacy-target app for BLUETOOTH however new the phone is. Capping them at 30 left the app
+         with no Bluetooth permission at all, and getProfileProxy threw. BLUETOOTH_CONNECT is here
+         for the day the target level rises; it is ignored until then. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <!-- Only requested when an app's manifest grants a folder under /storage. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />

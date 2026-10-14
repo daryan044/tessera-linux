@@ -42,6 +42,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.toShape
@@ -70,6 +71,11 @@ fun SetupScreen(
     onInstall: () -> Unit,
     onCancelInstall: () -> Unit,
     onLiftPhantomLimit: () -> Unit,
+    diagnosticsEnabled: Boolean,
+    onDiagnostics: (Boolean) -> Unit,
+    /** Puts the notes and recent session logs on the clipboard, for any assistant. */
+    onCopyDiagnostics: () -> Unit,
+    onShowIntro: () -> Unit,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(
@@ -151,6 +157,41 @@ fun SetupScreen(
         if (status.phantomProcessLimit) {
             item {
                 PhantomProcessItem(rooted = status.su != null, onLift = onLiftPhantomLimit)
+            }
+        }
+        item {
+            SetupItem(
+                state = if (diagnosticsEnabled) ItemState.Done else ItemState.Warn,
+                title = "Help and diagnostics",
+                body = if (diagnosticsEnabled) {
+                    "Tessera keeps notes on how it works, and what the last few apps printed as " +
+                        "they closed. The Claude Code shortcut reads both, so it can tell you why " +
+                        "an app won't start."
+                } else {
+                    "Off. Nothing is kept, so anyone helping you has only what you can describe."
+                },
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Keep what apps print",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(checked = diagnosticsEnabled, onCheckedChange = onDiagnostics)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = onCopyDiagnostics) { Text("Copy diagnostics") }
+                        TextButton(onClick = onShowIntro) { Text("Show intro") }
+                    }
+                    Text(
+                        "Copy puts those notes and the recent logs on your clipboard, to paste " +
+                            "into any AI you like. It names your apps and folders, so read it " +
+                            "before sending it anywhere.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
         item {

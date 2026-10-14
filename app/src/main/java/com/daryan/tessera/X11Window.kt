@@ -390,15 +390,13 @@ enum class TouchMode(val pref: String, val label: String) {
     SIMULATED("2", "Touchscreen mouse"),
 }
 
-interface X11Actions {
+/**
+ * What an X11 window's side menu and the trackpad can ask of the session. The pointer and
+ * keyboard half is [InputSink], shared with the sinks that drive a PC over USB or Bluetooth, so
+ * the trackpad works the same against any of them.
+ */
+interface X11Actions : com.daryan.tessera.input.InputSink {
     fun toggleKeyboard()
-    fun click(button: MouseButton)
-    /** Holds [button] down, or lets it go: dragging from the trackpad. */
-    fun press(button: MouseButton, down: Boolean)
-    /** Moves the pointer by ([dx], [dy]) X screen pixels. */
-    fun move(dx: Float, dy: Float)
-    fun scroll(dx: Float, dy: Float)
-    fun keys(vararg keyCodes: Int)
     /** The cast in progress, or null; while there is one, the phone is a trackpad. */
     val cast: StateFlow<CastState?>
     /** Displays there are to cast to, as they come and go. */
