@@ -328,7 +328,6 @@ class X11Window : MainActivity.MainActivityTagged() {
             val sample = Bitmap.createBitmap(4, 12, Bitmap.Config.ARGB_8888)
             PixelCopy.request(view, src, sample, { status ->
                 val brightness = if (status == PixelCopy.SUCCESS) luminance(sample) else null
-                Log.d("X11Window", "brightness behind the handle: copy status $status, brightness $brightness")
                 brightness?.let(result)
                 sample.recycle()
             }, Handler(Looper.getMainLooper()))
