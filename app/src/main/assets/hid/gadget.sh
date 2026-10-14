@@ -22,6 +22,15 @@ ACTION="$1"
 MOUSE_FN="$G/functions/hid.0"
 KBD_FN="$G/functions/hid.1"
 
+# While the phone is a mouse it presents itself as a different device: Windows remembers how it
+# set a device up by vendor and product id, and Android's (18d1:4e11, adb alone) is remembered as
+# adb and nothing else, so the new mouse and keyboard were never looked at. 1d6b:0104 is the
+# Linux Foundation's id for a multi-function gadget. Android's own ids are kept beside this script
+# and put back by "down".
+HID_VENDOR=0x1d6b
+HID_PRODUCT=0x0104
+SAVED_IDS="$(dirname "$0")/saved-ids"
+
 case "$ACTION" in
   up)
     MOUSE_DESC="$2"
@@ -50,13 +59,21 @@ case "$ACTION" in
     [ -n "$UDC" ] || UDC=$(ls /sys/class/udc | head -n 1)
     [ -n "$UDC" ] || { echo "no USB controller to bind to"; exit 1; }
 
+    # Android's ids, read before the window and only if they're still Android's.
+    VENDOR=$(cat "$G/idVendor")
+    PRODUCT=$(cat "$G/idProduct")
+    [ "$VENDOR" = "$HID_VENDOR" ] || echo "$VENDOR $PRODUCT" > "$SAVED_IDS"
+
     # The window with no gap in it. USB, adb included, drops for the moment this takes.
     echo "" > "$G/UDC"
+    echo "$HID_VENDOR" > "$G/idVendor"
+    echo "$HID_PRODUCT" > "$G/idProduct"
     ln -s "$MOUSE_FN" "$CFG/hid.0" 2>/dev/null
     ln -s "$KBD_FN" "$CFG/hid.1" 2>/dev/null
     if ! echo "$UDC" > "$G/UDC"; then
       # Put it back the way Android had it rather than leave USB dead.
       rm -f "$CFG/hid.0" "$CFG/hid.1"
+      [ -f "$SAVED_IDS" ] && read V P < "$SAVED_IDS" && echo "$V" > "$G/idVendor" && echo "$P" > "$G/idProduct"
       echo "$UDC" > "$G/UDC"
       echo "the gadget would not take the HID functions"
       exit 1
@@ -83,9 +100,20 @@ case "$ACTION" in
       i=$((i + 1))
     done
     case "$(cat /sys/class/udc/*/state 2>/dev/null)" in
-      *configured*) echo "ready" ;;
+      *configured*) ;;
       *) echo "the PC has not taken the mouse and keyboard; is the cable a data cable?"; exit 1 ;;
     esac
+
+    # "Configured" only says the PC took the device, which adb alone gets it to do. Whether it
+    # took the mouse shows when a report goes through: an empty one (nothing pressed, no motion)
+    # is harmless. A write the PC never collects would block, so each try has a time limit.
+    i=0
+    while [ $i -lt 10 ]; do
+      timeout 1 sh -c 'printf "\000\000\000\000" > /dev/hidg0' 2>/dev/null && { echo "ready"; exit 0; }
+      i=$((i + 1))
+    done
+    echo "the PC sees the phone but hasn't set it up as a mouse; try another USB port or cable"
+    exit 1
     ;;
 
   down)
@@ -100,7 +128,14 @@ case "$ACTION" in
     [ -n "$UDC" ] || UDC=$(ls /sys/class/udc | head -n 1)
     echo "" > "$G/UDC"
     rm -f "$CFG/hid.0" "$CFG/hid.1"
+    # Android's own ids back, so the PC knows the phone as it was (adb and all).
+    if [ -f "$SAVED_IDS" ]; then
+      read V P < "$SAVED_IDS"
+      echo "$V" > "$G/idVendor"
+      echo "$P" > "$G/idProduct"
+    fi
     echo "$UDC" > "$G/UDC"
+    rm -f "$SAVED_IDS"
     # The functions themselves only go once nothing links them.
     rmdir "$MOUSE_FN" 2>/dev/null
     rmdir "$KBD_FN" 2>/dev/null
