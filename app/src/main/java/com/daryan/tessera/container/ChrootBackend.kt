@@ -44,13 +44,38 @@ class ChrootBackend(
             "GUEST_ENV" to guestEnv(app, session).map { (k, v) -> "$k=$v" }.joinToString("\n"),
             "CMD" to guestCommand(app).joinToString(" ") { shellQuote(it) },
         )
-        val unshare = if (p.network) "unshare -m" else "unshare -m -n"
-        val script = buildString {
-            vars.forEach { (k, v) -> append("export $k=${shellQuote(v)}; ") }
-            append("exec $unshare /system/bin/sh ${shellQuote(paths.chrootScript.invariantSeparatorsPath)}")
-        }
-        return LaunchSpec(listOf(su, "-c", script), emptyMap(), "/")
+        return suLaunch(su, vars, p.network, paths.chrootScript)
     }
+
+    override fun buildFlatpakLaunch(app: PermissionManifest, session: Session, env: Map<String, String>): LaunchSpec {
+        val ref = requireNotNull(app.flatpak) { "${app.id} isn't a Flathub app" }
+        val p = app.permissions
+        val vars = linkedMapOf(
+            "R" to paths.chrootRootfs.invariantSeparatorsPath,
+            "FP_RUNTIME" to ref.runtimeDir,
+            "FP_APP" to ref.appDir,
+            "FP_GL" to ref.glDir.orEmpty(),
+            "FP_GL_MOUNT" to ref.glMount.orEmpty(),
+            "BINDS" to p.filesystem.joinToString("\n") { "${it.path}:${it.mountAt}:${if (it.readOnly) "ro" else "rw"}" },
+            "GPU_DEVICE" to if (session.gpu) GpuDriver.KGSL else "",
+            "X11_DIR" to paths.x11SocketDir(session).invariantSeparatorsPath,
+            "APP_UID" to appUid.toString(),
+            "NET_GROUPS" to if (p.network) "3003,3004" else "",
+            "GUEST_ENV" to env.map { (k, v) -> "$k=$v" }.joinToString("\n"),
+            "CMD" to app.exec.joinToString(" ") { shellQuote(it) },
+        )
+        return suLaunch(su, vars, p.network, paths.chrootFlatpakScript)
+    }
+}
+
+/** Starts [vars] in a fresh namespace with [script]; network namespace too unless [network]. */
+private fun suLaunch(su: String, vars: Map<String, String>, network: Boolean, script: java.io.File): LaunchSpec {
+    val unshare = if (network) "unshare -m" else "unshare -m -n"
+    val line = buildString {
+        vars.forEach { (k, v) -> append("export $k=${shellQuote(v)}; ") }
+        append("exec $unshare /system/bin/sh ${shellQuote(script.invariantSeparatorsPath)}")
+    }
+    return LaunchSpec(listOf(su, "-c", line), emptyMap(), "/")
 }
 
 /** Single-quotes [s] for POSIX sh. */

@@ -43,6 +43,8 @@ data class QueueJob(
     val log: String = "",
     val queuedAt: Long = System.currentTimeMillis(),
     val finishedAt: Long? = null,
+    /** What runs instead of apt (Flathub's setup, flatpak install), as root; its last line is the progress text. */
+    val script: String? = null,
 ) {
     val active get() = state is JobState.Queued || state is JobState.Running
 }
@@ -70,10 +72,11 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         action: QueueAction,
         iconFile: String?,
         backend: ContainerBackend,
+        script: String? = null,
         onDone: suspend () -> Unit,
     ) {
         if (_jobs.value.any { it.active && it.packages == packages }) return
-        val job = QueueJob(nextId.getAndIncrement(), title, packages, action, iconFile)
+        val job = QueueJob(nextId.getAndIncrement(), title, packages, action, iconFile, script = script)
         reruns[job.id] = backend to onDone
         _jobs.update { it + job }
         scope.launch(Dispatchers.IO) {
@@ -105,7 +108,7 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         val job = _jobs.value.firstOrNull { it.id == id && it.state is JobState.Failed } ?: return
         val (backend, onDone) = reruns.remove(id) ?: return
         _jobs.update { list -> list.filterNot { it.id == id } }
-        enqueue(job.title, job.packages, job.action, job.iconFile, backend, onDone)
+        enqueue(job.title, job.packages, job.action, job.iconFile, backend, job.script, onDone)
     }
 
     private fun run(job: QueueJob, backend: ContainerBackend): Boolean {
@@ -116,7 +119,7 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         val manifest = PermissionManifest(
             id = "queue-${job.id}",
             name = job.title,
-            exec = listOf("/bin/sh", "-c", script(job)),
+            exec = listOf("/bin/sh", "-c", job.script ?: script(job)),
             permissions = Permissions(network = job.action == QueueAction.INSTALL, root = true),
         )
         return try {
@@ -134,7 +137,9 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
                 try {
                     r.lineSequence().forEach { raw ->
                         val line = raw.trimEnd('\r')
-                        parser.feed(line)?.let { (p, msg) -> state = JobState.Running(p, msg) }
+                        if (job.script == null) parser.feed(line)?.let { (p, msg) -> state = JobState.Running(p, msg) }
+                        // Other tools' progress isn't machine-readable: their latest line says it.
+                        else if (line.isNotBlank()) state = JobState.Running(null, line.trim().take(120))
                         if (line.isNotBlank() && !line.startsWith("dlstatus:") && !line.startsWith("pmstatus:") && !line.startsWith("##phase")) {
                             tail.addLast(line); if (tail.size > 3) tail.removeFirst()
                             log.append(line).append('\n')

@@ -143,6 +143,8 @@ class LauncherContainer(private val app: Application) {
     val appearance = com.daryan.tessera.container.AppearanceSettings(java.io.File(app.filesDir, "appearance.json"))
     val sessions = SessionManager(app, scope, paths, diagnostics, appearance)
     val catalog = StoreCatalog(java.io.File(app.filesDir, "store"), scope)
+    /** Flathub's catalog, for the Store tab's Flathub side (once Flathub is set up). */
+    val flathub = com.daryan.tessera.store.FlathubCatalog(java.io.File(app.filesDir, "store"), scope)
     val screenshots = com.daryan.tessera.store.Screenshots(java.io.File(app.cacheDir, "screenshots"))
     val registry = StoreRegistry(java.io.File(app.filesDir, "apps"), catalog)
     val installer = RootfsInstaller(paths, OciRegistry(), scope, Process.myUid(), Process.myUid())

@@ -28,6 +28,8 @@ data class PermissionManifest(
     /** Distro packages that provide [exec]; offered for install when it's missing. */
     val packages: List<String> = emptyList(),
     val permissions: Permissions = Permissions(),
+    /** A Flathub app: where its files are and what to run; see [FlatpakRef]. */
+    val flatpak: FlatpakRef? = null,
 ) {
     fun validate(): List<String> = buildList {
         if (!ID.matches(id)) add("id '$id' must match ${ID.pattern}")

@@ -143,7 +143,7 @@ private fun SessionCard(
                     )
                 }
                 if (s.running) {
-                    FilledTonalButton(onClick = { onStop(s.session.id) }) { Text("End task") }
+                    ConfirmButton("End task", onConfirm = { onStop(s.session.id) })
                 } else {
                     IconButton(onClick = { onDismiss(s.session.id) }) {
                         Icon(Icons.Rounded.Close, "Dismiss")

@@ -135,7 +135,12 @@ class SessionManager(
     /** [usb]: the app's USB devices, opened for it when it runs in PRoot ([UsbBridge]). */
     @Throws(IOException::class)
     fun launch(app: PermissionManifest, backend: ContainerBackend, usb: UsbBridge.Opened? = null): RunningSession {
-        val n = nextId.getAndIncrement()
+        // An id whose leftovers can be cleared: a chroot session's files are root's, which the app
+        // can't delete, and a PRoot session reusing its directory found the window watcher's
+        // command pipe there unusable (PermissionError, and no Android task per window).
+        val n = generateSequence { nextId.getAndIncrement() }.first { id ->
+            File(paths.cacheDir, "sessions/s$id").let { it.deleteRecursively() || !it.exists() }
+        }
         // Hardware graphics for windowed apps, when it's on and the driver is in that system.
         val gpu = app.gui && gpuFor(app.id) && when (backend) {
             is ProotBackend -> GpuDriver.installed(context, paths.prootRootfs)
@@ -149,6 +154,7 @@ class SessionManager(
             gpuFixes = if (gpu) gpuFixesFor(app.id) else emptySet(),
             usbFds = if (backend is ProotBackend) usb?.fds.orEmpty() else emptyMap(),
             theme = app.gui && appearance?.forApp(app.id) != null,
+            flatpak = app.gui && app.flatpak != null,
         )
         // Ids restart with the process, so a previous run's s1 may have left a dead X socket here.
         paths.sessionTmp(session).apply {
@@ -165,7 +171,8 @@ class SessionManager(
         usb?.let { usbDevices[session.id] = it }
         // A stopped Firefox leaves a profile lock naming a pid Android will soon reuse.
         if (backend is ProotBackend) runCatching { StaleLocks.clean(paths.prootRootfs, android.os.Process.myUid()) }
-        val spec = backend.buildLaunch(app, session)
+        // A Flathub app: the session runs around FLATPAK_HOLD, and the app beside it.
+        val spec = backend.buildLaunch(if (session.flatpak) app.copy(exec = listOf("/bin/sh", "-c", FLATPAK_HOLD)) else app, session)
 
         val running = if (app.gui) launchGui(app, backend, session, spec) else launchTerminal(app, backend, session, spec)
         _sessions.update { it + running }
@@ -208,6 +215,7 @@ class SessionManager(
                 }
                 update(session.id) { it.copy(pid = pid[0]) }
                 launch { readOutput(session.id, fd) }
+                if (session.flatpak) launch { runFlatpak(app, backend, session) }
                 val code = Pty.waitFor(pid[0])
                 update(session.id) { it.copy(exitCode = code) }
                 val output = _sessions.value.firstOrNull { it.session.id == session.id }?.output.orEmpty()
@@ -229,6 +237,40 @@ class SessionManager(
             }
         }
         return RunningSession(session, app, backend.name, pid = 0)
+    }
+
+    /**
+     * A Flathub app's own process: once the session (around [FLATPAK_HOLD]) has published what
+     * it set up, starts the app with that, beside it, and hands its exit code back, which ends
+     * the session. If it can't start, the session ends with the reason in its output.
+     */
+    private suspend fun runFlatpak(app: PermissionManifest, backend: ContainerBackend, session: Session) {
+        val dir = paths.x11SocketDir(session)
+        val exit = File(dir, FLATPAK_EXIT_FILE)
+        val code = try {
+            val published = File(dir, FLATPAK_ENV_FILE)
+            val ready = kotlinx.coroutines.withTimeoutOrNull(20_000) {
+                while (!published.isFile) kotlinx.coroutines.delay(100)
+                true
+            }
+            checkNotNull(ready) { "the session didn't start" }
+            val shared = published.readLines().mapNotNull { line ->
+                line.indexOf('=').takeIf { it > 0 }?.let { line.substring(0, it) to line.substring(it + 1) }
+            }.toMap().filterKeys { it in FLATPAK_SHARED_ENV }
+            val base = guestEnv(app, session) + shared
+            val env = base + Flatpak.env(requireNotNull(app.flatpak), session.gpu, base)
+            val spec = backend.buildFlatpakLaunch(app, session, env)
+            val pid = IntArray(1)
+            val fd = Pty.spawn(spec, rows = 24, cols = 80, pidOut = pid)
+            scope.launch(Dispatchers.IO) { readOutput(session.id, fd) }
+            Pty.waitFor(pid[0])
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.w(TAG, "Flathub app ${app.id} couldn't start", e)
+            update(session.id) { it.copy(output = it.output + "\nCouldn't start ${app.name}: ${e.message}") }
+            127
+        }
+        runCatching { exit.writeText("$code") }
     }
 
     /**
@@ -411,6 +453,10 @@ class SessionManager(
     }
 
     private companion object {
+        /** What a Flathub app takes from its session's environment, as [FLATPAK_HOLD] saw it. */
+        val FLATPAK_SHARED_ENV = setOf(
+            "DBUS_SESSION_BUS_ADDRESS", "QT_QPA_PLATFORMTHEME", "SAL_USE_VCLPLUGIN", "AT_SPI_BUS_ADDRESS",
+        )
         const val TAG = "Sessions"
         const val PREFS = "launcher"
         const val KEY_GPU = "gpu_acceleration"

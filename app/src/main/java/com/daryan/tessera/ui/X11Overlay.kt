@@ -310,25 +310,38 @@ private fun MainPage(session: RunningSession?, actions: X11Actions, perRow: Int,
         Tile(LauncherIcons.Usb, "USB") { onPage(Page.USB) }
         if (session != null) Tile(Icons.Rounded.Lock, "Permissions") { run { actions.openPermissions(session.app.id) } }
         Tile(Icons.Rounded.Settings, "Display") { run(actions::displaySettings) }
-        Tile(Icons.Rounded.Close, "Close", danger = true) { run { actions.close(session?.session?.id) } }
+        // Two taps, like End task: the first turns the label into "Sure?".
+        var closeArmed by rememberArmed()
+        Tile(Icons.Rounded.Close, "Close", danger = true, armed = closeArmed) {
+            if (closeArmed) run { actions.close(session?.session?.id) } else closeArmed = true
+        }
     }
 }
 
 @Composable
-private fun Tile(icon: ImageVector, label: String, danger: Boolean = false, onClick: () -> Unit) {
+private fun Tile(icon: ImageVector, label: String, danger: Boolean = false, armed: Boolean = false, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
+    val effects = MaterialTheme.motionScheme.defaultEffectsSpec<androidx.compose.ui.graphics.Color>()
+    // Armed (one tap from going ahead), a danger tile deepens to the full error color.
+    val circle by animateColorAsState(
+        when { armed -> c.error; danger -> c.errorContainer; else -> c.secondaryContainer }, effects, label = "tileCircle",
+    )
+    val glyph by animateColorAsState(
+        when { armed -> c.onError; danger -> c.onErrorContainer; else -> c.onSecondaryContainer }, effects, label = "tileGlyph",
+    )
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.width(76.dp).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(vertical = 4.dp),
     ) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.size(52.dp).clip(CircleShape).background(if (danger) c.errorContainer else c.secondaryContainer),
+            modifier = Modifier.size(52.dp).clip(CircleShape).background(circle),
         ) {
-            Icon(icon, null, tint = if (danger) c.onErrorContainer else c.onSecondaryContainer)
+            Icon(icon, null, tint = glyph)
         }
         Spacer(Modifier.height(6.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 2)
+        if (danger) ConfirmLabel(armed, label, MaterialTheme.typography.labelMedium)
+        else Text(label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 2)
     }
 }
 

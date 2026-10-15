@@ -72,6 +72,53 @@ class ProotBackend(
         return LaunchSpec(argv, hostEnv, paths.filesDir.invariantSeparatorsPath)
     }
 
+    override fun buildFlatpakLaunch(app: PermissionManifest, session: Session, env: Map<String, String>): LaunchSpec {
+        val ref = requireNotNull(app.flatpak) { "${app.id} isn't a Flathub app" }
+        val p = app.permissions
+        val rootfs = paths.prootRootfs.invariantSeparatorsPath
+        val skeleton = FlatpakSkeleton.ensure(paths.flatpakSkeleton)
+        val argv = buildList {
+            add(paths.proot.invariantSeparatorsPath)
+            add("--kill-on-exit")
+            appId?.let { (uid, gid) -> add("--change-id=$uid:$gid") }
+            add("--rootfs=${skeleton.invariantSeparatorsPath}")
+            add("--cwd=/home/user")
+            bind("$rootfs${ref.runtimeDir}", "/usr")
+            bind("$rootfs${ref.appDir}", "/app")
+            if (ref.glDir != null && ref.glMount != null) bind("$rootfs${ref.glDir}", ref.glMount)
+            // Flatpak's store hard-links every file; PRoot (--link2symlink) made those symlinks
+            // to absolute paths in the container, which must resolve here too.
+            bind("$rootfs${Flatpak.ROOT}")
+            bind("/dev")
+            bind("/proc")
+            fakeProc.forEach { bind(File(paths.fakeProcDir, it).invariantSeparatorsPath, "/proc/$it") }
+            bind("/sys")
+            bind("/dev/urandom", "/dev/random")
+            bind(paths.sessionTmp(session).invariantSeparatorsPath, "/tmp")
+            bind(paths.sessionShm(session).invariantSeparatorsPath, "/dev/shm")
+            // The same home (and so the same app data, ~/.var/app/<id>) as in the container.
+            bind("$rootfs/home/user", "/home/user")
+            for (f in listOf("passwd", "group", "hosts", "resolv.conf")) {
+                if (exists("$rootfs/etc/$f")) bind("$rootfs/etc/$f", "/etc/$f")
+            }
+            // The container's fonts, which the runtime's fontconfig looks for under /run/host.
+            bind("$rootfs/usr/share/fonts", "/run/host/fonts")
+            if (session.gpu) bind("$rootfs${GpuDriver.GUEST_DIR}", GpuDriver.GUEST_DIR)
+            if (exists("$rootfs${ThemePack.GUEST_DIR}")) bind("$rootfs${ThemePack.GUEST_DIR}", ThemePack.GUEST_DIR)
+            p.filesystem.filter { exists(it.path) }.forEach { bind(it.path, it.mountAt) }
+            add("/usr/bin/env")
+            add("-i")
+            addAll((env + SANDBOX_OFF).map { (k, v) -> "$k=$v" })
+            addAll(app.exec)
+        }
+        val hostEnv = mapOf(
+            "PROOT_TMP_DIR" to paths.cacheDir.invariantSeparatorsPath,
+            "PROOT_LOADER" to paths.prootLoader.invariantSeparatorsPath,
+            "PROOT_LOADER_32" to paths.prootLoader32.invariantSeparatorsPath,
+        )
+        return LaunchSpec(argv, hostEnv, paths.filesDir.invariantSeparatorsPath)
+    }
+
     private fun MutableList<String>.bind(host: String, guest: String = host) {
         add(if (host == guest) "--bind=$host" else "--bind=$host:$guest")
     }
@@ -132,9 +179,12 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
         if (session.theme) putAll(ThemeFiles.ENV)
     }
     if (p.audio && p.display && session.display != null) {
-        // The session's own PulseAudio, started by guestCommand; see AudioPipe for the rest.
+        // The session's own PulseAudio, started by guestCommand; see AudioPipe for the rest. A
+        // Flathub app shares only the X11 directory with the session, so its sound goes there.
+        val pulse = if (session.flatpak) "/tmp/.X11-unix/pulse" else "/tmp/pulse"
         put("LAUNCHER_AUDIO", "1")
-        put("PULSE_RUNTIME_PATH", "/tmp/pulse")
-        put("PULSE_SERVER", "unix:/tmp/pulse/native")
+        put("PULSE_RUNTIME_PATH", pulse)
+        put("PULSE_SERVER", "unix:$pulse/native")
     }
+    if (session.flatpak) put("TESSERA_FLATPAK", "1")
 }

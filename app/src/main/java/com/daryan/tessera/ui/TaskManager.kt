@@ -77,7 +77,6 @@ fun TaskSummary(processes: List<GuestProcess>?, running: Int, onCloseAll: () -> 
     }
     val cores = remember { Runtime.getRuntime().availableProcessors() }
     val load = processes?.let(Load::of)
-    var confirm by remember { mutableStateOf(false) }
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -97,7 +96,7 @@ fun TaskSummary(processes: List<GuestProcess>?, running: Int, onCloseAll: () -> 
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                FilledTonalButton(onClick = { confirm = true }, enabled = running > 0) { Text("Close all") }
+                ConfirmButton("Close all", onConfirm = onCloseAll, enabled = running > 0)
             }
             if (load != null) {
                 Spacer(Modifier.height(16.dp))
@@ -109,15 +108,6 @@ fun TaskSummary(processes: List<GuestProcess>?, running: Int, onCloseAll: () -> 
                 Meter("Memory", "${Formatter.formatShortFileSize(context, load.memory)} of ${Formatter.formatShortFileSize(context, total)}", memShare)
             }
         }
-    }
-    if (confirm) {
-        AlertDialog(
-            onDismissRequest = { confirm = false },
-            title = { Text("Close all Linux apps?") },
-            text = { Text("Ends ${if (running == 1) "the running app" else "all $running running apps"} and everything they started. Unsaved work in them is lost.") },
-            confirmButton = { TextButton(onClick = { confirm = false; onCloseAll() }) { Text("Close all", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
-        )
     }
 }
 

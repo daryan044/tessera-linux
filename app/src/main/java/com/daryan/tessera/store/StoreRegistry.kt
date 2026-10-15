@@ -49,6 +49,27 @@ class StoreRegistry(private val appsDir: File, private val catalog: StoreCatalog
         refreshInstalled(store)
     }
 
+    /**
+     * Adds the launcher entry for a Flathub app flatpak just installed: where its files are and
+     * what it runs come from its metadata, read through [store]; [icon] is its downloaded icon.
+     * False when the app's files aren't there.
+     */
+    suspend fun registerFlatpak(app: StoreApp, store: ConfigStore, icon: File?): Boolean = withContext(Dispatchers.IO) {
+        val ref = com.daryan.tessera.container.Flatpak.resolve(app.id) { runCatching { store.read(it) }.getOrNull() }
+            ?: return@withContext false
+        val iconFile = icon?.let { src ->
+            File(appsDir, "icons/${idFor(app)}.png").also { dst -> dst.parentFile?.mkdirs(); src.copyTo(dst, overwrite = true) }
+        }
+        val manifest = manifestFor(app, null, iconFile?.path).copy(exec = listOf(ref.command), packages = emptyList(), flatpak = ref)
+        File(appsDir, "${manifest.id}.json").apply { parentFile?.mkdirs() }
+            .writeText(json.encodeToString(PermissionManifest.serializer(), manifest))
+        _userApps.update { list -> list.filterNot { it.id == manifest.id } + manifest }
+        true
+    }
+
+    /** The Flathub apps the launcher has entries for, by Flathub id. */
+    fun flatpakApps(): Set<String> = _userApps.value.mapNotNull { it.flatpak?.app }.toSet()
+
     /** Whether [id] is a launcher entry the store added (as opposed to a bundled one). */
     fun isStoreApp(id: String) = _userApps.value.any { it.id == id }
 
@@ -65,6 +86,7 @@ class StoreRegistry(private val appsDir: File, private val catalog: StoreCatalog
         val id = idFor(app)
         File(appsDir, "$id.json").delete()
         File(appsDir, "icons/${app.pkg}.png").delete()
+        File(appsDir, "icons/$id.png").delete()
         _userApps.update { list -> list.filterNot { it.id == id } }
         refreshInstalled(store)
     }
@@ -77,7 +99,11 @@ class StoreRegistry(private val appsDir: File, private val catalog: StoreCatalog
     companion object {
         private val json = Json { prettyPrint = true; encodeDefaults = false }
 
-        fun idFor(app: StoreApp) = app.pkg.lowercase().replace(Regex("[^a-z0-9._-]"), "-").take(64)
+        /** The launcher id for a store app; Flathub's apart from Debian's packages. */
+        fun idFor(app: StoreApp): String {
+            val name = app.pkg.lowercase().replace(Regex("[^a-z0-9._-]"), "-")
+            return (if (app.source == StoreSource.FLATHUB) "flathub-$name" else name).take(64)
+        }
 
         /** Packages dpkg reports as installed, from /var/lib/dpkg/status. */
         fun installedPackages(status: String): Set<String> = status.split("\n\n").mapNotNull { block ->

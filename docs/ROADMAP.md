@@ -99,10 +99,10 @@ Flathub as a second source in the Store, for newer versions and apps Debian lack
 
 | | Item | Status | Notes |
 |---|---|---|---|
-| 7.1 | Spike: one app by hand | ⬜ | Fetch a runtime and an aarch64 app into the container, bind them by hand in PRoot and chroot, start it with and without the GPU |
+| 7.1 | Spike: one app by hand | ✅ | Done in chroot mode on the test phone (no user namespaces). Debian's flatpak 1.16.6, run as root, installs from Flathub (mpv, Freedesktop 25.08 runtime, its GL extension, aarch64); only the post-install triggers fail, as they need bubblewrap. Run by hand inside a session's mount namespace: a tmpfs root with the runtime at /usr, the app at /app, symlinks for /bin and /lib, the runtime's /etc, the GL extension under a tmpfs at /usr/lib/aarch64-linux-gnu/GL/default, and the session's /proc, /dev, /sys and X socket. mpv opened its window on the session's display, with an Android task of its own. With our Turnip build bound in at /opt/tessera-gpu and /dev/kgsl-3d0 bound into the root, it ran OpenGL 4.6 on zink over Turnip (Adreno 740); our driver needs nothing the runtime lacks. Not tried: PRoot mode, dropping to the app's uid (the runtime has no setpriv), sound, a GTK or Qt app. mpv with its runtime, GL and codecs took 2.2 GB |
 | 7.2 | Download and update | ⬜ | ostree pulls from Flathub (or `flatpak --user` if its triggers run without bubblewrap) into a shared store; runtimes shared between apps; updates and cleanup of unused runtimes |
 | 7.3 | Launch | ⬜ | Both backends bind the runtime at /usr, the app at /app and the runtime's /etc; the GUI helpers (window manager, D-Bus, focus and window watchers) come from Tessera, not the runtime |
-| 7.4 | GPU | ⬜ | The runtime brings its own Mesa; our Turnip build needs a glibc no newer than the runtime's. Ship it per runtime (a GL extension) or build against the oldest supported |
+| 7.4 | GPU | ⬜ | Works in the spike: our Turnip/Zink build (built against Debian 13) loads inside Freedesktop 25.08 with its own environment, bound at /opt/tessera-gpu. Older runtimes (older glibc) not checked |
 | 7.5 | Store integration | ⬜ | Flathub's catalog beside Debian's: a source badge, "newer on Flathub", only apps with aarch64 builds; default permissions from the app's finish-args |
 | 7.6 | Portals and theming | ⬜ | xdg-desktop-portal for file pickers; Phase 6's theme bound into each runtime |
 

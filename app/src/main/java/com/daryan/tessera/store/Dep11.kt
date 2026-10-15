@@ -22,7 +22,20 @@ data class StoreApp(
     val component: String,
     /** The .desktop file that starts it, when the catalog names one. */
     val desktopId: String? = null,
+    /** Which store it's from: Debian's packages (apt) or Flathub's apps (flatpak). */
+    val source: StoreSource = StoreSource.DEBIAN,
+    /** Screenshot URLs, when the catalog lists them (Flathub's does). */
+    val screenshots: List<String> = emptyList(),
+    /** Where to download the icon, for catalogs without an icon pack (Flathub). */
+    val iconUrl: String? = null,
 )
+
+/** The stores the Store tab can show. */
+@Serializable
+enum class StoreSource(val label: String) {
+    DEBIAN("Debian"),
+    FLATHUB("Flathub"),
+}
 
 /**
  * Reader for Debian's DEP-11 catalogs (`dists/<suite>/<component>/dep11/Components-<arch>.yml`).

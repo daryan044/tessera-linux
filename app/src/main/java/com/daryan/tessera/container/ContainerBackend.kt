@@ -46,6 +46,11 @@ data class Session(
     val usbFds: Map<String, Int> = emptyMap(),
     /** Theme the app with the phone's colors ([ThemeFiles]); GUI apps only. */
     val theme: Boolean = false,
+    /**
+     * A Flathub app ([FlatpakRef]): the session's helpers run in the container as usual, around
+     * [FLATPAK_HOLD] instead of the app, and the app runs beside them in a root of its own.
+     */
+    val flatpak: Boolean = false,
 )
 
 /** Host-side locations a backend needs. Built from a Context in the app, by hand in tests. */
@@ -62,6 +67,10 @@ data class ContainerPaths(
     val prootLoader get() = File(nativeLibDir, "libproot-loader.so")
     val prootLoader32 get() = File(nativeLibDir, "libproot-loader32.so")
     val chrootScript get() = File(filesDir, "chroot/enter.sh")
+    /** Starts a Flathub app in chroot mode; see [ChrootBackend.buildFlatpakLaunch]. */
+    val chrootFlatpakScript get() = File(filesDir, "chroot/flatpak.sh")
+    /** The empty root a PRoot Flathub app's runtime and app are bound into. */
+    val flatpakSkeleton get() = File(filesDir, "flatpak-root")
 
     /** Private /tmp per session, so apps cannot see each other's sockets. */
     fun sessionTmp(session: Session) = File(cacheDir, "sessions/${session.id}/tmp")
@@ -128,7 +137,12 @@ internal fun guestCommand(app: PermissionManifest): List<String> =
 
 private const val GUI_WRAPPER = """
 watcher=${'$'}1; out=${'$'}2; windows=${'$'}3; windows_out=${'$'}4; theme=${'$'}5; shift 5
-if [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-launch >/dev/null 2>&1; then
+if [ -n "${'$'}TESSERA_FLATPAK" ] && [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-daemon >/dev/null 2>&1; then
+  # A Flathub app runs in a root of its own, which shares only the X11 directory with this
+  # one: the bus lives there.
+  bus=${'$'}(dbus-daemon --session --address=unix:path=/tmp/.X11-unix/bus --fork --print-pid)
+  export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/.X11-unix/bus
+elif [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-launch >/dev/null 2>&1; then
   eval "${'$'}(dbus-launch --sh-syntax)"; bus=${'$'}DBUS_SESSION_BUS_PID
 fi
 if [ -n "${'$'}TESSERA_THEME" ] && [ -n "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && [ -d /usr/lib/python3/dist-packages/gi ]; then
@@ -209,8 +223,31 @@ pyatspi.Registry.registerEventListener(focused, "object:state-changed:focused")
 pyatspi.Registry.start()
 """
 
+/**
+ * What a Flathub app's session runs in the container in place of the app: it hands the app
+ * what the session set up (its bus, sound, theme settings) through the X11 directory, which
+ * both roots share, then waits for the launcher to report the app's exit there.
+ */
+internal const val FLATPAK_HOLD = """
+d=/tmp/.X11-unix
+env > ${'$'}d/flatpak-env.tmp && mv ${'$'}d/flatpak-env.tmp ${'$'}d/flatpak-env
+while [ ! -e ${'$'}d/flatpak-exit ]; do sleep 0.5; done
+exit "${'$'}(cat ${'$'}d/flatpak-exit)"
+"""
+
+const val FLATPAK_ENV_FILE = "flatpak-env"
+const val FLATPAK_EXIT_FILE = "flatpak-exit"
+
 interface ContainerBackend {
     val name: String
     fun enforcement(capability: Capability, app: PermissionManifest): Enforcement
     fun buildLaunch(app: PermissionManifest, session: Session): LaunchSpec
+
+    /**
+     * Starts [app]'s Flathub files ([PermissionManifest.flatpak]) in a root of their own: its
+     * runtime at /usr, the app at /app, the session's /tmp/.X11-unix shared, [env] as its whole
+     * environment. Runs beside the session [buildLaunch] started around [FLATPAK_HOLD].
+     */
+    fun buildFlatpakLaunch(app: PermissionManifest, session: Session, env: Map<String, String>): LaunchSpec =
+        throw UnsupportedOperationException("$name can't run Flathub apps")
 }

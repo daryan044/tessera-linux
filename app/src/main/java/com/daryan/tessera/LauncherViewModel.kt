@@ -19,6 +19,9 @@ import com.daryan.tessera.store.QueueAction
 import com.daryan.tessera.store.QueueJob
 import com.daryan.tessera.store.StoreApp
 import com.daryan.tessera.store.StoreCatalog
+import com.daryan.tessera.store.StoreRegistry
+import com.daryan.tessera.store.StoreSource
+import com.daryan.tessera.container.Flatpak
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -162,6 +165,29 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun resetExec(appId: String) = container.exec.reset(appId)
 
     val catalog: StateFlow<CatalogState> = container.catalog.state
+    val flathubCatalog: StateFlow<CatalogState> = container.flathub.state
+
+    private val _storeSource = MutableStateFlow(
+        runCatching { StoreSource.valueOf(app.getSharedPreferences("launcher", Context.MODE_PRIVATE).getString(KEY_STORE_SOURCE, null)!!) }
+            .getOrDefault(StoreSource.DEBIAN),
+    )
+    /** Which store the Store tab shows. */
+    val storeSource: StateFlow<StoreSource> = _storeSource
+
+    private val _flathubReady = MutableStateFlow<Boolean?>(null)
+    /** Whether Flathub is set up in the active container; null until checked. */
+    val flathubReady: StateFlow<Boolean?> = _flathubReady
+
+    /** The Flathub apps installed from the store (they have launcher entries), by Flathub id. */
+    val flathubInstalled: StateFlow<Set<String>> = container.registry.userApps
+        .map { list -> list.mapNotNull { it.flatpak?.app }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    fun setStoreSource(source: StoreSource) {
+        _storeSource.value = source
+        prefs.edit().putString(KEY_STORE_SOURCE, source.name).apply()
+        openStore()
+    }
     val installedPackages: StateFlow<Set<String>?> = container.registry.installed
 
     private val _status = MutableStateFlow<HostStatus?>(null)
@@ -398,6 +424,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setMode(mode: BackendMode) {
         _mode.value = mode
+        // Each mode's system has its own Flathub setup.
+        _flathubReady.value = null
         prefs.edit().putString(KEY_MODE, mode.name).apply()
         // Each mode has its own system: check it, and what's installed in it.
         refresh()
@@ -448,6 +476,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /** Loads the store catalog for the active container's release, and what it has installed. */
     fun openStore(refresh: Boolean = false) {
         val store = configStore(_status.value, _mode.value)
+        if (_storeSource.value == StoreSource.FLATHUB) {
+            viewModelScope.launch {
+                val ready = checkFlathub(store)
+                if (ready) container.flathub.load(refresh)
+            }
+            return
+        }
         viewModelScope.launch {
             val release = runCatching { store?.read("/etc/os-release") }.getOrNull()
             val suite = release?.lineSequence()?.firstOrNull { it.startsWith("VERSION_CODENAME=") }
@@ -457,7 +492,43 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun storeIcon(app: StoreApp) = container.catalog.iconFile(app)
+    fun storeIcon(app: StoreApp) =
+        if (app.source == StoreSource.FLATHUB) container.flathub.iconFile(app) else container.catalog.iconFile(app)
+
+    /** [app]'s icon, downloading it first for catalogs that don't pack them (Flathub's). */
+    suspend fun loadStoreIcon(app: StoreApp): File? =
+        if (app.source == StoreSource.FLATHUB) container.flathub.icon(app) else container.catalog.iconFile(app)
+
+    /** What [app]'s jobs are called in the install queue's package lists. */
+    fun storeJobKey(app: StoreApp) = if (app.source == StoreSource.FLATHUB) flatpakJob(app.id) else app.pkg
+
+    /** Flathub's setup job, while it's waiting or running. */
+    fun flathubSetupJob(jobs: List<QueueJob>) = jobs.lastOrNull { FLATHUB_SETUP in it.packages }
+
+    /** Whether Flathub is set up in the active container (flatpak and its remote); also updates [flathubReady]. */
+    private suspend fun checkFlathub(store: ConfigStore?): Boolean {
+        val ready = store != null && Flatpak.isSetUp(runCatching { store.read(Flatpak.REPO_CONFIG) }.getOrNull())
+        _flathubReady.value = ready
+        return ready
+    }
+
+    /**
+     * Sets Flathub up in the active container, once: flatpak, the Flathub remote and the GUI
+     * helpers, in the install queue. Then its catalog loads. False when no container is ready.
+     */
+    fun setupFlathub(): Boolean {
+        val backend = backend() ?: return false
+        if (blocker(_status.value, _mode.value) != null) return false
+        val store = configStore(_status.value, _mode.value)
+        container.queue.enqueue(
+            "Flathub", listOf(FLATHUB_SETUP), QueueAction.INSTALL, null, backend,
+            script = Flatpak.setupScript(GUI_HELPER_PACKAGES),
+        ) {
+            if (checkFlathub(store)) container.flathub.load()
+            container.registry.refreshInstalled(store)
+        }
+        return true
+    }
 
     /** [app]'s screenshots, downloaded; empty when there are none. */
     suspend fun storeScreenshots(app: StoreApp): List<File> = container.screenshots.forApp(app)
@@ -474,6 +545,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val backend = backend() ?: return false
         if (blocker(_status.value, _mode.value) != null) return false
         val store = configStore(_status.value, _mode.value)
+        if (app.source == StoreSource.FLATHUB) {
+            if (!Flatpak.validId(app.id) || store == null) return false
+            container.queue.enqueue(
+                app.name, listOf(flatpakJob(app.id)), QueueAction.INSTALL, container.flathub.iconFile(app)?.path, backend,
+                script = Flatpak.installScript(app.id),
+            ) { container.registry.registerFlatpak(app, store, container.flathub.icon(app)) }
+            return true
+        }
         container.queue.enqueue(
             app.name, listOf(app.pkg) + GUI_HELPER_PACKAGES, QueueAction.INSTALL,
             container.catalog.iconFile(app)?.path, backend,
@@ -484,6 +563,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun storeUninstall(app: StoreApp): Boolean {
         val backend = backend() ?: return false
         val store = configStore(_status.value, _mode.value)
+        if (app.source == StoreSource.FLATHUB) {
+            if (!Flatpak.validId(app.id)) return false
+            container.queue.enqueue(
+                app.name, listOf(flatpakJob(app.id)), QueueAction.REMOVE, container.flathub.iconFile(app)?.path, backend,
+                script = Flatpak.uninstallScript(app.id),
+            ) { container.registry.unregister(StoreRegistry.idFor(app), store) }
+            return true
+        }
         container.queue.enqueue(app.name, listOf(app.pkg), QueueAction.REMOVE, container.catalog.iconFile(app)?.path, backend) {
             container.registry.unregister(app, store)
         }
@@ -495,6 +582,16 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      * ones stay, offering Install again. False when there's nothing to remove.
      */
     fun uninstall(app: PermissionManifest): Boolean {
+        app.flatpak?.let { ref ->
+            val backend = backend() ?: return false
+            val store = configStore(_status.value, _mode.value)
+            if (!Flatpak.validId(ref.app)) return false
+            container.queue.enqueue(
+                app.name, listOf(flatpakJob(ref.app)), QueueAction.REMOVE, app.iconFile, backend,
+                script = Flatpak.uninstallScript(ref.app),
+            ) { container.registry.unregister(app.id, store) }
+            return true
+        }
         if (app.packages.isEmpty()) return false
         val backend = backend() ?: return false
         val store = configStore(_status.value, _mode.value)
@@ -672,5 +769,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val TAG = "Launcher"
         const val KEY_MODE = "backend_mode"
+        const val KEY_STORE_SOURCE = "store_source"
+        /** What stands for Flathub's setup and its apps in the install queue's package lists. */
+        const val FLATHUB_SETUP = "flathub-setup"
+        fun flatpakJob(id: String) = "flathub:$id"
     }
 }

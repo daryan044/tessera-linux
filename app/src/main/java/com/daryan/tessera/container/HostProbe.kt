@@ -67,6 +67,9 @@ class HostProbe(private val paths: ContainerPaths) {
             context.assets.open("chroot/enter.sh").use { input ->
                 target.outputStream().use { input.copyTo(it) }
             }
+            context.assets.open("chroot/flatpak.sh").use { input ->
+                paths.chrootFlatpakScript.outputStream().use { input.copyTo(it) }
+            }
         }
     }
 }
