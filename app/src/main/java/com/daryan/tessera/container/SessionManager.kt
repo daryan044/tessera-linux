@@ -72,6 +72,8 @@ class SessionManager(
     private val paths: ContainerPaths,
     /** Where ended sessions are recorded for the user to read; null turns that off. */
     private val diagnostics: Diagnostics? = null,
+    /** How Linux apps look; null leaves them unthemed. */
+    private val appearance: AppearanceSettings? = null,
 ) {
     private val nextId = AtomicInteger(1)
     private val _sessions = MutableStateFlow<List<RunningSession>>(emptyList())
@@ -146,6 +148,7 @@ class SessionManager(
             gpu = gpu,
             gpuFixes = if (gpu) gpuFixesFor(app.id) else emptySet(),
             usbFds = if (backend is ProotBackend) usb?.fds.orEmpty() else emptyMap(),
+            theme = app.gui && appearance?.forApp(app.id) != null,
         )
         // Ids restart with the process, so a previous run's s1 may have left a dead X socket here.
         paths.sessionTmp(session).apply {
@@ -157,6 +160,7 @@ class SessionManager(
             mkdirs()
         }
         if (app.permissions.display) paths.x11SocketDir(session).mkdirs()
+        if (session.theme) writeTheme(app, session, backend.name)
         if (session.usbFds.isNotEmpty()) UsbBridge.makeTree(paths.sessionUsb(session), session.usbFds)
         usb?.let { usbDevices[session.id] = it }
         // A stopped Firefox leaves a profile lock naming a pid Android will soon reuse.
@@ -260,6 +264,26 @@ class SessionManager(
                 // EIO once the child side closes; normal end of stream for a pty.
             }
         }
+    }
+
+    /** Writes [session]'s theme files for its app's current [Appearance]; see [ThemeFiles]. */
+    private fun writeTheme(app: PermissionManifest, session: Session, backend: String) {
+        val look = appearance?.forApp(app.id) ?: return
+        // In chroot mode the pack's presence is only known through su, as refresh() left it.
+        val pack = if (backend == ChrootBackend.NAME) ThemePack.bundle.installedAsRoot(context)
+            else ThemePack.bundle.installed(context, paths.prootRootfs)
+        runCatching { ThemeFiles.write(paths.sessionTheme(session), Palette.current(context, look.colorMode, look.dynamicColor), pack) }
+            .onFailure { Log.w(TAG, "couldn't write the theme for ${session.id}", it) }
+    }
+
+    /**
+     * Rewrites the theme of every running themed session, after Android's dark mode or colors
+     * changed or the user's appearance settings did; the apps restyle without restarting. A
+     * session whose app was since left out of theming keeps what it had until it restarts.
+     */
+    fun refreshThemes() {
+        val running = _sessions.value.filter { it.running && it.session.theme }
+        if (running.isNotEmpty()) scope.launch(Dispatchers.IO) { running.forEach { writeTheme(it.app, it.session, it.backend) } }
     }
 
     /** The session shown by the X11 window tagged [tag], if any. */

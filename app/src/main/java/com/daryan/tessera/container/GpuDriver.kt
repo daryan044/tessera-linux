@@ -4,11 +4,7 @@
 package com.daryan.tessera.container
 
 import android.content.Context
-import android.system.Os
-import android.util.Log
-import com.daryan.tessera.store.Tar
 import java.io.File
-import java.util.zip.GZIPInputStream
 
 /**
  * Hardware graphics for GUI apps on Adreno phones: our own Mesa build (scripts/gpu/build-mesa.sh)
@@ -18,8 +14,6 @@ import java.util.zip.GZIPInputStream
  */
 object GpuDriver {
     const val GUEST_DIR = "/opt/tessera-gpu"
-    private const val ASSET = "gpu/mesa-turnip.tgz"
-    private const val VERSION_ASSET = "gpu/VERSION"
     /** Adreno's GPU device; world-readable and writable, so apps need no group for it. */
     const val KGSL = "/dev/kgsl-3d0"
     private const val TAG = "GpuDriver"
@@ -48,77 +42,22 @@ object GpuDriver {
     fun env(fixes: Set<GpuFix>): Map<String, String> =
         ENV + ("TU_DEBUG" to (listOf("noconform") + fixes.map { it.tuDebug }).joinToString(","))
 
+    private val bundle = OptBundle(GUEST_DIR, "gpu/mesa-turnip.tgz", "gpu/VERSION", TAG)
+
     /** Whether this build carries the driver and the phone has an Adreno GPU the app can open. */
-    fun available(context: Context): Boolean =
-        File(KGSL).canRead() && runCatching { context.assets.open(VERSION_ASSET).close() }.isSuccess
+    fun available(context: Context): Boolean = File(KGSL).canRead() && bundle.available(context)
 
     /** Whether this build's driver is unpacked in [rootfs], ready to use. */
-    fun installed(context: Context, rootfs: File): Boolean = available(context) && runCatching {
-        val version = context.assets.open(VERSION_ASSET).bufferedReader().use { it.readText().trim() }
-        File(rootfs, "${GUEST_DIR.removePrefix("/")}/.version").readText().trim() == version
-    }.getOrDefault(false)
+    fun installed(context: Context, rootfs: File): Boolean = available(context) && bundle.installed(context, rootfs)
 
-    /**
-     * Unpacks the driver into [rootfs] unless that version is already there. Returns false when
-     * it couldn't; apps then just run without it.
-     */
-    fun install(context: Context, rootfs: File): Boolean = runCatching {
-        val version = context.assets.open(VERSION_ASSET).bufferedReader().use { it.readText().trim() }
-        val dir = File(rootfs, GUEST_DIR.removePrefix("/"))
-        val marker = File(dir, ".version")
-        if (marker.takeIf { it.exists() }?.readText()?.trim() == version) return true
-        dir.deleteRecursively()
-        context.assets.open(ASSET).use { raw ->
-            Tar.extract(GZIPInputStream(raw.buffered()), rootfs) { target, link -> Os.symlink(target, link.path) }
-        }
-        marker.writeText(version)
-        true
-    }.onFailure { Log.w(TAG, "couldn't unpack the GPU driver", it) }.getOrDefault(false)
-
-    /** The driver version in the chroot system, as [installAsRoot] last found or left it. */
-    @Volatile private var chrootVersion: String? = null
+    /** Unpacks the driver into [rootfs]; see [OptBundle.install]. */
+    fun install(context: Context, rootfs: File): Boolean = bundle.install(context, rootfs)
 
     /** Whether this build's driver is in the chroot system; known once [installAsRoot] ran. */
-    fun installedAsRoot(context: Context): Boolean = available(context) && runCatching {
-        context.assets.open(VERSION_ASSET).bufferedReader().use { it.readText().trim() } == chrootVersion
-    }.getOrDefault(false)
+    fun installedAsRoot(context: Context): Boolean = available(context) && bundle.installedAsRoot(context)
 
-    /**
-     * Unpacks the driver into the chroot system at [rootfs] through [su] (the app can't write
-     * there, or even look), unless that version is already there. Blocks; call off the main thread.
-     */
-    fun installAsRoot(context: Context, rootfs: File, su: String): Boolean = runCatching {
-        val version = context.assets.open(VERSION_ASSET).bufferedReader().use { it.readText().trim() }
-        val dir = "${rootfs.path}$GUEST_DIR"
-        if (runSu(su, "cat '$dir/.version' 2>/dev/null")?.trim() == version) {
-            chrootVersion = version
-            return true
-        }
-        val archive = File(context.cacheDir, "mesa-turnip.tgz")
-        context.assets.open(ASSET).use { input -> archive.outputStream().use { input.copyTo(it) } }
-        try {
-            // Magisk's busybox tar when there is one (toybox's lacks -z on older Android).
-            val script = """
-                tar=tar
-                for bb in /data/adb/magisk/busybox /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox; do
-                  [ -x "${'$'}bb" ] && tar="${'$'}bb tar" && break
-                done
-                rm -rf '$dir' && ${'$'}tar -xzf '${archive.path}' -C '${rootfs.path}' && echo '$version' > '$dir/.version' && echo ok
-            """.trimIndent()
-            check(runSu(su, script)?.lines()?.lastOrNull { it.isNotBlank() } == "ok") { "unpacking failed" }
-        } finally {
-            archive.delete()
-        }
-        chrootVersion = version
-        true
-    }.onFailure { Log.w(TAG, "couldn't unpack the GPU driver as root", it) }.getOrDefault(false)
-
-    private fun runSu(su: String, script: String): String? {
-        val p = ProcessBuilder(su, "-c", script).redirectErrorStream(true).start()
-        val out = p.inputStream.bufferedReader().readText()
-        if (!p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)) { p.destroy(); return null }
-        return out.takeIf { p.exitValue() == 0 }
-    }
+    /** Unpacks the driver into the chroot system; see [OptBundle.installAsRoot]. */
+    fun installAsRoot(context: Context, rootfs: File, su: String): Boolean = bundle.installAsRoot(context, rootfs, su)
 }
 
 /**

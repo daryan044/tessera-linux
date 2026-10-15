@@ -168,7 +168,7 @@ fun AppsPager(
     onTrackpad: () -> Unit,
     /** Changes the command an app runs; shortcuts edit theirs in [onEditShortcut] instead. */
     onEditExec: (PermissionManifest) -> Unit,
-    /** Whether [onGraphics] applies to windowed apps (the phone has the GPU driver). */
+    /** Whether [onGraphics] has anything for windowed apps (theming, or the phone's GPU driver). */
     graphics: Boolean,
     onGraphics: (PermissionManifest) -> Unit,
     /** While searching: the matching apps, shown in one grid in place of the tabs. */
@@ -462,7 +462,7 @@ private fun AppTile(
         }
         if (onGraphics != null) {
             DropdownMenuItem(
-                text = { Text("Graphics fixes") },
+                text = { Text("Look and graphics") },
                 leadingIcon = { Icon(LauncherIcons.Monitor, null) },
                 onClick = { menu = false; onGraphics() },
             )

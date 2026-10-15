@@ -33,13 +33,18 @@ private fun GpuFix.detail() = when (this) {
 }
 
 /**
- * An app's graphics settings, from its long-press menu: GPU acceleration, and workarounds for
- * the driver's drawing bugs. They apply from the app's next launch.
+ * A windowed app's look and graphics settings, from its long-press menu: whether it takes the
+ * phone's theme, GPU acceleration, and workarounds for the driver's drawing bugs. They apply
+ * from the app's next launch.
  */
 @Composable
 fun GraphicsFixesDialog(
     appName: String,
-    gpu: Boolean,
+    /** Whether the app is themed; null when theming is off for every app. */
+    themed: Boolean?,
+    onThemed: (Boolean) -> Unit,
+    /** Null when the phone or build has no GPU driver. */
+    gpu: Boolean?,
     onGpu: (Boolean) -> Unit,
     fixes: Set<GpuFix>,
     onFix: (GpuFix, Boolean) -> Unit,
@@ -47,13 +52,19 @@ fun GraphicsFixesDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Graphics for $appName") },
+        title = { Text("Look and graphics for $appName") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                FixLine("GPU acceleration", "Off draws in software: slower, but always right", gpu, enabled = true, onGpu)
-                HorizontalDivider()
-                GpuFix.entries.forEach { fix ->
-                    FixLine(fix.title(), fix.detail(), fix in fixes, enabled = gpu) { onFix(fix, it) }
+                if (themed != null) {
+                    FixLine("Phone's theme", "Colors and dark mode from Android. Off for apps that look wrong themed", themed, enabled = true, onThemed)
+                }
+                if (themed != null && gpu != null) HorizontalDivider()
+                if (gpu != null) {
+                    FixLine("GPU acceleration", "Off draws in software: slower, but always right", gpu, enabled = true, onGpu)
+                    HorizontalDivider()
+                    GpuFix.entries.forEach { fix ->
+                        FixLine(fix.title(), fix.detail(), fix in fixes, enabled = gpu) { onFix(fix, it) }
+                    }
                 }
                 Text(
                     "Changes apply the next time the app opens.",

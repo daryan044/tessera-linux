@@ -21,6 +21,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -85,13 +87,16 @@ import com.daryan.tessera.MouseButton
 import com.daryan.tessera.TouchMode
 import com.daryan.tessera.UsbState
 import com.daryan.tessera.X11Actions
+import com.daryan.tessera.X11Scale
 import com.daryan.tessera.container.RunningSession
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-private enum class Page { MAIN, KEYS, INPUT, CAST, USB }
+private enum class Page { MAIN, KEYS, INPUT, SCALE, CAST, USB }
 
-private val PANEL_WIDTH = 248.dp
+private val PANEL_WIDTH = 272.dp
+/** In landscape the screen is short: a wider panel, so the tiles fit in fewer rows. */
+private val PANEL_WIDTH_LANDSCAPE = 520.dp
 private val HANDLE_WIDTH = 28.dp
 private val HANDLE_HEIGHT = 120.dp
 private const val HANDLE_PREFS = "x11_overlay"
@@ -114,7 +119,10 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val prefs = LocalContext.current.getSharedPreferences(HANDLE_PREFS, Context.MODE_PRIVATE)
-    val widthPx = with(density) { PANEL_WIDTH.toPx() }
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val landscape = configuration.screenWidthDp > configuration.screenHeightDp
+    val panelWidth = if (landscape) PANEL_WIDTH_LANDSCAPE else PANEL_WIDTH
+    val widthPx = with(density) { panelWidth.toPx() }
     // 0 = closed (off screen past the edge), 1 = fully open.
     val open = remember { Animatable(0f) }
     var page by remember { mutableStateOf(Page.MAIN) }
@@ -151,7 +159,7 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
     }
     // One drag handler for the handle and the panel: follow the finger, then spring. Pulling
     // away from the handle's edge opens.
-    val dragToOpen = Modifier.pointerInput(onLeft) {
+    val dragToOpen = Modifier.pointerInput(onLeft, widthPx) {
         detectHorizontalDragGestures(
             onDragEnd = { settle(open.value > 0.4f) },
             onDragCancel = { settle(open.value > 0.4f) },
@@ -239,14 +247,16 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
                 shape = if (onLeft) RoundedCornerShape(topEnd = corner, bottomEnd = corner)
                 else RoundedCornerShape(topStart = corner, bottomStart = corner),
                 color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f),
+                // Not derived from the color: it's a translucent copy, which matches no role.
+                contentColor = MaterialTheme.colorScheme.onSurface,
                 tonalElevation = 6.dp,
                 shadowElevation = 12.dp,
                 modifier = Modifier
                     .align(if (onLeft) Alignment.CenterStart else Alignment.CenterEnd)
                     .statusBarsPadding()
                     .navigationBarsPadding()
-                    .width(PANEL_WIDTH)
-                    .fillMaxHeight(0.82f)
+                    .width(panelWidth)
+                    .fillMaxHeight(if (landscape) 0.94f else 0.82f)
                     .offset {
                         val hidden = ((1f - open.value) * widthPx).roundToInt()
                         IntOffset(if (onLeft) -hidden else hidden, 0)
@@ -262,9 +272,11 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
                     },
                     label = "page",
                 ) { p ->
-                    Column(Modifier.fillMaxSize().padding(16.dp)) {
+                    // Scrolls when it doesn't fit, as in landscape.
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
                         when (p) {
-                            Page.MAIN -> MainPage(session, actions, onPage = { page = it }, run = ::run)
+                            Page.MAIN -> MainPage(session, actions, perRow = if (landscape) 6 else 3, onPage = { page = it }, run = ::run)
+                            Page.SCALE -> SubPage("Scale", onBack = { page = Page.MAIN }) { ScalePage(actions) }
                             Page.KEYS -> SubPage("Keys", onBack = { page = Page.MAIN }) { KeysPage(actions) }
                             Page.INPUT -> SubPage("Input mode", onBack = { page = Page.MAIN }) { InputPage(actions) }
                             Page.CAST -> SubPage("Cast", onBack = { page = Page.MAIN }) { CastPage(actions, ::run) }
@@ -278,12 +290,12 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
 }
 
 @Composable
-private fun MainPage(session: RunningSession?, actions: X11Actions, onPage: (Page) -> Unit, run: (() -> Unit) -> Unit) {
+private fun MainPage(session: RunningSession?, actions: X11Actions, perRow: Int, onPage: (Page) -> Unit, run: (() -> Unit) -> Unit) {
     Text(session?.app?.name ?: "Linux app", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     Text("Linux · ${session?.backend ?: ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(20.dp))
     FlowRow(
-        maxItemsInEachRow = 3,
+        maxItemsInEachRow = perRow,
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxWidth(),
@@ -293,6 +305,7 @@ private fun MainPage(session: RunningSession?, actions: X11Actions, onPage: (Pag
         Tile(LauncherIcons.Mouse, "Middle click") { run { actions.click(MouseButton.MIDDLE) } }
         Tile(LauncherIcons.Keyboard, "Keys") { onPage(Page.KEYS) }
         Tile(LauncherIcons.Mouse, "Input mode") { onPage(Page.INPUT) }
+        Tile(LauncherIcons.Scale, "Scale") { onPage(Page.SCALE) }
         Tile(LauncherIcons.Cast, "Cast") { onPage(Page.CAST) }
         Tile(LauncherIcons.Usb, "USB") { onPage(Page.USB) }
         if (session != null) Tile(Icons.Rounded.Lock, "Permissions") { run { actions.openPermissions(session.app.id) } }
@@ -306,7 +319,7 @@ private fun Tile(icon: ImageVector, label: String, danger: Boolean = false, onCl
     val c = MaterialTheme.colorScheme
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(68.dp).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(vertical = 4.dp),
+        modifier = Modifier.width(76.dp).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(vertical = 4.dp),
     ) {
         Box(
             contentAlignment = Alignment.Center,
@@ -317,6 +330,46 @@ private fun Tile(icon: ImageVector, label: String, danger: Boolean = false, onCl
         Spacer(Modifier.height(6.dp))
         Text(label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 2)
     }
+}
+
+/**
+ * The app's scale: bigger draws everything larger on a smaller X screen. The app resizes while
+ * the slider moves (a little behind it, so it isn't resized on every step), and keeps the value.
+ */
+@Composable
+private fun ScalePage(actions: X11Actions) {
+    val default = remember { actions.defaultScale() }
+    var value by remember { mutableFloatStateOf(actions.scale().toFloat()) }
+    val percent = (value / 10).roundToInt() * 10
+    LaunchedEffect(percent) {
+        kotlinx.coroutines.delay(120)
+        if (percent != actions.scale()) actions.setScale(percent)
+    }
+    Text(
+        "Bigger makes text and buttons larger, with less room for them. Only this app; it keeps the size next time.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(16.dp))
+    Text("$percent%", style = MaterialTheme.typography.headlineSmall)
+    androidx.compose.material3.Slider(
+        value = value,
+        onValueChange = { value = it },
+        valueRange = X11Scale.MIN.toFloat()..X11Scale.MAX.toFloat(),
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Smaller", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.weight(1f))
+        Text("Bigger", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    Spacer(Modifier.height(12.dp))
+    FilledTonalButton(
+        onClick = {
+            value = default.toFloat()
+            actions.setScale(null)
+        },
+        enabled = percent != default,
+    ) { Text("Default ($default%)") }
 }
 
 @Composable

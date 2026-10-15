@@ -194,6 +194,7 @@ scripts/proot/build.sh                # once: builds PRoot into app/src/main/jni
 scripts/x11/build-native.sh           # once, on Linux or WSL: X server + xkb data into build/x11
 sudo scripts/gpu/build-mesa.sh        # optional, on Linux or WSL: the GPU driver
 sudo scripts/usb/build-usb.sh         # optional, on Linux or WSL: the USB bridge
+scripts/theme/build-theme.sh          # optional, anywhere with curl: the GTK theme for Linux apps
 ./gradlew assembleDebug testDebugUnitTest
 ```
 
@@ -251,6 +252,7 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 | [Termux:X11](https://github.com/termux/termux-x11) ([our fork](https://github.com/daryan044/termux-x11)) | GPL-3.0 | X server and GUI windows |
 | [Mesa](https://mesa3d.org) | MIT | GPU driver (Turnip, Zink), built by `scripts/gpu/build-mesa.sh` |
 | [libusb](https://libusb.info) | LGPL-2.1-or-later | USB for PRoot apps, built by `scripts/usb/build-usb.sh` |
+| [adw-gtk3](https://github.com/lassekongo83/adw-gtk3) | LGPL-2.1 | GTK 3 theme for Linux apps, packed by `scripts/theme/build-theme.sh` |
 | [Termux terminal-emulator / terminal-view](https://github.com/termux/termux-app) | Apache-2.0 | terminal |
 | [Haze](https://github.com/chrisbanes/haze) | Apache-2.0 | background blur |
 | AndroidX, Jetpack Compose, Material 3 | Apache-2.0 | UI |

@@ -15,12 +15,9 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.system.Os
 import android.system.OsConstants
-import android.util.Log
 import androidx.core.content.ContextCompat
-import com.daryan.tessera.store.Tar
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
-import java.util.zip.GZIPInputStream
 import kotlin.coroutines.resume
 
 /**
@@ -33,26 +30,15 @@ import kotlin.coroutines.resume
 object UsbBridge {
     const val GUEST_DIR = "/opt/tessera-usb"
     const val USB_PATH = "/dev/bus/usb/"
-    private const val ASSET = "usb/usb-bridge.tgz"
-    private const val VERSION_ASSET = "usb/VERSION"
     private const val TAG = "UsbBridge"
 
+    private val bundle = OptBundle(GUEST_DIR, "usb/usb-bridge.tgz", "usb/VERSION", TAG)
+
     /** Whether this build carries the guest half. */
-    fun available(context: Context): Boolean = runCatching { context.assets.open(VERSION_ASSET).close() }.isSuccess
+    fun available(context: Context): Boolean = bundle.available(context)
 
     /** Unpacks the guest half into [rootfs] unless that version is already there. */
-    fun install(context: Context, rootfs: File): Boolean = runCatching {
-        val version = context.assets.open(VERSION_ASSET).bufferedReader().use { it.readText().trim() }
-        val dir = File(rootfs, GUEST_DIR.removePrefix("/"))
-        val marker = File(dir, ".version")
-        if (marker.takeIf { it.exists() }?.readText()?.trim() == version) return true
-        dir.deleteRecursively()
-        context.assets.open(ASSET).use { raw ->
-            Tar.extract(GZIPInputStream(raw.buffered()), rootfs) { target, link -> Os.symlink(target, link.path) }
-        }
-        marker.writeText(version)
-        true
-    }.onFailure { Log.w(TAG, "couldn't unpack the USB bridge", it) }.getOrDefault(false)
+    fun install(context: Context, rootfs: File): Boolean = bundle.install(context, rootfs)
 
     /** Devices opened for one session. */
     class Opened(

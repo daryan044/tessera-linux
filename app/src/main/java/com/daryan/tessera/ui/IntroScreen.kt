@@ -89,7 +89,7 @@ private val SLIDES = listOf(
         "On Snapdragon phones Tessera brings its own graphics driver, so apps get OpenGL and " +
             "Vulkan with no setup.",
         listOf(
-            "If something draws wrong, hold the app's icon and open Graphics fixes.",
+            "If something draws wrong, hold the app's icon and open Look and graphics.",
             "Each fix is named after what you see: black blocks, flicker, missing parts.",
         ),
     ),

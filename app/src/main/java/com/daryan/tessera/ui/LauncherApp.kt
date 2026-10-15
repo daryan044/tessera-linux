@@ -110,6 +110,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val pinned by vm.tabStore.pinned.collectAsStateWithLifecycle()
     val permissionOverrides by vm.permissionOverrides.collectAsStateWithLifecycle()
     val gpuEnabled by vm.gpuEnabled.collectAsStateWithLifecycle()
+    val appearance by vm.appearance.collectAsStateWithLifecycle()
     val diagnosticsEnabled by vm.diagnosticsEnabled.collectAsStateWithLifecycle()
     val gpuApps by vm.gpuApps.collectAsStateWithLifecycle()
     // Phones that have the GPU driver (see LauncherViewModel.gpuFor).
@@ -433,7 +434,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                         }
                     },
                     onEditExec = { execApp = it },
-                    graphics = gpuGraphics,
+                    graphics = gpuGraphics || appearance.enabled,
                     onGraphics = { graphicsApp = it },
                     search = appResults,
                 )
@@ -514,6 +515,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onDisplaySettings = { context.startActivity(Intent().setClassName(context, "com.termux.x11.LoriePreferences")) },
             gpuEnabled = gpuEnabled.takeIf { vm.gpuAvailable() },
             onGpuEnabled = vm::setGpuEnabled,
+            appearance = appearance,
+            onAppearance = vm::setAppearance,
             runningSessions = running,
             onStopAll = vm.sessions::stopAll,
             onAbout = { showAbout = true },
@@ -552,9 +555,13 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         // Read again whenever a switch changes (gpuApps), so the dialog follows them.
         val gpu = remember(app.id, gpuApps, gpuEnabled, mode) { vm.gpuFor(app) }
         val fixes = remember(app.id, gpuApps) { vm.gpuFixesFor(app) }
-        if (gpu == null) graphicsApp = null
+        val unthemed by vm.unthemed.collectAsStateWithLifecycle()
+        val themed = (app.id !in unthemed).takeIf { appearance.enabled }
+        if (gpu == null && themed == null) graphicsApp = null
         else GraphicsFixesDialog(
             appName = app.name,
+            themed = themed,
+            onThemed = { vm.setThemed(app, it) },
             gpu = gpu,
             onGpu = { vm.setGpuFor(app, it) },
             fixes = fixes,

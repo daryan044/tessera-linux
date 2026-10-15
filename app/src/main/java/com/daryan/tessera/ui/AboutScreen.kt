@@ -59,6 +59,7 @@ private val CREDITS = listOf(
     Triple("Termux:X11", "GPL-3.0", "X server and app windows"),
     Triple("Termux terminal-view", "Apache-2.0", "The terminal"),
     Triple("Debian", "Various free licenses", "The Linux system, its packages and app catalog"),
+    Triple("adw-gtk3", "LGPL-2.1", "The modern look of GTK 3 apps"),
     Triple("Haze", "Apache-2.0", "Background blur"),
     Triple("AndroidX, Jetpack Compose, Material 3", "Apache-2.0", "User interface"),
     Triple("kotlinx.serialization", "Apache-2.0", "Reading app manifests"),

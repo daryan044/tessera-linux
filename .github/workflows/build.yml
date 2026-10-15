@@ -94,6 +94,16 @@ jobs:
           sudo --preserve-env=PATH scripts/usb/build-usb.sh
           sudo chown -R "$(id -u):$(id -g)" build/usb
 
+      - name: Cache theme pack
+        id: theme
+        uses: actions/cache@v4
+        with:
+          path: build/theme
+          key: theme-${{ hashFiles('scripts/theme/**') }}
+      - name: Build theme pack
+        if: steps.theme.outputs.cache-hit != 'true'
+        run: scripts/theme/build-theme.sh
+
       - name: Release key
         if: env.KEYSTORE_BASE64 != ''
         run: |

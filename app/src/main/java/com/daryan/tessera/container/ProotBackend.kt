@@ -114,6 +114,10 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
         // would put it in another app's window, and a copy we killed leaves a remote endpoint
         // that never answers ("Firefox is already running, but is not responding").
         put("MOZ_NO_REMOTE", "1")
+        // Ending a session kills Firefox, which it counts as a crash at startup; after three it
+        // opens a "closed unexpectedly" prompt offering Safe Mode instead of the browser.
+        put("MOZ_DISABLE_AUTO_SAFE_MODE", "1")
+        putAll(ThemePack.CURSOR_ENV)
         // Accessibility on, so the focus watcher hears about text fields (see guestCommand).
         // GTK 3/4 report over AT-SPI by default; Firefox and Qt need asking.
         put("GNOME_ACCESSIBILITY", "1")
@@ -125,6 +129,7 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
         // That covers GLX only. GTK 4 apps (HandBrake) set up EGL, which takes the same path and
         // draws black; Mesa's software rasterizer presents through plain X images instead.
         if (session.gpu) putAll(GpuDriver.env(session.gpuFixes)) else put("LIBGL_ALWAYS_SOFTWARE", "1")
+        if (session.theme) putAll(ThemeFiles.ENV)
     }
     if (p.audio && p.display && session.display != null) {
         // The session's own PulseAudio, started by guestCommand; see AudioPipe for the rest.

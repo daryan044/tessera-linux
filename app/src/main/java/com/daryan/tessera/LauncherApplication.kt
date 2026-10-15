@@ -44,6 +44,12 @@ class LauncherApplication : LorieApp() {
         registerActivityLifecycleCallbacks(SessionWindows())
     }
 
+    /** Dark mode or the wallpaper's colors changed: running apps follow. */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::container.isInitialized) container.sessions.refreshThemes()
+    }
+
     /**
      * Ties each session's own window (Termux:X11 or terminal) to the session: labels it for
      * Recents, and stops the session when its card is swiped away there.
@@ -133,7 +139,9 @@ class LauncherContainer(private val app: Application) {
     val diagnostics = com.daryan.tessera.container.Diagnostics(java.io.File(app.filesDir, "diagnostics")) {
         prefs.getBoolean(KEY_DIAGNOSTICS, true)
     }
-    val sessions = SessionManager(app, scope, paths, diagnostics)
+    /** How Linux apps look: themed with the phone's colors, and which apps are left out. */
+    val appearance = com.daryan.tessera.container.AppearanceSettings(java.io.File(app.filesDir, "appearance.json"))
+    val sessions = SessionManager(app, scope, paths, diagnostics, appearance)
     val catalog = StoreCatalog(java.io.File(app.filesDir, "store"), scope)
     val screenshots = com.daryan.tessera.store.Screenshots(java.io.File(app.cacheDir, "screenshots"))
     val registry = StoreRegistry(java.io.File(app.filesDir, "apps"), catalog)

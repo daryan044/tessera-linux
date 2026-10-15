@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.stateIn
 import com.daryan.tessera.container.ContainerBackend
 import com.daryan.tessera.container.DirectConfigStore
 import com.daryan.tessera.container.GUI_HELPER_PACKAGES
+import com.daryan.tessera.container.THEME_COMPANIONS
+import com.daryan.tessera.container.ThemePack
 import com.daryan.tessera.container.SuConfigStore
 import com.daryan.tessera.container.Distro
 import com.daryan.tessera.container.HostProbe
@@ -279,6 +281,20 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         _gpuApps.value++
     }
 
+    /** How Linux apps look; see docs/LOOK-AND-FEEL.md. */
+    val appearance = container.appearance.global
+
+    /** Changes how Linux apps look; running ones follow at once. */
+    fun setAppearance(appearance: com.daryan.tessera.container.Appearance) {
+        container.appearance.setGlobal(appearance)
+        sessions.refreshThemes()
+    }
+
+    /** Apps the user left out of theming. */
+    val unthemed = container.appearance.unthemed
+
+    fun setThemed(app: PermissionManifest, themed: Boolean) = container.appearance.setThemed(app.id, themed)
+
     fun setGpuEnabled(on: Boolean) {
         sessions.setGpuEnabled(on)
         _gpuEnabled.value = on
@@ -343,8 +359,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (s.prootRootfs && UsbBridge.available(getApplication())) {
                 withContext(Dispatchers.IO) { UsbBridge.install(getApplication(), paths.prootRootfs) }
             }
+            if (s.prootRootfs && ThemePack.bundle.available(getApplication())) {
+                withContext(Dispatchers.IO) { ThemePack.bundle.install(getApplication(), paths.prootRootfs) }
+            }
             if (_mode.value == BackendMode.CHROOT && s.su != null && s.chrootRootfs == true && GpuDriver.available(getApplication())) {
                 withContext(Dispatchers.IO) { GpuDriver.installAsRoot(getApplication(), paths.chrootRootfs, s.su) }
+            }
+            if (_mode.value == BackendMode.CHROOT && s.su != null && s.chrootRootfs == true && ThemePack.bundle.available(getApplication())) {
+                withContext(Dispatchers.IO) { ThemePack.bundle.installAsRoot(getApplication(), paths.chrootRootfs, s.su) }
             }
             addMissingGuiHelpers()
             configStore(_status.value, _mode.value)?.let { container.registry.refreshInstalled(it) }
@@ -355,6 +377,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Containers set up before a GUI helper was added (the focus watcher's AT-SPI packages)
      * get it queued once: only where GUI apps are in use, i.e. the window manager is there.
+     * Theme companions ([THEME_COMPANIONS]) of installed toolkits come along.
      */
     private suspend fun addMissingGuiHelpers() {
         if (_mode.value.name in container.guiHelpersChecked) return
@@ -363,8 +386,12 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         container.guiHelpersChecked += _mode.value.name
         container.registry.refreshInstalled(store)
         val installed = container.registry.installed.value ?: return
-        if ("matchbox-window-manager" !in installed || GUI_HELPER_PACKAGES.all { it in installed }) return
-        container.queue.enqueue("Sound and keyboard helpers", GUI_HELPER_PACKAGES, QueueAction.INSTALL, null, backend) {
+        if ("matchbox-window-manager" !in installed) return
+        // And what lets Qt and LibreOffice, where installed, follow the theme.
+        val companions = THEME_COMPANIONS.filterKeys { it in installed }.values.filterNot { it in installed }
+        val missing = GUI_HELPER_PACKAGES.filterNot { it in installed } + companions
+        if (missing.isEmpty()) return
+        container.queue.enqueue("Sound, keyboard and theme helpers", missing, QueueAction.INSTALL, null, backend) {
             container.registry.refreshInstalled(store)
         }
     }

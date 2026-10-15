@@ -98,6 +98,14 @@ class BackendTest {
         assertEquals(Enforcement.ADVISORY, chroot.enforcement(Capability.NETWORK, rootApp))
     }
 
+    @Test fun `themed sessions get the theme's directory and data dirs`() {
+        val env = guestEnv(firefox, session.copy(theme = true))
+        assertEquals(ThemeFiles.GUEST_DIR, env["TESSERA_THEME"])
+        assertEquals("${ThemeFiles.GUEST_DIR}/share:/usr/local/share:/usr/share", env["XDG_DATA_DIRS"])
+        assertFalse("TESSERA_THEME" in guestEnv(firefox, session))
+        assertEquals(File("/app/cache/sessions/s3/tmp/.X11-unix/tessera-theme"), paths.sessionTheme(session))
+    }
+
     @Test fun `gui apps run next to a window manager, terminal apps run bare`() {
         val gui = guestCommand(firefox)
         assertEquals(listOf("/bin/sh", "-c"), gui.take(2))
@@ -106,7 +114,9 @@ class BackendTest {
         assertTrue("pyatspi" in gui[4])
         assertEquals(FOCUS_FILE_GUEST, gui[5])
         assertTrue("Xlib" in gui[6])
-        assertEquals(listOf(WINDOWS_FILE_GUEST) + firefox.exec, gui.drop(7))
+        assertEquals(WINDOWS_FILE_GUEST, gui[7])
+        assertTrue("org.freedesktop.portal.Settings" in gui[8])
+        assertEquals(firefox.exec, gui.drop(9))
         assertEquals(offline.exec, guestCommand(offline))
     }
 

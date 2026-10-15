@@ -64,6 +64,28 @@ object LauncherIcons {
         moveTo(12f, 16f); lineTo(12f, 5f)
         moveTo(17f, 16f); lineTo(17f, 8f)
     }
+    /** A painter's palette: a round board with a thumb notch and paint dots; appearance. */
+    val Palette = outline("Palette") {
+        moveTo(12f, 3.5f)
+        curveTo(7.3f, 3.5f, 3.5f, 7.3f, 3.5f, 12f)
+        curveTo(3.5f, 16.7f, 7.3f, 20.5f, 12f, 20.5f)
+        curveTo(13.1f, 20.5f, 13.8f, 19.7f, 13.8f, 18.7f)
+        curveTo(13.8f, 17.4f, 12.6f, 16.9f, 12.6f, 15.8f)
+        curveTo(12.6f, 14.8f, 13.4f, 14.2f, 14.4f, 14.2f)
+        lineTo(16.5f, 14.2f)
+        curveTo(18.7f, 14.2f, 20.5f, 12.4f, 20.5f, 10.2f)
+        curveTo(20.5f, 6.4f, 16.7f, 3.5f, 12f, 3.5f)
+        close()
+        moveTo(7.8f, 11.2f); lineTo(7.8f, 11.3f)
+        moveTo(10.3f, 7.6f); lineTo(10.3f, 7.7f)
+        moveTo(14.7f, 7.6f); lineTo(14.7f, 7.7f)
+    }
+    /** A small frame and an arrow out of it to the far corner; scale. */
+    val Scale = outline("Scale") {
+        roundRect(3.5f, 13.5f, 10.5f, 20.5f, 1.5f)
+        moveTo(13f, 11f); lineTo(20f, 4f)
+        moveTo(14.5f, 4f); lineTo(20f, 4f); lineTo(20f, 9.5f)
+    }
     val Code = outline("Code") {
         moveTo(8.5f, 7f); lineTo(3.5f, 12f); lineTo(8.5f, 17f)
         moveTo(15.5f, 7f); lineTo(20.5f, 12f); lineTo(15.5f, 17f)

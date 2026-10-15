@@ -49,6 +49,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.daryan.tessera.BackendMode
 import com.daryan.tessera.CustomTab
+import com.daryan.tessera.container.Appearance
+import com.daryan.tessera.container.ColorMode
 import com.daryan.tessera.container.ConfigCatalog
 import com.daryan.tessera.container.ConfigFile
 import com.daryan.tessera.container.HostStatus
@@ -72,6 +74,8 @@ fun SettingsScreen(
     /** Null when this phone or build can't use hardware graphics. */
     gpuEnabled: Boolean?,
     onGpuEnabled: (Boolean) -> Unit,
+    appearance: Appearance,
+    onAppearance: (Appearance) -> Unit,
     runningSessions: Int,
     onStopAll: () -> Unit,
     onAbout: () -> Unit,
@@ -130,6 +134,33 @@ fun SettingsScreen(
                     },
                     action = gpuEnabled?.let { on -> { androidx.compose.material3.Switch(checked = on, onCheckedChange = onGpuEnabled) } },
                 )
+            }
+
+            Group("Appearance") {
+                Row(
+                    LauncherIcons.Palette, "Theme Linux apps",
+                    if (appearance.enabled) "Apps take the phone's colors and follow its dark mode, live. Each app can opt out from its long-press menu"
+                    else "Off: apps look the way their toolkit draws them by default",
+                    action = { androidx.compose.material3.Switch(checked = appearance.enabled, onCheckedChange = { onAppearance(appearance.copy(enabled = it)) }) },
+                )
+                if (appearance.enabled) {
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        ColorMode.entries.forEachIndexed { i, mode ->
+                            SegmentedButton(
+                                selected = appearance.colorMode == mode,
+                                onClick = { onAppearance(appearance.copy(colorMode = mode)) },
+                                shape = SegmentedButtonDefaults.itemShape(i, ColorMode.entries.size),
+                            ) { Text(mode.label) }
+                        }
+                    }
+                    if (Build.VERSION.SDK_INT >= 31) {
+                        Row(
+                            LauncherIcons.Palette, "Wallpaper colors",
+                            if (appearance.dynamicColor) "Accents and surfaces from your wallpaper, like Android's own apps" else "A fixed blue palette",
+                            action = { androidx.compose.material3.Switch(checked = appearance.dynamicColor, onCheckedChange = { onAppearance(appearance.copy(dynamicColor = it)) }) },
+                        )
+                    }
+                }
             }
 
             Group("Sessions") {

@@ -86,6 +86,8 @@ android {
     sourceSets.getByName("main").assets.directories.add(rootProject.file("build/gpu/assets").path)
     // The USB bridge's guest half (libusb + shim), staged by scripts/usb/build-usb.sh; optional.
     sourceSets.getByName("main").assets.directories.add(rootProject.file("build/usb/assets").path)
+    // The theme pack for Linux apps (adw-gtk3), staged by scripts/theme/build-theme.sh; optional.
+    sourceSets.getByName("main").assets.directories.add(rootProject.file("build/theme/assets").path)
 
     packaging {
         // proot & friends ship as lib*.so and must exist as real files in nativeLibraryDir

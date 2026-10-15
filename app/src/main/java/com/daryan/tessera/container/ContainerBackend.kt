@@ -44,6 +44,8 @@ data class Session(
     val gpuFixes: Set<GpuFix> = emptySet(),
     /** USB devices opened for a PRoot app ([UsbBridge]): guest path -> inherited fd. */
     val usbFds: Map<String, Int> = emptyMap(),
+    /** Theme the app with the phone's colors ([ThemeFiles]); GUI apps only. */
+    val theme: Boolean = false,
 )
 
 /** Host-side locations a backend needs. Built from a Context in the app, by hand in tests. */
@@ -64,6 +66,8 @@ data class ContainerPaths(
     /** Private /tmp per session, so apps cannot see each other's sockets. */
     fun sessionTmp(session: Session) = File(cacheDir, "sessions/${session.id}/tmp")
     fun x11SocketDir(session: Session) = File(sessionTmp(session), ".X11-unix")
+    /** The session's theme files ([ThemeFiles]); the guest's [ThemeFiles.GUEST_DIR]. */
+    fun sessionTheme(session: Session) = File(x11SocketDir(session), ThemeFiles.GUEST_DIR.substringAfterLast('/'))
     /** Private /dev/shm per session; Android has none, and browsers' IPC needs one. */
     fun sessionShm(session: Session) = File(cacheDir, "sessions/${session.id}/shm")
     /** Stand-ins for a PRoot session's bridged USB devices, bound at /dev/bus/usb ([UsbBridge]). */
@@ -82,8 +86,19 @@ data class ContainerPaths(
 /** Environment variable naming the session a guest process belongs to; see [ProcessTree.inSession]. */
 const val SESSION_ENV = "LAUNCHER_SESSION"
 
+/**
+ * What lets a toolkit follow the theme ([ThemeFiles]), by a package that shows it's in use:
+ * Qt's GTK platform theme (Qt apps take GTK's colors) and LibreOffice's GTK 3 front end.
+ * Queued once their toolkit is installed, rather than pulling Qt or LibreOffice into every system.
+ */
+val THEME_COMPANIONS = mapOf(
+    "libqt6widgets6" to "qt6-gtk-platformtheme",
+    "libqt5widgets5t64" to "qt5-gtk-platformtheme",
+    "libreoffice-core" to "libreoffice-gtk3",
+)
+
 /** Packages every GUI app gets with it; see [guestCommand]. */
-val GUI_HELPER_PACKAGES = listOf("matchbox-window-manager", "dbus-x11", "at-spi2-core", "python3-pyatspi", "pulseaudio", "python3-xlib")
+val GUI_HELPER_PACKAGES = listOf("matchbox-window-manager", "dbus-x11", "at-spi2-core", "python3-pyatspi", "pulseaudio", "python3-xlib", "xsettingsd")
 
 /**
  * Where the focus watcher reports to, as the guest sees it. /tmp/.X11-unix is the session's
@@ -102,17 +117,38 @@ const val AUDIO_RATE = 48000
  * - [FOCUS_WATCHER], which reports whether the focused widget takes text, so the window can
  *   show Android's keyboard for text fields the way a native app does;
  * - with the audio permission, PulseAudio playing into a FIFO the app reads (AudioPipe);
- * - [WINDOW_WATCHER], which reports the app's windows so each can have its own Android task.
+ * - [WINDOW_WATCHER], which reports the app's windows so each can have its own Android task;
+ * - in themed sessions, [THEME_DAEMON]: the settings portal and xsettingsd, with the phone's
+ *   colors and light or dark.
  * The helpers are stopped when the app exits so the session (and its window) ends with it.
  */
 internal fun guestCommand(app: PermissionManifest): List<String> =
     if (!app.gui) app.exec
-    else listOf("/bin/sh", "-c", GUI_WRAPPER, "launch", FOCUS_WATCHER, FOCUS_FILE_GUEST, WINDOW_WATCHER, WINDOWS_FILE_GUEST) + app.exec
+    else listOf("/bin/sh", "-c", GUI_WRAPPER, "launch", FOCUS_WATCHER, FOCUS_FILE_GUEST, WINDOW_WATCHER, WINDOWS_FILE_GUEST, THEME_DAEMON) + app.exec
 
 private const val GUI_WRAPPER = """
-watcher=${'$'}1; out=${'$'}2; windows=${'$'}3; windows_out=${'$'}4; shift 4
+watcher=${'$'}1; out=${'$'}2; windows=${'$'}3; windows_out=${'$'}4; theme=${'$'}5; shift 5
 if [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-launch >/dev/null 2>&1; then
   eval "${'$'}(dbus-launch --sh-syntax)"; bus=${'$'}DBUS_SESSION_BUS_PID
+fi
+if [ -n "${'$'}TESSERA_THEME" ] && [ -n "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && [ -d /usr/lib/python3/dist-packages/gi ]; then
+  python3 -c "${'$'}theme" "${'$'}TESSERA_THEME" & td=${'$'}!
+  # The app reads its theme as it starts, and libadwaita only listens to a portal it found
+  # then. A cold start of Python with GLib can take seconds.
+  i=0
+  while [ ${'$'}i -lt 50 ] && [ ! -e "${'$'}TESSERA_THEME/ready" ]; do sleep 0.1; i=${'$'}((i + 1)); done
+fi
+if [ -n "${'$'}TESSERA_THEME" ]; then
+  # Qt: GTK's (themed) colors through its GTK platform theme where installed, else at least
+  # light or dark from the settings portal. LibreOffice: its GTK 3 look rather than the bare X one.
+  if [ -z "${'$'}QT_QPA_PLATFORMTHEME" ]; then
+    if ls /usr/lib/*/qt6/plugins/platformthemes/libqgtk3.so /usr/lib/*/qt5/plugins/platformthemes/libqgtk3.so >/dev/null 2>&1; then
+      export QT_QPA_PLATFORMTHEME=gtk3
+    else
+      export QT_QPA_PLATFORMTHEME=xdgdesktopportal
+    fi
+  fi
+  [ -z "${'$'}SAL_USE_VCLPLUGIN" ] && [ -e /usr/lib/libreoffice/program/libvclplug_gtk3lo.so ] && export SAL_USE_VCLPLUGIN=gtk3
 fi
 if [ -n "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && [ -d /usr/lib/python3/dist-packages/pyatspi ]; then
   python3 -c "${'$'}watcher" "${'$'}out" & fw=${'$'}!
@@ -127,7 +163,9 @@ if [ -n "${'$'}LAUNCHER_AUDIO" ] && command -v pulseaudio >/dev/null 2>&1; then
   for i in 1 2 3 4 5 6 7 8 9 10; do [ -S "${'$'}PULSE_RUNTIME_PATH/native" ] && break; sleep 0.2; done
 fi
 if command -v matchbox-window-manager >/dev/null 2>&1; then
-  matchbox-window-manager -use_titlebar no -use_cursor no & wm=${'$'}!
+  # With a cursor of its own on the screen: "-use_cursor no" blanks it, and apps that don't
+  # set one (most outside GTK and Qt) then showed no pointer, even in the touchpad modes.
+  matchbox-window-manager -use_titlebar no -use_cursor yes & wm=${'$'}!
   if [ -d /usr/lib/python3/dist-packages/Xlib ]; then
     # Once the manager owns the screen, or the window list it keeps isn't there yet.
     ( sleep 0.5; exec python3 -c "${'$'}windows" "${'$'}windows_out" ) & ww=${'$'}!
@@ -142,7 +180,7 @@ if [ "${'$'}status" = 0 ] && [ -n "${'$'}ww" ] && [ ${'$'}((${'$'}(date +%s) - s
   while [ ${'$'}i -lt 30 ] && ! grep -q '"id"' "${'$'}windows_out" 2>/dev/null; do sleep 0.5; i=${'$'}((i + 1)); done
   while grep -q '"id"' "${'$'}windows_out" 2>/dev/null; do sleep 1; done
 fi
-kill ${'$'}ww ${'$'}wm ${'$'}fw ${'$'}pa ${'$'}bus 2>/dev/null
+kill ${'$'}ww ${'$'}wm ${'$'}fw ${'$'}pa ${'$'}td ${'$'}bus 2>/dev/null
 exit ${'$'}status
 """
 

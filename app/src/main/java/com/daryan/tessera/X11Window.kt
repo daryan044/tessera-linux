@@ -71,6 +71,16 @@ class X11Window : MainActivity.MainActivityTagged() {
     private val container get() = (application as LauncherApplication).container
     private val windowId get() = X11Server.windowId(intent?.data)
     private val sessionTag get() = intent?.data?.let { it.host ?: it.toString() }
+    /** The app this window shows, for its own settings such as [X11Scale]. */
+    private val appId get() = sessionTag?.let { container.sessions.forWindowTag(it) }?.app?.id
+
+    /**
+     * Sizes the app's X screen at its own scale, if it has one. Its windows share that screen,
+     * so each applies the app's scale when it comes to the front.
+     */
+    private fun applyScale() {
+        lorieView.setScaleOverride(appId?.let { X11Scale.forApp(this, it) } ?: 0)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,6 +103,7 @@ class X11Window : MainActivity.MainActivityTagged() {
             },
             ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
+        applyScale()
         followSession()
         followFocus()
         followDisplays()
@@ -234,6 +245,7 @@ class X11Window : MainActivity.MainActivityTagged() {
         val session = sessionTag?.let { container.sessions.forWindowTag(it) } ?: return
         // In front now: show our X window on the shared screen.
         container.sessions.windowFor(session.session.id, windowId)?.let { container.sessions.activateWindow(session.session.id, it) }
+        applyScale()
         // Termux:X11 focuses its own view on resume; while casting, typing goes to the cast.
         if (cast != null) keyboardProxy.requestFocus()
         usbDevices.value = currentUsb()
@@ -308,6 +320,16 @@ class X11Window : MainActivity.MainActivityTagged() {
         override fun setLongPressRightClick(on: Boolean) = X11Input.setLongPressRightClick(this@X11Window, on)
 
         override fun longPressRightClick(): Boolean = X11Input.longPressRightClick(this@X11Window)
+
+        override fun scale(): Int = appId?.let { X11Scale.forApp(this@X11Window, it) } ?: X11Scale.default(this@X11Window)
+
+        override fun defaultScale(): Int = X11Scale.default(this@X11Window)
+
+        override fun setScale(percent: Int?) {
+            val id = appId ?: return
+            X11Scale.set(this@X11Window, id, percent)
+            applyScale()
+        }
 
         override fun openPermissions(appId: String) {
             (application as LauncherApplication).container.showAppRequests.value = appId
@@ -411,6 +433,32 @@ object X11Input {
 }
 
 /**
+ * How big each app draws: the X screen is the window's size divided by a scale, in percent (250
+ * makes a 1440-pixel-wide window a 576-pixel screen, so everything is 2.5 times as big). Each
+ * app keeps its own, set from its window's panel; without one it follows Termux:X11's display
+ * setting, which the launcher sets from the phone's density.
+ */
+object X11Scale {
+    const val MIN = 100
+    const val MAX = 400
+    private const val PREFS = "x11_scale"
+
+    /** The display setting's scale, which apps without their own use. */
+    fun default(c: android.content.Context): Int =
+        c.getSharedPreferences("${c.packageName}_preferences", android.content.Context.MODE_PRIVATE).getInt("displayScale", 100)
+
+    /** [appId]'s own scale, or null when it follows the default. */
+    fun forApp(c: android.content.Context, appId: String): Int? =
+        c.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getInt(appId, 0).takeIf { it > 0 }
+
+    /** Sets [appId]'s scale; null goes back to the default. */
+    fun set(c: android.content.Context, appId: String, percent: Int?) =
+        c.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().apply {
+            if (percent == null) remove(appId) else putInt(appId, percent.coerceIn(MIN, MAX))
+        }.apply()
+}
+
+/**
  * What an X11 window's side menu and the trackpad can ask of the session. The pointer and
  * keyboard half is [InputSink], shared with the sinks that drive a PC over USB or Bluetooth, so
  * the trackpad works the same against any of them.
@@ -433,6 +481,11 @@ interface X11Actions : com.daryan.tessera.input.InputSink {
     fun touchMode(): TouchMode
     fun setLongPressRightClick(on: Boolean)
     fun longPressRightClick(): Boolean
+    /** The app's scale in percent ([X11Scale]), and the one it would have without its own. */
+    fun scale(): Int
+    fun defaultScale(): Int
+    /** Resizes the app's screen to [percent] at once, and keeps it for the app; null resets it. */
+    fun setScale(percent: Int?)
     fun openPermissions(appId: String)
     fun displaySettings()
     fun close(sessionId: String?)
