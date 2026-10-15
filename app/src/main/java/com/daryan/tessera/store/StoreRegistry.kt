@@ -118,6 +118,8 @@ class StoreRegistry(private val appsDir: File, private val catalog: StoreCatalog
                     filesystem = folders.map {
                         FsGrant("/storage/emulated/0/$it", "/home/user/${if (it == "Download") "Downloads" else it}")
                     },
+                    // File managers are for drives as much as folders.
+                    drives = "FileManager" in cats,
                 ),
             )
         }

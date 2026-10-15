@@ -10,6 +10,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import android.os.Build
 import com.daryan.tessera.container.ConfigStore
+import com.daryan.tessera.container.FsGrant
+import com.daryan.tessera.files.FileBrowser
+import com.daryan.tessera.files.FilesEngine
+import com.daryan.tessera.files.GuestFiles
 import com.daryan.tessera.store.CatalogState
 import com.daryan.tessera.store.QueueAction
 import com.daryan.tessera.store.QueueJob
@@ -44,6 +48,9 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+
+/** Where USB drives and SD cards appear in apps allowed to see them. */
+private const val DRIVES = "/media/user"
 
 enum class BackendMode(val label: String) { PROOT("PRoot"), CHROOT("Chroot (root)") }
 
@@ -502,7 +509,100 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
+    /** The Files tab; it lives here so its folder, clipboard and running copies survive the screen. */
+    val files = FileBrowser(app, viewModelScope, paths)
+
+    /** Where the Files tab runs for [mode], or why it can't. */
+    fun filesEngine(status: HostStatus?, mode: BackendMode): FilesEngine {
+        val problem = blocker(status, mode)
+        return FilesEngine(mode.name, if (problem == null) backend(mode) else null, problem)
+    }
+
+    /**
+     * Opens a terminal in [dir]: the Terminal app's, or the root shell's when [root]. A folder
+     * of the phone's storage is shared with it for the occasion.
+     */
+    fun terminalIn(dir: String, root: Boolean, onLaunched: (RunningSession) -> Unit) {
+        val base = apps.value.firstOrNull { it.id == if (root) "root-shell" else "bash" } ?: return
+        val grants = if (GuestFiles.onAndroid(dir)) base.permissions.filesystem + FsGrant(dir) else base.permissions.filesystem
+        val app = base.copy(
+            exec = listOf("/bin/bash", "-c", "cd \"\$1\" && exec /bin/bash -l", "bash", dir),
+            permissions = base.permissions.copy(filesystem = grants),
+        )
+        launch(app, onLaunched)
+    }
+
+    /** The launcher's entry for a Linux app that opens files, so it runs with its own permissions. */
+    fun linuxAppFor(desktopFile: String, entry: com.daryan.tessera.store.DesktopEntry): PermissionManifest? {
+        val id = com.daryan.tessera.store.SystemApps.manifestFor(desktopFile, entry, null).id
+        val program = entry.exec.firstOrNull()?.substringAfterLast('/')
+        return apps.value.firstOrNull { it.id == id }
+            ?: apps.value.firstOrNull { program != null && !com.daryan.tessera.Shortcut.isShortcut(it) && it.exec.firstOrNull()?.substringAfterLast('/') == program }
+    }
+
+    /** Starts [opener] on [path]; a folder of the phone's storage is shared with it for the occasion. */
+    fun openInLinux(opener: com.daryan.tessera.ui.LinuxOpener, path: String, onLaunched: (RunningSession) -> Unit) {
+        val base = opener.app ?: com.daryan.tessera.store.SystemApps.manifestFor(opener.desktopFile, opener.entry, null)
+        val dir = path.substringBeforeLast('/').ifEmpty { "/" }
+        val grants = if (GuestFiles.onAndroid(dir) && base.permissions.filesystem.none { it.mountAt == dir }) {
+            base.permissions.filesystem + FsGrant(dir)
+        } else base.permissions.filesystem
+        launch(base.copy(exec = base.exec + path, permissions = base.permissions.copy(filesystem = grants)), onLaunched)
+    }
+
+    /** Queues installing a .deb from the Files tab, with whatever it depends on. */
+    fun installDeb(entry: com.daryan.tessera.files.FileEntry, info: com.daryan.tessera.files.DebInfo) {
+        viewModelScope.launch {
+            val backend = backend()
+            val problem = blocker(_status.value, _mode.value)
+            if (backend == null || problem != null) {
+                _messages.send(problem ?: "Linux isn't ready")
+                return@launch
+            }
+            val staged = runCatching { files.stageDeb(entry, info) }.getOrElse {
+                _messages.send(it.message ?: "Couldn't get ${entry.name} ready")
+                return@launch
+            }
+            val store = configStore(_status.value, _mode.value)
+            container.queue.enqueue(info.pkg, listOf(staged), QueueAction.INSTALL, null, backend) {
+                files.removeStaged(staged)
+                container.registry.refreshInstalled(store)
+                scanSystemApps(force = true)
+            }
+            _messages.send("Installing ${info.pkg}; follow it under Installs")
+        }
+    }
+
+    /**
+     * [app] with the drives plugged in right now shared at /media/user/<name>, when it may see
+     * drives; Android has already mounted them, so they're folders like any other.
+     */
+    private fun withDrives(app: PermissionManifest): PermissionManifest {
+        if (!app.permissions.drives) return app
+        files.refreshVolumes()
+        val taken = mutableSetOf<String>()
+        val grants = files.storage.filterNot { it.primary }.map { v ->
+            var name = v.title.replace('/', '_').filterNot { it.isISOControl() }.trim().ifEmpty { v.path.substringAfterLast('/') }
+            if (!taken.add(name)) name = "$name (${v.path.substringAfterLast('/')})".also { taken += it }
+            FsGrant(v.path, "$DRIVES/$name", readOnly = v.readOnly)
+        }
+        val keep = app.permissions.filesystem.filterNot { it.mountAt.startsWith("$DRIVES/") }
+        return app.copy(permissions = app.permissions.copy(filesystem = keep + grants))
+    }
+
+    /**
+     * PRoot's take on all USB devices: those plugged in now, opened through the bridge like any
+     * listed device. Chroot shares the whole folder instead (enter.sh).
+     */
+    private fun withPluggedInUsb(app: PermissionManifest): PermissionManifest {
+        if (!app.permissions.usb) return app
+        val usb = getApplication<Application>().getSystemService(android.hardware.usb.UsbManager::class.java)
+        val plugged = usb?.deviceList?.values?.map { it.deviceName }.orEmpty().filter { it.startsWith(UsbBridge.USB_PATH) }
+        return app.copy(permissions = app.permissions.copy(devices = (app.permissions.devices + plugged).distinct()))
+    }
+
     fun launch(app: PermissionManifest, onLaunched: (RunningSession) -> Unit) {
+        val requested = app
         viewModelScope.launch {
             val backend = backend()
             val problem = blocker(_status.value, _mode.value)
@@ -510,6 +610,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 _messages.send(problem ?: "Backend unavailable")
                 return@launch
             }
+            val app = withDrives(requested).let { if (backend is ProotBackend) withPluggedInUsb(it) else it }
             // PRoot apps reach their USB devices through the bridge: open them first (this may
             // ask the user for each device's permission).
             val usb = if (backend is ProotBackend && app.permissions.devices.any { it.startsWith(UsbBridge.USB_PATH) }) {

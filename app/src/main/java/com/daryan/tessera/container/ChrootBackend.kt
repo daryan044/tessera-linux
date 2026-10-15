@@ -33,6 +33,7 @@ class ChrootBackend(
                 "${it.path}:${it.mountAt}:${if (it.readOnly) "ro" else "rw"}"
             },
             "DEVICES" to p.devices.joinToString("\n"),
+            "USB_ALL" to if (p.usb) "1" else "",
             // Bound like a device, but its group (Android's "system") isn't handed over.
             "GPU_DEVICE" to if (session.gpu) GpuDriver.KGSL else "",
             "X11_DIR" to if (p.display) paths.x11SocketDir(session).invariantSeparatorsPath else "",

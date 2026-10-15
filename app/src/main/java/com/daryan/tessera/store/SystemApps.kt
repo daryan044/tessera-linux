@@ -126,6 +126,7 @@ class SystemApps {
                     } else {
                         emptyList()
                     },
+                    drives = "FileManager" in cats,
                 ),
             )
         }

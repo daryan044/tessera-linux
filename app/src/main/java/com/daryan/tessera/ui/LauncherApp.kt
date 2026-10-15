@@ -85,6 +85,7 @@ import kotlinx.coroutines.launch
 
 enum class Destination(val label: String, val title: String, val icon: ImageVector) {
     Apps("Apps", "Linux", LauncherIcons.Apps),
+    Files("Files", "Files", LauncherIcons.Folder),
     Store("Store", "Store", LauncherIcons.Store),
     Sessions("Sessions", "Sessions", LauncherIcons.Terminal),
     Setup("Setup", "Setup", Icons.Rounded.Settings),
@@ -133,6 +134,9 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var execApp by remember { mutableStateOf<PermissionManifest?>(null) }
     var showTrackpad by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    val filesUi = remember { FilesUi() }
+    /** Non-null while the Apps tab's search is open. */
+    var appQuery by rememberSaveable { mutableStateOf<String?>(null) }
     val queue by vm.queue.collectAsStateWithLifecycle()
     val catalog by vm.catalog.collectAsStateWithLifecycle()
     val installedPackages by vm.installedPackages.collectAsStateWithLifecycle()
@@ -152,7 +156,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         pendingLaunch = null
     }
     val startApp: (PermissionManifest) -> Unit = { app ->
-        val storage = app.permissions.filesystem.any { it.path.startsWith("/storage") || it.path.startsWith("/sdcard") }
+        val storage = app.permissions.drives ||
+            app.permissions.filesystem.any { it.path.startsWith("/storage") || it.path.startsWith("/sdcard") }
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
             PackageManager.PERMISSION_GRANTED
         if (storage && !granted) {
@@ -181,6 +186,27 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
 
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    // The Files tab follows the engine: PRoot's system or chroot's, once it's usable.
+    LaunchedEffect(status, mode) { vm.files.useEngine(vm.filesEngine(status, mode)) }
+    // Search belongs to the Apps tab; leaving it closes the search.
+    LaunchedEffect(destination) { if (destination != Destination.Apps) appQuery = null }
+    androidx.activity.compose.BackHandler(enabled = appQuery != null) { appQuery = null }
+    val appResults = remember(apps, appQuery) { appQuery?.let { searchApps(apps, it) } }
+    // The task manager samples only while Sessions is on screen; chroot mode reads as root to
+    // see apps running as root too.
+    val monitorSu = if (mode == BackendMode.CHROOT) status?.su else null
+    val processes by androidx.compose.runtime.produceState<List<com.daryan.tessera.container.GuestProcess>?>(null, destination, monitorSu) {
+        value = null
+        if (destination != Destination.Sessions) return@produceState
+        com.daryan.tessera.container.ProcessMonitor(monitorSu).watch().collect { value = it }
+    }
+    val messageScope = rememberCoroutineScope()
+    val filesMessage: (String) -> Unit = { m -> messageScope.launch { snackbar.showSnackbar(m) } }
+    val terminalHere: (String) -> Unit = { dir ->
+        vm.terminalIn(dir, vm.files.root) { started ->
+            if (started.terminal != null) TerminalActivity.open(context, started.session.id)
+        }
+    }
 
     // An app's icon on the phone's home screen asks for it to start, once Linux is checked.
     val launchRequest by vm.launchRequests.collectAsStateWithLifecycle()
@@ -213,15 +239,43 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
+            // Every action closes the menu first, then does its thing.
+            fun closing(action: () -> Unit): () -> Unit = { scope.launch { drawerState.close() }; action() }
+            fun launchById(id: String) {
+                val app = apps.firstOrNull { it.id == id }
+                if (app != null) startApp(app) else scope.launch { snackbar.showSnackbar("That app isn't installed") }
+            }
             SideMenu(
-                onSettings = {
-                    scope.launch { drawerState.close() }
-                    showSettings = true
-                },
-                onAbout = {
-                    scope.launch { drawerState.close() }
-                    showAbout = true
-                },
+                status = MenuStatus(
+                    mode = mode,
+                    blocker = blocker.takeIf { status != null },
+                    running = running,
+                    activeInstalls = queue.count { it.active },
+                    rootAvailable = status?.su != null,
+                    destination = destination,
+                ),
+                actions = MenuActions(
+                    go = { d -> scope.launch { drawerState.close() }; destination = d },
+                    terminal = closing { launchById("bash") },
+                    rootShell = closing { launchById("root-shell") },
+                    newShortcut = closing { destination = Destination.Apps; editingShortcut = Shortcut(id = "", name = "", command = "") },
+                    trackpad = closing { showTrackpad = true },
+                    installs = closing { showQueue = true },
+                    systemFiles = closing { showSettings = true },
+                    displaySettings = closing { context.startActivity(Intent().setClassName(context, "com.termux.x11.LoriePreferences")) },
+                    copyDiagnostics = closing {
+                        scope.launch {
+                            val report = vm.diagnosticsReport()
+                            context.getSystemService(android.content.ClipboardManager::class.java)
+                                .setPrimaryClip(android.content.ClipData.newPlainText("Tessera diagnostics", report))
+                            snackbar.showSnackbar("Diagnostics copied, ready to paste")
+                        }
+                    },
+                    setMode = vm::setMode,
+                    settings = closing { showSettings = true },
+                    about = closing { showAbout = true },
+                    intro = closing { vm.setIntroSeen(false) },
+                ),
             )
         },
     ) {
@@ -229,13 +283,34 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.surface,
         snackbarHost = { SnackbarHost(snackbar) },
-        topBar = {
+        topBar = topBar@{
+            if (destination == Destination.Files) {
+                Column(Modifier.hazeBlur(HazeInput.Sources(hazeState), glass)) {
+                    FilesTopBar(
+                        b = vm.files,
+                        ui = filesUi,
+                        onMenu = { scope.launch { drawerState.open() } },
+                        onMessage = filesMessage,
+                        onTerminalHere = terminalHere,
+                        realRoot = mode == BackendMode.CHROOT,
+                    )
+                    AnimatedVisibility(
+                        visible = queue.any { it.active },
+                        enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                        exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                    ) {
+                        QueueStrip(queue, onOpenQueue = { showQueue = true })
+                    }
+                }
+                return@topBar
+            }
             Column(Modifier.hazeBlur(HazeInput.Sources(hazeState), glass)) {
                 val title = @Composable { Text(destination.title) }
                 val subtitle = @Composable {
                     Text(
                         when (destination) {
                             Destination.Apps -> "${mode.label} · ${apps.size} apps"
+                            Destination.Files -> ""
                             Destination.Store -> (catalog as? CatalogState.Ready)?.let { "${it.apps.size} apps from Debian" } ?: "Apps from Debian"
                             Destination.Sessions -> if (running == 0) "Nothing running" else "$running running"
                             Destination.Setup -> blocker ?: "Ready to launch apps"
@@ -253,6 +328,9 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 )
                 // The Store's history: every install and removal, with apt's output.
                 val actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
+                    if (destination == Destination.Apps) {
+                        IconButton(onClick = { appQuery = "" }) { Icon(LauncherIcons.Search, "Search apps") }
+                    }
                     if (destination == Destination.Store) {
                         val active = queue.count { it.active }
                         IconButton(onClick = { showQueue = true }) {
@@ -262,8 +340,17 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                         }
                     }
                 }
-                // The large flexible bar would eat half a landscape screen; go compact there.
-                if (shortScreen) {
+                val q = appQuery
+                if (destination == Destination.Apps && q != null) {
+                    AppSearchBar(
+                        query = q,
+                        onQuery = { appQuery = it },
+                        onClose = { appQuery = null },
+                        // The keyboard's search key opens the best match.
+                        onSubmit = { appResults?.firstOrNull()?.let { openApp = it } },
+                    )
+                } else if (shortScreen) {
+                    // The large flexible bar would eat half a landscape screen; go compact there.
                     TopAppBar(title = title, subtitle = subtitle, navigationIcon = menuButton, actions = actions, colors = barColors)
                 } else {
                     LargeFlexibleTopAppBar(
@@ -283,7 +370,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     QueueStrip(queue, onOpenQueue = { showQueue = true })
                 }
                 AnimatedVisibility(
-                    visible = destination == Destination.Apps,
+                    visible = destination == Destination.Apps && appQuery == null,
                     enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
                     exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
                 ) {
@@ -348,7 +435,9 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     onEditExec = { execApp = it },
                     graphics = gpuGraphics,
                     onGraphics = { graphicsApp = it },
+                    search = appResults,
                 )
+                Destination.Files -> FilesScreen(vm.files, filesUi, padding, onMessage = filesMessage)
                 Destination.Store -> StoreScreen(
                     catalog = catalog,
                     installed = installedPackages,
@@ -372,6 +461,9 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     },
                     onStop = vm.sessions::stop,
                     onDismiss = vm.sessions::dismiss,
+                    processes = processes,
+                    onCloseAll = vm.sessions::stopAll,
+                    onEndProcess = { p -> scope.launch { com.daryan.tessera.container.ProcessMonitor.end(p.pid, p.uid, monitorSu) } },
                 )
                 Destination.Setup -> SetupScreen(
                     status = status,
@@ -555,6 +647,47 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         val file = shown.value
         if (file != null && store != null) {
             ConfigEditor(file, store, engine = mode.label, onClose = { openConfig = null })
+        }
+    }
+
+    FilesDialogs(vm.files, filesUi, onMessage = filesMessage)
+
+    filesUi.opening?.let { entry -> key(entry.path) {
+        val done = { if (filesUi.opening?.path == entry.path) filesUi.opening = null }
+        OpenWithSheet(
+            b = vm.files,
+            entry = entry,
+            launcherApp = vm::linuxAppFor,
+            onDismiss = done,
+            onEdit = { done(); filesUi.editing = entry },
+            onExtract = { done(); filesUi.dialog = FilesDialog.Extract(entry) },
+            onInstallDeb = { info -> done(); vm.installDeb(entry, info) },
+            onOpenLinux = { opener ->
+                done()
+                vm.openInLinux(opener, entry.path) { started ->
+                    if (started.terminal != null) TerminalActivity.open(context, started.session.id)
+                }
+            },
+            onMessage = filesMessage,
+        )
+    } }
+
+    // A text file from the Files tab, in the same editor as the system files.
+    val editingFile = filesUi.editing
+    AnimatedVisibility(
+        visible = editingFile != null,
+        enter = slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()),
+        exit = slideOutVertically(motion.fastSpatialSpec()) { it } + fadeOut(motion.fastEffectsSpec()),
+    ) {
+        val shown = remember { mutableStateOf(editingFile) }
+        if (editingFile != null) shown.value = editingFile
+        shown.value?.let { e ->
+            val store = remember(e.path) { vm.files.textStore() }
+            ConfigEditor(
+                editorFile(e), store, engine = mode.label,
+                onClose = { filesUi.editing = null; vm.files.reload() },
+                savedMessage = "Saved",
+            )
         }
     }
 

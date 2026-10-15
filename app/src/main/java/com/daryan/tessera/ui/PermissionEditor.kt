@@ -92,6 +92,23 @@ fun PermissionEditor(
             }
             Divider()
             SwitchRow(
+                "USB drives and SD cards",
+                if (p.drives) "Each drive plugged in when it opens shows up in /media/user" else "Can't see plugged-in drives",
+                p.drives, null,
+            ) { change(p.copy(drives = it)) }
+            Divider()
+            SwitchRow(
+                "All USB devices",
+                when {
+                    !p.usb -> "Only the devices listed under Devices"
+                    backend.name == "PRoot" -> "Those plugged in when it opens, each asked of Android. One that reconnects (a phone rebooting into fastboot) is lost; chroot mode keeps it"
+                    p.root -> "Every USB device, as a PC sees them, including ones that reconnect. For fastboot, adb, heimdall, edl"
+                    else -> "Every USB device, including ones that reconnect. Devices Android has opened itself also need Run as root"
+                },
+                p.usb, pill(Capability.DEVICES, true).takeIf { p.usb },
+            ) { change(p.copy(usb = it)) }
+            Divider()
+            SwitchRow(
                 "Run as root",
                 if (p.root) "Root inside the container. In chroot mode this weakens every other limit." else "Runs as a normal user",
                 p.root, null,

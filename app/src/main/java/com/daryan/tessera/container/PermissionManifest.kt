@@ -60,6 +60,19 @@ data class Permissions(
     val devices: List<String> = emptyList(),
     /** Run as root inside the container. Weakens every other guarantee in chroot mode. */
     val root: Boolean = false,
+    /**
+     * USB drives and SD cards: each one mounted when the app starts appears at
+     * /media/user/<its name>, where Linux file managers look for drives. Android mounts them
+     * itself; the raw USB device (in [devices]) gives no access to their files.
+     */
+    val drives: Boolean = false,
+    /**
+     * Every USB device, as a PC sees them, for tools like fastboot, adb, heimdall or edl. In
+     * chroot mode /dev/bus/usb is shared live, so a device that reconnects under a new number
+     * (a phone rebooting into fastboot) is still there; PRoot can only open, through Android,
+     * those plugged in when the app starts.
+     */
+    val usb: Boolean = false,
 )
 
 /** Exposes an Android path inside the container. */

@@ -6,7 +6,26 @@
 package com.daryan.tessera.ui
 
 import android.os.SystemClock
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
@@ -152,9 +171,135 @@ fun AppsPager(
     /** Whether [onGraphics] applies to windowed apps (the phone has the GPU driver). */
     graphics: Boolean,
     onGraphics: (PermissionManifest) -> Unit,
+    /** While searching: the matching apps, shown in one grid in place of the tabs. */
+    search: List<PermissionManifest>? = null,
 ) {
     val context = LocalContext.current
     val homeScreen = remember { HomeShortcuts.supported(context) }
+    val motion = MaterialTheme.motionScheme
+    val tile: @Composable (PermissionManifest, Int?, Modifier) -> Unit = { app, rise, modifier ->
+        AppTile(
+            app, rise,
+            pinned = app.id in pinned,
+            favorite = app.id in favorites,
+            onClick = { onOpen(app) },
+            onTogglePin = { onTogglePin(app) },
+            onToggleFavorite = { onToggleFavorite(app) },
+            onUninstall = { onUninstall(app) },
+            onEdit = if (Shortcut.isShortcut(app)) ({ onEditShortcut(app) }) else null,
+            // A shortcut's "Edit" already is its command; everything else gets this.
+            onEditExec = if (Shortcut.isShortcut(app)) null else ({ onEditExec(app) }),
+            onGraphics = if (graphics && app.gui) ({ onGraphics(app) }) else null,
+            homeScreen = homeScreen,
+            modifier = modifier,
+        )
+    }
+    AnimatedContent(
+        targetState = search != null,
+        transitionSpec = {
+            (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
+                .togetherWith(fadeOut(motion.fastEffectsSpec()))
+        },
+        label = "appsSearch",
+        modifier = Modifier.fillMaxSize(),
+    ) { searching ->
+        if (searching) SearchResults(search.orEmpty(), padding, tile)
+        else TabsPager(tabs, pagerState, padding, tile, onTrackpad, onNewShortcut)
+    }
+}
+
+/** Every app that matches, in one grid; the tiles slide into place as the query narrows. */
+@Composable
+private fun SearchResults(
+    results: List<PermissionManifest>,
+    padding: PaddingValues,
+    tile: @Composable (PermissionManifest, Int?, Modifier) -> Unit,
+) {
+    if (results.isEmpty()) {
+        EmptyState(title = "No apps match", body = "Apps not installed yet are in the Store.", padding = padding)
+        return
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 104.dp),
+        contentPadding = PaddingValues(
+            start = 12.dp,
+            end = 12.dp,
+            top = padding.calculateTopPadding() + 8.dp,
+            bottom = padding.calculateBottomPadding() + 24.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        items(results, key = { it.id }) { app -> tile(app, null, Modifier.animateItem()) }
+    }
+}
+
+/**
+ * Apps matching [query], best first: names that start with it, then names with a word that
+ * does, then names containing it, then a match in the description, category, packages or command.
+ */
+fun searchApps(apps: List<PermissionManifest>, query: String): List<PermissionManifest> {
+    val q = query.trim()
+    if (q.isEmpty()) return apps.sortedBy { it.name.lowercase() }
+    fun rank(a: PermissionManifest): Int? {
+        val name = a.name.lowercase()
+        val lq = q.lowercase()
+        return when {
+            name.startsWith(lq) -> 0
+            name.split(' ', '-', '_', '.').any { it.startsWith(lq) } -> 1
+            lq in name -> 2
+            a.description.contains(q, ignoreCase = true) -> 3
+            a.category.contains(q, ignoreCase = true) -> 4
+            a.packages.any { it.contains(q, ignoreCase = true) } -> 5
+            a.exec.firstOrNull()?.substringAfterLast('/')?.contains(q, ignoreCase = true) == true -> 6
+            else -> null
+        }
+    }
+    return apps.mapNotNull { a -> rank(a)?.let { it to a } }
+        .sortedWith(compareBy<Pair<Int, PermissionManifest>> { it.first }.thenBy { it.second.name.lowercase() })
+        .map { it.second }
+}
+
+/** The Apps tab's bar while searching: a field where the title was. */
+@Composable
+fun AppSearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit, onSubmit: () -> Unit) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    TopAppBar(
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
+        navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Close search") } },
+        title = {
+            Box(contentAlignment = Alignment.CenterStart) {
+                if (query.isEmpty()) {
+                    Text("Search apps", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                BasicTextField(
+                    value = query,
+                    onValueChange = onQuery,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                )
+            }
+        },
+        actions = {
+            if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) { Icon(Icons.Rounded.Close, "Clear") }
+        },
+    )
+}
+
+@Composable
+private fun TabsPager(
+    tabs: List<LauncherTab>,
+    pagerState: PagerState,
+    padding: PaddingValues,
+    tile: @Composable (PermissionManifest, Int?, Modifier) -> Unit,
+    onTrackpad: () -> Unit,
+    onNewShortcut: () -> Unit,
+) {
     // Tabs whose tiles already rose in: coming back to one (or swiping past it) shouldn't replay it.
     val shown = remember { mutableSetOf<String>() }
     // The tabs either side are composed ahead, so a swipe doesn't build a whole grid mid-gesture.
@@ -183,21 +328,7 @@ fun AppsPager(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 itemsIndexed(tab.apps, key = { _, app -> app.id }) { index, app ->
-                    AppTile(
-                        app, index.takeIf { animate && SystemClock.uptimeMillis() - enteredAt < 1000 },
-                        pinned = app.id in pinned,
-                        favorite = app.id in favorites,
-                        onClick = { onOpen(app) },
-                        onTogglePin = { onTogglePin(app) },
-                        onToggleFavorite = { onToggleFavorite(app) },
-                        onUninstall = { onUninstall(app) },
-                        onEdit = if (Shortcut.isShortcut(app)) ({ onEditShortcut(app) }) else null,
-                        // A shortcut's "Edit" already is its command; everything else gets this.
-                        onEditExec = if (Shortcut.isShortcut(app)) null else ({ onEditExec(app) }),
-                        onGraphics = if (graphics && app.gui) ({ onGraphics(app) }) else null,
-                        homeScreen = homeScreen,
-                        modifier = Modifier.animateItem(),
-                    )
+                    tile(app, index.takeIf { animate && SystemClock.uptimeMillis() - enteredAt < 1000 }, Modifier.animateItem())
                 }
                 if (shortcuts) {
                     item(key = "trackpad") { TrackpadTile(onTrackpad, Modifier.animateItem()) }

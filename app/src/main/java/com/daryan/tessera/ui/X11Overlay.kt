@@ -346,27 +346,51 @@ private fun KeysPage(actions: X11Actions) {
 
 @Composable
 private fun InputPage(actions: X11Actions) {
-    var current by remember { mutableStateOf(actions.touchMode()) }
-    TouchMode.entries.forEach { mode ->
+    InputChoices(
+        mode = actions.touchMode(),
+        onMode = actions::setTouchMode,
+        longPress = actions.longPressRightClick(),
+        onLongPress = actions::setLongPressRightClick,
+    )
+}
+
+/**
+ * The input modes and the long-press switch; in a window's panel and the launcher's side
+ * menu alike. Holds its own copy so a tap shows at once; the settings apply live.
+ */
+@Composable
+fun InputChoices(mode: TouchMode, onMode: (TouchMode) -> Unit, longPress: Boolean, onLongPress: (Boolean) -> Unit) {
+    var current by remember { mutableStateOf(mode) }
+    var hold by remember { mutableStateOf(longPress) }
+    TouchMode.entries.forEach { m ->
         Row(
             verticalAlignment = Alignment.Top,
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                .clickable { current = mode; actions.setTouchMode(mode) }.padding(vertical = 8.dp),
+                .clickable { current = m; onMode(m) }.padding(vertical = 8.dp),
         ) {
-            RadioButton(selected = current == mode, onClick = null, modifier = Modifier.padding(top = 2.dp, end = 8.dp))
+            RadioButton(selected = current == m, onClick = null, modifier = Modifier.padding(top = 2.dp, end = 8.dp))
             Column {
-                Text(mode.label, style = MaterialTheme.typography.titleSmall)
-                Text(
-                    when (mode) {
-                        TouchMode.DIRECT -> "Like a phone app: tap, swipe to scroll, pinch to zoom."
-                        TouchMode.TOUCHPAD -> "The screen is a touchpad: move a pointer, tap to click."
-                        TouchMode.SIMULATED -> "Taps click where you touch, drag to drag. For apps without touch support."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text(m.label, style = MaterialTheme.typography.titleSmall)
+                Text(m.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+            .clickable { hold = !hold; onLongPress(hold) }.padding(vertical = 8.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Touch and hold to right-click", style = MaterialTheme.typography.titleSmall)
+            Text(
+                if (current == TouchMode.DIRECT) "In Touchpad and Touchscreen mouse. Direct touch leaves holding to the app."
+                else "Double-tap and hold to drag instead.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        androidx.compose.material3.Switch(checked = hold, onCheckedChange = { hold = it; onLongPress(it) })
     }
 }
 

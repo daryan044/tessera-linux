@@ -3,7 +3,7 @@
 # Runs as root inside a fresh mount namespace (and network namespace when network is denied),
 # started by ChrootBackend via:  su -c 'export ...; exec unshare -m [-n] sh enter.sh'
 #
-# Inputs (env): R, BINDS, DEVICES, GPU_DEVICE, X11_DIR, RUN_AS_ROOT, APP_UID, NET_GROUPS, GUEST_ENV, CMD
+# Inputs (env): R, BINDS, DEVICES, USB_ALL, GPU_DEVICE, X11_DIR, RUN_AS_ROOT, APP_UID, NET_GROUPS, GUEST_ENV, CMD
 # Derived from termux-linux-layer/linux. Mounts made here vanish with the namespace; never
 # mount or unmount in the global namespace, Android's mounts are shared and changes propagate.
 set -e
@@ -39,6 +39,17 @@ printf '%s\n' "$DEVICES" | while IFS= read -r d; do
   mkdir -p "$R$(dirname "$d")"; touch "$R$d"; mount --bind "$d" "$R$d"
 done
 
+# All USB devices (USB_ALL=1): the whole folder, bound live, so devices that arrive later show
+# up too, such as a phone rebooting into fastboot or EDL under a new number. USB serial ports
+# (ttyACM) live in /dev itself and can't be followed, so those present now come along.
+if [ "$USB_ALL" = 1 ] && [ -d /dev/bus/usb ]; then
+  mkdir -p "$R/dev/bus/usb"; mount --bind /dev/bus/usb "$R/dev/bus/usb"
+  for t in /dev/ttyACM*; do
+    [ -e "$t" ] || continue
+    touch "$R$t"; mount --bind "$t" "$R$t"
+  done
+fi
+
 # The GPU for hardware graphics. Unlike DEVICES, its group isn't added below: it's world-usable,
 # and its group is Android's "system".
 if [ -n "$GPU_DEVICE" ] && [ -e "$GPU_DEVICE" ]; then
@@ -72,8 +83,12 @@ ENVEOF
 # when we already lead a process group setsid forks, and without it the parent exits at once;
 # su then returns, the launcher takes the app for finished and closes its X server while the
 # app runs on, orphaned ("Can't open display" for every GUI app in chroot mode).
+# Without a terminal (the Files tab's shell talks over pipes) there's nothing to own, and
+# --ctty would fail.
 SETSID=
-[ -x "$R/usr/bin/setsid" ] && SETSID="/usr/bin/setsid --ctty --wait"
+CTTY=
+[ -t 0 ] && CTTY=--ctty
+[ -x "$R/usr/bin/setsid" ] && SETSID="/usr/bin/setsid $CTTY --wait"
 # Start in $HOME; expanded by the guest shell, not this one.
 START='cd "$HOME" 2>/dev/null; exec '
 
@@ -103,9 +118,14 @@ fi
 # Supplementary groups: Android's network groups when network is granted, and the group of
 # each granted device (USB nodes belong to root:usb, 0660), so the app can open just those.
 GROUPS_LIST=$NET_GROUPS
-DEV_GROUPS=$(printf '%s\n' "$DEVICES" | while IFS= read -r d; do
+DEV_GROUPS=$({
+  printf '%s\n' "$DEVICES"
+  # With all USB devices, their group too (usb); not "system" (1000), which owns nodes
+  # Android itself opened and which system services trust.
+  if [ "$USB_ALL" = 1 ]; then find /dev/bus/usb -type c 2>/dev/null; ls /dev/ttyACM* 2>/dev/null; fi
+} | while IFS= read -r d; do
   [ -n "$d" ] && [ -e "$d" ] && stat -c %g "$d"
-done | sort -u | tr '\n' ',' | sed 's/,$//')
+done | grep -vx 1000 | sort -u | tr '\n' ',' | sed 's/,$//')
 [ -n "$DEV_GROUPS" ] && GROUPS_LIST=${GROUPS_LIST:+$GROUPS_LIST,}$DEV_GROUPS
 if [ -n "$GROUPS_LIST" ]; then GROUP_ARG="--groups=$GROUPS_LIST"; else GROUP_ARG=--clear-groups; fi
 # setpriv is in util-linux (essential on Debian). --no-new-privs keeps setuid binaries inert.

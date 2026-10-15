@@ -5,6 +5,7 @@
 
 package com.daryan.tessera.ui
 
+import com.daryan.tessera.container.GuestProcess
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,8 +49,15 @@ fun SessionsScreen(
     onOpen: (String) -> Unit,
     onStop: (String) -> Unit,
     onDismiss: (String) -> Unit,
+    /** Every container process, sampled live; null until the first sample. */
+    processes: List<GuestProcess>? = null,
+    onCloseAll: () -> Unit = {},
+    onEndProcess: (GuestProcess) -> Unit = {},
 ) {
-    if (sessions.isEmpty()) {
+    val ids = sessions.map { it.session.id }.toSet()
+    // Linux work that isn't an app the user opened: the Files tab's shells, apt.
+    val background = processes.orEmpty().filter { it.session !in ids }.groupBy { it.session }
+    if (sessions.isEmpty() && background.isEmpty()) {
         EmptyState(
             title = "No sessions running",
             body = "Open an app from the Apps tab. Running apps stay here, even when you leave.",
@@ -67,8 +75,30 @@ fun SessionsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
+        item(key = "summary") {
+            TaskSummary(processes, running = sessions.count { it.running }, onCloseAll = onCloseAll, modifier = Modifier.animateItem())
+        }
         items(sessions.asReversed(), key = { it.session.id }) { s ->
-            SessionCard(s, onOpen, onStop, onDismiss, Modifier.animateItem())
+            val mine = processes?.filter { it.session == s.session.id }
+            SessionCard(s, mine, onOpen, onStop, onDismiss, onEndProcess, Modifier.animateItem())
+        }
+        if (background.isNotEmpty()) {
+            item(key = "background") {
+                Surface(
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    modifier = Modifier.fillMaxWidth().animateItem(),
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("In the background", style = MaterialTheme.typography.titleMedium)
+                        background.toSortedMap().forEach { (session, procs) ->
+                            Spacer(Modifier.height(12.dp))
+                            Text(backgroundLabel(session), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                            SessionLoad(procs, onEndProcess)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -76,9 +106,12 @@ fun SessionsScreen(
 @Composable
 private fun SessionCard(
     s: RunningSession,
+    /** Its processes right now; null before the first sample. */
+    processes: List<GuestProcess>?,
     onOpen: (String) -> Unit,
     onStop: (String) -> Unit,
     onDismiss: (String) -> Unit,
+    onEndProcess: (GuestProcess) -> Unit,
     modifier: Modifier,
 ) {
     Surface(
@@ -110,12 +143,16 @@ private fun SessionCard(
                     )
                 }
                 if (s.running) {
-                    FilledTonalButton(onClick = { onStop(s.session.id) }) { Text("Stop") }
+                    FilledTonalButton(onClick = { onStop(s.session.id) }) { Text("End task") }
                 } else {
                     IconButton(onClick = { onDismiss(s.session.id) }) {
                         Icon(Icons.Rounded.Close, "Dismiss")
                     }
                 }
+            }
+            if (s.running && !processes.isNullOrEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                SessionLoad(processes, onEndProcess)
             }
             Spacer(Modifier.height(12.dp))
             val text = s.preview().replace(ANSI, "").trimEnd()

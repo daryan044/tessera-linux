@@ -84,6 +84,13 @@ class BackendTest {
         assertTrue(script.contains("export CMD=${shellQuote(cmd)};"))
     }
 
+    @Test fun `chroot shares every USB device only when asked`() {
+        val chroot = ChrootBackend(paths, "su", appUid = 10123)
+        val usbApp = offline.copy(permissions = Permissions(root = true, usb = true))
+        assertTrue("export USB_ALL=1;" in chroot.buildLaunch(usbApp, session).argv[2])
+        assertTrue("export USB_ALL='';" in chroot.buildLaunch(offline, session).argv[2])
+    }
+
     @Test fun `chroot enforcement drops to advisory for root apps`() {
         val chroot = ChrootBackend(paths, "su", appUid = 10123)
         val rootApp = offline.copy(permissions = Permissions(root = true))

@@ -68,6 +68,17 @@
             android:name=".ContainerService"
             android:exported="false" />
 
+        <!-- Hands files the Files tab copied out of Linux to Android apps (open with, share). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Termux:X11's plain window would add a second launcher icon; GUI apps use its
              tagged windows, which we open ourselves. -->
         <activity android:name="com.termux.x11.MainActivity" tools:node="merge">

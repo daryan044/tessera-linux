@@ -93,7 +93,7 @@ private fun DockItem(d: Destination, selected: Boolean, onClick: () -> Unit, bad
             .clip(CircleShape)
             .background(container)
             .selectable(selected = selected, onClick = onClick, role = Role.Tab)
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(horizontal = 15.dp, vertical = 12.dp),
     ) {
         BadgedBox(badge = { badge() }) {
             Icon(d.icon, contentDescription = d.label, tint = content)

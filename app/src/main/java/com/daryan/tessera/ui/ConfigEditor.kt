@@ -56,7 +56,13 @@ import kotlinx.coroutines.launch
 
 /** Full-screen plain-text editor for one container config file. */
 @Composable
-fun ConfigEditor(file: ConfigFile, store: ConfigStore, engine: String, onClose: () -> Unit) {
+fun ConfigEditor(
+    file: ConfigFile,
+    store: ConfigStore,
+    engine: String,
+    onClose: () -> Unit,
+    savedMessage: String = "Saved. The original is kept as ${file.path.substringAfterLast('/')}.bak-launcher",
+) {
     var original by remember(file) { mutableStateOf<String?>(null) }
     var text by remember(file) { mutableStateOf("") }
     var loaded by remember(file) { mutableStateOf(false) }
@@ -108,7 +114,7 @@ fun ConfigEditor(file: ConfigFile, store: ConfigStore, engine: String, onClose: 
                                 runCatching { store.write(file.path, text) }
                                     .onSuccess {
                                         original = text
-                                        snackbar.showSnackbar("Saved. The original is kept as ${file.path.substringAfterLast('/')}.bak-launcher")
+                                        snackbar.showSnackbar(savedMessage)
                                     }
                                     .onFailure { snackbar.showSnackbar("Couldn't save: ${it.message}") }
                                 saving = false

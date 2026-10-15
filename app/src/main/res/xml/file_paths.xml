@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Files tab's transfer folder: what it copies out of Linux for Android apps. -->
+<paths>
+    <cache-path name="transfer" path="files-transfer/" />
+</paths>

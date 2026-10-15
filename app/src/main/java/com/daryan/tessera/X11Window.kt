@@ -301,15 +301,13 @@ class X11Window : MainActivity.MainActivityTagged() {
 
         override val usbDevices: StateFlow<List<UsbEntry>> get() = this@X11Window.usbDevices
 
-        override fun setTouchMode(mode: TouchMode) {
-            getSharedPreferences("${packageName}_preferences", MODE_PRIVATE).edit()
-                .putString("touchMode", mode.pref).apply()
-        }
+        override fun setTouchMode(mode: TouchMode) = X11Input.setMode(this@X11Window, mode)
 
-        override fun touchMode(): TouchMode {
-            val v = getSharedPreferences("${packageName}_preferences", MODE_PRIVATE).getString("touchMode", "3")
-            return TouchMode.entries.firstOrNull { it.pref == v } ?: TouchMode.DIRECT
-        }
+        override fun touchMode(): TouchMode = X11Input.mode(this@X11Window)
+
+        override fun setLongPressRightClick(on: Boolean) = X11Input.setLongPressRightClick(this@X11Window, on)
+
+        override fun longPressRightClick(): Boolean = X11Input.longPressRightClick(this@X11Window)
 
         override fun openPermissions(appId: String) {
             (application as LauncherApplication).container.showAppRequests.value = appId
@@ -384,10 +382,32 @@ enum class UsbState(val label: String) {
 data class UsbEntry(val path: String, val label: String, val detail: String, val state: UsbState)
 
 /** Termux:X11's touchMode preference values. */
-enum class TouchMode(val pref: String, val label: String) {
-    DIRECT("3", "Direct touch"),
-    TOUCHPAD("1", "Touchpad"),
-    SIMULATED("2", "Touchscreen mouse"),
+enum class TouchMode(val pref: String, val label: String, val detail: String) {
+    DIRECT("3", "Direct touch", "Like a phone app: tap, swipe to scroll, pinch to zoom."),
+    TOUCHPAD("1", "Touchpad", "The screen is a touchpad: move a pointer, tap to click, two fingers to scroll."),
+    SIMULATED("2", "Touchscreen mouse", "Taps click where you touch, drag to drag. For apps without touch support."),
+}
+
+/**
+ * How fingers drive every Linux window: Termux:X11's settings, which each window reads (and
+ * follows live). Set from the launcher's side menu or a window's own panel.
+ */
+object X11Input {
+    private fun prefs(c: android.content.Context) =
+        c.getSharedPreferences("${c.packageName}_preferences", android.content.Context.MODE_PRIVATE)
+
+    fun mode(c: android.content.Context): TouchMode {
+        val v = prefs(c).getString("touchMode", TouchMode.DIRECT.pref)
+        return TouchMode.entries.firstOrNull { it.pref == v } ?: TouchMode.DIRECT
+    }
+
+    fun setMode(c: android.content.Context, mode: TouchMode) = prefs(c).edit().putString("touchMode", mode.pref).apply()
+
+    /** Touch and hold right-clicks in the pointer modes (Termux:X11's longPressRightClick). */
+    fun longPressRightClick(c: android.content.Context) = prefs(c).getBoolean("longPressRightClick", true)
+
+    fun setLongPressRightClick(c: android.content.Context, on: Boolean) =
+        prefs(c).edit().putBoolean("longPressRightClick", on).apply()
 }
 
 /**
@@ -411,6 +431,8 @@ interface X11Actions : com.daryan.tessera.input.InputSink {
     val usbDevices: StateFlow<List<UsbEntry>>
     fun setTouchMode(mode: TouchMode)
     fun touchMode(): TouchMode
+    fun setLongPressRightClick(on: Boolean)
+    fun longPressRightClick(): Boolean
     fun openPermissions(appId: String)
     fun displaySettings()
     fun close(sessionId: String?)
