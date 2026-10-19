@@ -168,6 +168,12 @@ class SessionManager(
             mkdirs()
         }
         if (app.permissions.display) paths.x11SocketDir(session).mkdirs()
+        // The helpers' command pipes are made here, not by the helpers: in chroot mode a pipe
+        // the guest makes carries su's SELinux label, and Android refuses the app writing to it.
+        if (app.gui) {
+            val pipes = listOf(WINDOW_COMMANDS_NAME) + if (app.desktop) listOf(DESKTOP_COMMANDS_NAME) else emptyList()
+            pipes.forEach { makeFifo(File(paths.x11SocketDir(session), it)) }
+        }
         if (session.theme) writeTheme(app, session, backend.name)
         if (session.usbFds.isNotEmpty()) UsbBridge.makeTree(paths.sessionUsb(session), session.usbFds)
         usb?.let { usbDevices[session.id] = it }
@@ -443,6 +449,14 @@ class SessionManager(
     /** What a running desktop session's taskbar can ask of it; null for anything else. */
     fun desktop(sessionId: String): DesktopFiles? =
         byId(sessionId)?.takeIf { it.running && it.app.desktop }?.let { DesktopFiles(paths.x11SocketDir(it.session)) }
+
+    private fun makeFifo(file: File) {
+        runCatching {
+            android.system.Os.mkfifo(file.path, "666".toInt(8))
+            // Whatever the umask took away: the guest may run as another user.
+            android.system.Os.chmod(file.path, "666".toInt(8))
+        }.onFailure { Log.w(TAG, "couldn't make ${file.name}", it) }
+    }
 
     private fun update(id: String, f: (RunningSession) -> RunningSession) =
         _sessions.update { list -> list.map { if (it.session.id == id) f(it) else it } }

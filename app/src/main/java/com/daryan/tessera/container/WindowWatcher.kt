@@ -113,7 +113,11 @@ def snap(wid, side):
 
 if not os.path.exists(cmd_path):
     os.mkfifo(cmd_path)
-os.chmod(cmd_path, 0o666)
+try:
+    # Made by the launcher, as a rule (see SessionManager.makeFifo), which may not let us.
+    os.chmod(cmd_path, 0o666)
+except OSError:
+    pass
 # Read-write so it never sees end-of-file between writers.
 cmd = os.open(cmd_path, os.O_RDWR | os.O_NONBLOCK)
 pending = b""
