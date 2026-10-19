@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -342,6 +343,7 @@ fun DesktopShell(actions: DesktopActions) {
         val top = colors.primaryContainer.toArgb()
         val bottom = colors.surface.toArgb()
         val reach = with(density) { dockReach.toDp() }
+        val imeBottom = with(density) { WindowInsets.ime.getBottom(this).toDp() }
 
         // The desktop's icons live in its wallpaper, under every window, as on any desktop: laid
         // out and painted here off screen, then drawn into the picture the desktop's window shows.
@@ -439,7 +441,8 @@ fun DesktopShell(actions: DesktopActions) {
                 .align(if (vertical) Alignment.TopStart else Alignment.BottomCenter)
                 .then(
                     if (vertical) Modifier.windowInsetsPadding(WindowInsets.displayCutout).padding(start = reach + 12.dp, top = 12.dp)
-                    else Modifier.padding(bottom = reach + 12.dp, start = 16.dp, end = 16.dp),
+                    // Above the dock, or above the keyboard while typing in its search.
+                    else Modifier.padding(bottom = maxOf(reach + 12.dp, imeBottom + 8.dp), start = 16.dp, end = 16.dp),
                 )
                 // Out of sight while an app is dragged out of it, but still there to carry the drag.
                 .graphicsLayer { alpha = if (dragging != null) 0f else 1f },
@@ -860,18 +863,11 @@ private fun Status(vertical: Boolean, showingDesktop: Boolean, onShowDesktop: ()
         )
     }
     IconButton(onClick = onKeyboard) { Icon(LauncherIcons.Keyboard, "Keyboard", tint = colors.onSurfaceVariant) }
-    if (vertical) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 4.dp)) {
-            Battery()
-            Spacer(Modifier.height(6.dp))
-            Clock(vertical)
-        }
-    } else {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
-            Battery()
-            Spacer(Modifier.width(8.dp))
-            Clock(vertical)
-        }
+    // Battery over the time, as on the rail, so the bar keeps its width for apps.
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
+        Battery()
+        Spacer(Modifier.height(4.dp))
+        Clock(vertical)
     }
 }
 
@@ -886,9 +882,9 @@ private fun Clock(vertical: Boolean) {
     }
     Text(
         time,
-        style = if (vertical) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
+        style = MaterialTheme.typography.labelMedium,
         textAlign = TextAlign.Center,
-        modifier = Modifier.padding(end = if (vertical) 0.dp else 8.dp),
+        modifier = Modifier.padding(end = if (vertical) 0.dp else 4.dp),
     )
 }
 
