@@ -35,4 +35,10 @@ object Pty {
     @JvmStatic external fun waitFor(pid: Int): Int
 
     @JvmStatic external fun close(fd: Int)
+
+    /**
+     * fcntl(2) with an int argument: its result, or -errno. In place of Os.fcntlInt, which is a
+     * hidden API that Android 10 and older refuse to apps targeting API 27 or newer.
+     */
+    @JvmStatic external fun fcntlInt(fd: Int, cmd: Int, arg: Int): Int
 }

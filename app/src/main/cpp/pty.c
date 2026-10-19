@@ -133,3 +133,15 @@ Java_com_daryan_tessera_container_Pty_close(JNIEnv *env, jclass clazz, jint fd) 
     (void)env; (void)clazz;
     close(fd);
 }
+
+/*
+ * fcntl(2) with an int argument. android.system.Os.fcntlInt is a hidden API on Android 10 and
+ * older for apps targeting API 27+ (Tessera targets 28), so it fails there; this doesn't.
+ * Returns fcntl's result, or -errno.
+ */
+JNIEXPORT jint JNICALL
+Java_com_daryan_tessera_container_Pty_fcntlInt(JNIEnv *env, jclass clazz, jint fd, jint cmd, jint arg) {
+    (void)env; (void)clazz;
+    int r = fcntl(fd, cmd, arg);
+    return r < 0 ? -errno : r;
+}
