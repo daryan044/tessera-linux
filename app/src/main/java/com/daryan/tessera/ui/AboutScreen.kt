@@ -63,6 +63,7 @@ private val CREDITS = listOf(
     Triple("Haze", "Apache-2.0", "Background blur"),
     Triple("AndroidX, Jetpack Compose, Material 3", "Apache-2.0", "User interface"),
     Triple("kotlinx.serialization", "Apache-2.0", "Reading app manifests"),
+    Triple("XZ for Java", "0BSD", "Reading Linux theme archives"),
 )
 
 @Composable
