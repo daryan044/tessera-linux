@@ -346,6 +346,11 @@ The native builds need a Linux host (WSL is fine); the app itself builds on Wind
 Linux. Builds without the optional parts simply lack GPU acceleration or the USB bridge. More on
 the native pieces: [docs/native-binaries.md](docs/native-binaries.md).
 
+Debug builds are much slower than releases (Compose runs without its optimizations when an app is
+debuggable). To try performance on a phone with a debug build installed, `./gradlew assembleProfile`
+builds a release that's signed with the debug key, so it installs over the debug build and keeps its
+data.
+
 Release builds (`./gradlew assembleRelease`) are signed with the key in `keystore.properties`
 at the top of the project (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; never
 committed), or the `TESSERA_KEYSTORE*` environment variables; without either, with the debug key.
