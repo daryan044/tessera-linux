@@ -4,6 +4,7 @@
 package com.daryan.tessera.container
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -53,6 +54,5 @@ class ProcessTreeTest {
         assertTrue("grep -q '^LAUNCHER_SESSION=s3\$'" in one)
         assertTrue("tr '\\0' '\\n' < \$e" in one)
         assertTrue("grep -q '^LAUNCHER_SESSION='" in ProcessTree.rootKillScript(null))
-        java.io.File(System.getProperty("java.io.tmpdir"), "tessera-rootkill.sh").writeText(one)
     }
 }
