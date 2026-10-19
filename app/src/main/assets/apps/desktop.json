@@ -12,7 +12,9 @@
   "packages": [
     "xfwm4",
     "xfconf",
-    "xterm"
+    "xterm",
+    "xdg-utils",
+    "xdg-user-dirs"
   ],
   "permissions": {
     "network": true,

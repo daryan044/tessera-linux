@@ -326,15 +326,32 @@ class SessionManager(
             // An imported theme (its light or dark variant), else the phone's own colors.
             val imported = look.linuxTheme?.let { linuxThemes?.pick(it, Palette.isDark(context, look.colorMode)) }
             if (imported != null) {
-                ThemeFiles.writeImported(paths.sessionTheme(session), imported, linuxThemes!!.folder(imported), Palette.from(imported))
+                ThemeFiles.writeImported(paths.sessionTheme(session), imported, linuxThemes!!.folder(imported), Palette.from(imported), app.desktop)
             } else {
-                ThemeFiles.write(paths.sessionTheme(session), Palette.current(context, look.colorMode, look.dynamicColor), pack)
+                ThemeFiles.write(paths.sessionTheme(session), Palette.current(context, look.colorMode, look.dynamicColor), pack, app.desktop)
             }
-            if (app.desktop) {
-                val palette = imported?.let(Palette::from) ?: Palette.current(context, look.colorMode, look.dynamicColor)
-                DesktopFiles.writeTheme(paths.sessionTheme(session), palette, desktopTitlePx(app))
-            }
+            if (app.desktop) writeDesktopTheme(app, session, look, imported)
         }.onFailure { Log.w(TAG, "couldn't write the theme for ${session.id}", it) }
+    }
+
+    private fun writeDesktopTheme(app: PermissionManifest, session: Session, look: Appearance, imported: LinuxTheme?) {
+        val palette = imported?.let(Palette::from) ?: Palette.current(context, look.colorMode, look.dynamicColor)
+        DesktopFiles.writeTheme(paths.sessionTheme(session), palette, desktopTitlePx(app))
+    }
+
+    /**
+     * Redraws a running desktop's window theme for its scale as it is now, so title bars and
+     * their buttons stay the same size on the phone whatever size Scale makes everything else.
+     */
+    fun rescaleDesktop(sessionId: String) {
+        val running = byId(sessionId)?.takeIf { it.running && it.app.desktop && it.session.theme } ?: return
+        val look = appearance?.forApp(running.app.id) ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val imported = look.linuxTheme?.let { linuxThemes?.pick(it, Palette.isDark(context, look.colorMode)) }
+                writeDesktopTheme(running.app, running.session, look, imported)
+            }.onFailure { Log.w(TAG, "couldn't rescale the desktop ${running.session.id}", it) }
+        }
     }
 
     /**
