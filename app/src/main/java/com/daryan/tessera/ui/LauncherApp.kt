@@ -296,7 +296,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = topBar@{
             if (destination == Destination.Files) {
-                Column(Modifier.hazeBlur(HazeInput.Sources(hazeState), glass)) {
+                Column(Modifier.hazeBlur(HazeInput.Sources(hazeState), glass, performanceMode = BLUR_MODE)) {
                     FilesTopBar(
                         b = vm.files,
                         ui = filesUi,
@@ -315,7 +315,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 }
                 return@topBar
             }
-            Column(Modifier.hazeBlur(HazeInput.Sources(hazeState), glass)) {
+            Column(Modifier.hazeBlur(HazeInput.Sources(hazeState), glass, performanceMode = BLUR_MODE)) {
                 val title = @Composable { Text(destination.title) }
                 val subtitle = @Composable {
                     Text(

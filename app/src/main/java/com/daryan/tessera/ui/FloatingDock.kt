@@ -36,9 +36,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazePerformanceMode
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.hazeBlur
+
+/**
+ * How the frosted bars blur what scrolls under them: from a downscaled copy, which a blur hides.
+ * At full resolution the blur cost 2 to 5 ms a frame on an Adreno 740, most of a 120 Hz frame's
+ * 8 ms, and scrolling the Store missed frames because of it.
+ */
+internal val BLUR_MODE = HazePerformanceMode.Performance
 
 /**
  * Google Photos-style navigation: a frosted pill floating over the content. The selected
@@ -65,7 +73,7 @@ fun FloatingDock(
             modifier = Modifier
                 .shadow(16.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.4f))
                 .clip(CircleShape)
-                .hazeBlur(HazeInput.Sources(hazeState), glass)
+                .hazeBlur(HazeInput.Sources(hazeState), glass, performanceMode = BLUR_MODE)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), CircleShape)
                 .padding(6.dp)
                 .selectableGroup(),

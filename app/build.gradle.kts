@@ -64,6 +64,13 @@ android {
             // signature, data kept), and isn't debuggable, which makes Compose much smoother.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
+        // A release build with the debug key, for trying performance on a phone that has a debug
+        // build installed: it installs over it (data kept) and isn't debuggable, like a release.
+        create("profile") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     compileOptions {
