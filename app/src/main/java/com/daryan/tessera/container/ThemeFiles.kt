@@ -52,19 +52,33 @@ object ThemeFiles {
         val themes = File(dir, "share/themes")
         val existing = themes.list().orEmpty().mapNotNull { it.removePrefix(THEME_PREFIX).toIntOrNull() }
         val generation = (existing.maxOrNull() ?: 0) + 1
-        files(palette, generation, pack).forEach { (path, text) ->
-            val file = File(dir, path)
-            file.parentFile?.mkdirs()
-            // Whole files only: the daemon or GTK may read at any moment.
-            val tmp = File(file.path + ".tmp")
-            tmp.writeText(text)
-            if (!tmp.renameTo(file)) {
-                file.delete()
-                tmp.renameTo(file)
-            }
-        }
+        files(palette, generation, pack).forEach { (path, text) -> writeWhole(File(dir, path), text) }
         existing.filter { it < generation - 1 }.forEach { File(themes, "$THEME_PREFIX$it").deleteRecursively() }
         return generation
+    }
+
+    /**
+     * Writes the session's settings for an imported Linux theme ([LinuxThemes]): the theme itself,
+     * copied in (GTK looks for it by name in the directory's share/themes), named in xsettingsd's
+     * settings, and light or dark with its accent for the portal, from [palette] (its colors).
+     */
+    fun writeImported(dir: File, theme: LinuxTheme, folder: File, palette: Palette) {
+        dir.mkdirs()
+        val target = File(dir, "share/themes/${theme.id}")
+        if (!target.isDirectory) folder.copyRecursively(target, overwrite = true)
+        writeWhole(File(dir, XSETTINGS_FILE), xsettings(theme.id))
+        writeWhole(File(dir, PORTAL_FILE), portal(palette))
+    }
+
+    /** Whole files only: the daemon or GTK may read at any moment. */
+    private fun writeWhole(file: File, text: String) {
+        file.parentFile?.mkdirs()
+        val tmp = File(file.path + ".tmp")
+        tmp.writeText(text)
+        if (!tmp.renameTo(file)) {
+            file.delete()
+            tmp.renameTo(file)
+        }
     }
 
     private fun gtk3(p: Palette, pack: Boolean): String = buildString {

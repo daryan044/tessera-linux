@@ -74,6 +74,8 @@ class SessionManager(
     private val diagnostics: Diagnostics? = null,
     /** How Linux apps look; null leaves them unthemed. */
     private val appearance: AppearanceSettings? = null,
+    /** Imported Linux themes, one of which [appearance] may name. */
+    private val linuxThemes: LinuxThemes? = null,
 ) {
     private val nextId = AtomicInteger(1)
     private val _sessions = MutableStateFlow<List<RunningSession>>(emptyList())
@@ -314,8 +316,15 @@ class SessionManager(
         // In chroot mode the pack's presence is only known through su, as refresh() left it.
         val pack = if (backend == ChrootBackend.NAME) ThemePack.bundle.installedAsRoot(context)
             else ThemePack.bundle.installed(context, paths.prootRootfs)
-        runCatching { ThemeFiles.write(paths.sessionTheme(session), Palette.current(context, look.colorMode, look.dynamicColor), pack) }
-            .onFailure { Log.w(TAG, "couldn't write the theme for ${session.id}", it) }
+        runCatching {
+            // An imported theme (its light or dark variant), else the phone's own colors.
+            val imported = look.linuxTheme?.let { linuxThemes?.pick(it, Palette.isDark(context, look.colorMode)) }
+            if (imported != null) {
+                ThemeFiles.writeImported(paths.sessionTheme(session), imported, linuxThemes!!.folder(imported), Palette.from(imported))
+            } else {
+                ThemeFiles.write(paths.sessionTheme(session), Palette.current(context, look.colorMode, look.dynamicColor), pack)
+            }
+        }.onFailure { Log.w(TAG, "couldn't write the theme for ${session.id}", it) }
     }
 
     /**

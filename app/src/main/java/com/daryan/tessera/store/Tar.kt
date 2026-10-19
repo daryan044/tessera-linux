@@ -50,17 +50,34 @@ object Tar {
         val root = dest.canonicalFile
         val header = ByteArray(BLOCK)
         var count = 0
+        // A GNU long name ('L') or pax path ('x') names the entry after it.
+        var longName: String? = null
+        var longLink: String? = null
         while (true) {
             if (!readFully(input, header)) break
             if (header.all { it == 0.toByte() }) break
-            val name = field(header, 345, 155).let { prefix ->
-                val base = field(header, 0, 100)
-                if (prefix.isEmpty()) base else "$prefix/$base"
-            }.trimEnd('/')
             val mode = field(header, 100, 8).trim().ifEmpty { "0" }.toInt(8)
             val size = field(header, 124, 12).trim().ifEmpty { "0" }.toLong(8)
             val type = header[156].toInt().toChar()
             val padded = (size + BLOCK - 1) / BLOCK * BLOCK
+            if (type == 'L' || type == 'K' || type == 'x') {
+                val data = java.io.ByteArrayOutputStream().also { copyExactly(input, it, size) }.toByteArray()
+                skipExactly(input, padded - size)
+                val text = String(data, Charsets.UTF_8)
+                when (type) {
+                    'L' -> longName = text.trimEnd('\u0000')
+                    'K' -> longLink = text.trimEnd('\u0000')
+                    else -> paxField(text, "path")?.let { longName = it }.also { paxField(text, "linkpath")?.let { longLink = it } }
+                }
+                continue
+            }
+            val name = (longName ?: field(header, 345, 155).let { prefix ->
+                val base = field(header, 0, 100)
+                if (prefix.isEmpty()) base else "$prefix/$base"
+            }).trimEnd('/')
+            val linkName = longLink ?: field(header, 157, 100)
+            longName = null
+            longLink = null
             val target = File(root, name)
             if (name.isEmpty() || name.split('/').any { it == ".." } || !target.canonicalPath.startsWith(root.path + File.separator)) {
                 skipExactly(input, padded)
@@ -80,7 +97,7 @@ object Tar {
                 '2' -> {
                     target.parentFile?.mkdirs()
                     target.delete()
-                    symlink(field(header, 157, 100), target)
+                    symlink(linkName, target)
                 }
                 else -> {}
             }
@@ -89,6 +106,12 @@ object Tar {
         }
         return count
     }
+
+    /** The value of [key] in a pax header's "<length> key=value" records, one per line. */
+    private fun paxField(text: String, key: String): String? =
+        text.lineSequence().firstNotNullOfOrNull { line ->
+            line.substringAfter(' ', "").takeIf { it.startsWith("$key=") }?.removePrefix("$key=")
+        }
 
     private fun field(h: ByteArray, off: Int, len: Int): String {
         var end = off

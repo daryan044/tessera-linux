@@ -73,6 +73,33 @@ data class Palette(
             onError = s.onError.rgb(),
         )
 
+        /** An imported Linux theme's colors as a palette (its light or dark from its background). */
+        fun from(theme: LinuxTheme) = theme.colors.let { c ->
+            Palette(
+                dark = theme.dark,
+                accent = c.accent,
+                onAccent = c.onAccent,
+                window = c.background,
+                onWindow = c.foreground,
+                view = c.view,
+                headerbar = c.headerbar,
+                sidebar = c.background,
+                card = c.view,
+                popover = c.background,
+                border = GtkThemeReader.mix(c.foreground, c.background, 0.8),
+                error = 0xE01B24,
+                onError = 0xFFFFFF,
+            )
+        }
+
+        /** Whether Android is in dark mode now, or [mode] says which. */
+        fun isDark(context: Context, mode: ColorMode) = when (mode) {
+            ColorMode.DARK -> true
+            ColorMode.LIGHT -> false
+            ColorMode.SYSTEM -> (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
+        }
+
         private fun Color.rgb() = toArgb() and 0xFFFFFF
 
         // Android < 12 has no wallpaper colors: the launcher's own fallback blue.

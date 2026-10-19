@@ -12,6 +12,10 @@ import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,6 +56,7 @@ import com.daryan.tessera.CustomTab
 import com.daryan.tessera.container.Appearance
 import com.daryan.tessera.container.ColorMode
 import com.daryan.tessera.container.ConfigCatalog
+import com.daryan.tessera.container.LinuxTheme
 import com.daryan.tessera.container.ConfigFile
 import com.daryan.tessera.container.HostStatus
 import com.daryan.tessera.container.InstallState
@@ -76,6 +81,10 @@ fun SettingsScreen(
     onGpuEnabled: (Boolean) -> Unit,
     appearance: Appearance,
     onAppearance: (Appearance) -> Unit,
+    /** Imported Linux themes, and importing or removing one. */
+    linuxThemes: List<LinuxTheme>,
+    onImportTheme: () -> Unit,
+    onDeleteTheme: (String) -> Unit,
     runningSessions: Int,
     onStopAll: () -> Unit,
     onAbout: () -> Unit,
@@ -150,10 +159,13 @@ fun SettingsScreen(
                                 selected = appearance.colorMode == mode,
                                 onClick = { onAppearance(appearance.copy(colorMode = mode)) },
                                 shape = SegmentedButtonDefaults.itemShape(i, ColorMode.entries.size),
-                            ) { Text(mode.label) }
+                                // One line whatever the width: with its check mark, a long label
+                                // wrapped and pushed the row out of shape.
+                            ) { Text(mode.label, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
                         }
                     }
-                    if (Build.VERSION.SDK_INT >= 31) {
+                    ThemePicker(appearance, linuxThemes, onAppearance, onImportTheme, onDeleteTheme)
+                    if (Build.VERSION.SDK_INT >= 31 && appearance.linuxTheme == null) {
                         Row(
                             LauncherIcons.Palette, "Wallpaper colors",
                             if (appearance.dynamicColor) "Accents and surfaces from your wallpaper, like Android's own apps" else "A fixed blue palette",
@@ -176,6 +188,83 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+/**
+ * Which theme Linux apps (and Tessera) wear: the phone's own colors, or an imported Linux theme,
+ * each shown with its colors. Import adds themes from an archive; a theme's light and dark
+ * variants count as one, and System, Light or Dark above picks between them.
+ */
+@Composable
+private fun ThemePicker(
+    appearance: Appearance,
+    themes: List<LinuxTheme>,
+    onAppearance: (Appearance) -> Unit,
+    onImport: () -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    val families = themes.groupBy { it.family }
+    Text(
+        "Theme",
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+    )
+    ThemeChoice(
+        title = "Phone colors",
+        detail = "Material You, from your wallpaper",
+        selected = appearance.linuxTheme == null,
+        swatches = listOf(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onSurface),
+        onClick = { onAppearance(appearance.copy(linuxTheme = null)) },
+    )
+    families.forEach { (family, variants) ->
+        val shown = variants.first()
+        ThemeChoice(
+            title = family,
+            detail = when {
+                variants.any { it.dark } && variants.any { !it.dark } -> "Light and dark"
+                shown.dark -> "Dark"
+                else -> "Light"
+            } + (shown.radius?.let { " · ${if (it == 0) "square" else "${it}px"} corners" } ?: ""),
+            selected = appearance.linuxTheme == family,
+            swatches = listOf(shown.colors.background, shown.colors.accent, shown.colors.foreground).map { Color(0xFF000000.toInt() or it) },
+            onClick = { onAppearance(appearance.copy(enabled = true, linuxTheme = family)) },
+            onDelete = { onDelete(family) },
+        )
+    }
+    Row(
+        Icons.Rounded.Add, "Import a Linux theme",
+        "A GTK theme as shared online (.tar.xz, .tar.gz or .zip). Linux apps use it as it is; Tessera takes its colors and corners",
+        onClick = onImport,
+    )
+}
+
+@Composable
+private fun ThemeChoice(
+    title: String,
+    detail: String,
+    selected: Boolean,
+    swatches: List<Color>,
+    onClick: () -> Unit,
+    onDelete: (() -> Unit)? = null,
+) {
+    ListItem(
+        onClick = onClick,
+        leadingContent = { androidx.compose.material3.RadioButton(selected = selected, onClick = null) },
+        supportingContent = { Text(detail) },
+        trailingContent = {
+            androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                swatches.forEach { c ->
+                    androidx.compose.foundation.layout.Box(
+                        Modifier.padding(start = 4.dp).size(18.dp).clip(androidx.compose.foundation.shape.CircleShape).background(c)
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, androidx.compose.foundation.shape.CircleShape),
+                    )
+                }
+                if (onDelete != null) IconButton(onClick = onDelete) { Icon(Icons.Rounded.Delete, "Remove theme") }
+            }
+        },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+    ) { Text(title) }
 }
 
 @Composable

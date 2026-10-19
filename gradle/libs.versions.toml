@@ -11,6 +11,7 @@ coreKtx = "1.19.1"
 appcompat = "1.7.1"
 lifecycle = "2.11.0"
 serialization = "1.11.0"
+xz = "1.10"
 haze = "2.0.1"
 termux = "v0.118.3"
 junit = "4.13.2"
@@ -30,6 +31,7 @@ compose-material-icons-core = { module = "androidx.compose.material:material-ico
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
 haze-blur-materials = { module = "dev.chrisbanes.haze:haze-blur-materials", version.ref = "haze" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+xz = { module = "org.tukaani:xz", version.ref = "xz" }
 termux-terminal-view = { module = "com.github.termux.termux-app:terminal-view", version.ref = "termux" }
 termux-terminal-emulator = { module = "com.github.termux.termux-app:terminal-emulator", version.ref = "termux" }
 junit = { module = "junit:junit", version.ref = "junit" }

@@ -141,7 +141,9 @@ class LauncherContainer(private val app: Application) {
     }
     /** How Linux apps look: themed with the phone's colors, and which apps are left out. */
     val appearance = com.daryan.tessera.container.AppearanceSettings(java.io.File(app.filesDir, "appearance.json"))
-    val sessions = SessionManager(app, scope, paths, diagnostics, appearance)
+    /** Linux themes the user imported (Settings, Appearance). */
+    val linuxThemes = com.daryan.tessera.container.LinuxThemes(java.io.File(app.filesDir, "themes"))
+    val sessions = SessionManager(app, scope, paths, diagnostics, appearance, linuxThemes)
     val catalog = StoreCatalog(java.io.File(app.filesDir, "store"), scope)
     /** Flathub's catalog, for the Store tab's Flathub side (once Flathub is set up). */
     val flathub = com.daryan.tessera.store.FlathubCatalog(java.io.File(app.filesDir, "store"), scope)

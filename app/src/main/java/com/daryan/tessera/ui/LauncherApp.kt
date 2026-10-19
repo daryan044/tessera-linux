@@ -157,6 +157,11 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     // Apps granted shared-storage folders need Android's storage permission first. Launch
     // either way: if it's denied, the folder is simply empty inside the container.
     var pendingLaunch by remember { mutableStateOf<PermissionManifest?>(null) }
+    val linuxThemes by vm.linuxThemes.collectAsStateWithLifecycle()
+    // Any file: theme archives come as .tar.xz, .tar.gz or .zip, with types phones rarely know.
+    val themePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(vm::importTheme)
+    }
     val storageRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         pendingLaunch?.let(launchApp)
         pendingLaunch = null
@@ -532,6 +537,9 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onGpuEnabled = vm::setGpuEnabled,
             appearance = appearance,
             onAppearance = vm::setAppearance,
+            linuxThemes = linuxThemes,
+            onImportTheme = { themePicker.launch(arrayOf("*/*")) },
+            onDeleteTheme = vm::deleteTheme,
             runningSessions = running,
             onStopAll = vm.sessions::stopAll,
             onAbout = { showAbout = true },

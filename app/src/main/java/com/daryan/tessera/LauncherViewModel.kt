@@ -316,6 +316,38 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         sessions.refreshThemes()
     }
 
+    /** Linux themes the user imported. */
+    val linuxThemes = container.linuxThemes.themes
+
+    /**
+     * Imports the Linux themes in the archive at [uri] and switches to the first, so Linux apps
+     * and Tessera take it at once. Says what happened either way.
+     */
+    fun importTheme(uri: android.net.Uri) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    getApplication<Application>().contentResolver.openInputStream(uri)?.use { container.linuxThemes.import(it) }
+                        ?: error("Couldn't open that file")
+                }
+            }
+            result.onSuccess { imported ->
+                val families = imported.map { it.family }.distinct()
+                setAppearance(container.appearance.global.value.copy(enabled = true, linuxTheme = families.first()))
+                _messages.send("Imported ${families.joinToString()}" + if (imported.size > families.size) " (light and dark)" else "")
+            }.onFailure { _messages.send("Couldn't import: ${it.message}") }
+        }
+    }
+
+    /** Removes an imported theme; back to the phone's colors if it was in use. */
+    fun deleteTheme(family: String) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { container.linuxThemes.delete(family) }
+            val look = container.appearance.global.value
+            if (look.linuxTheme == family) setAppearance(look.copy(linuxTheme = null))
+        }
+    }
+
     /** Apps the user left out of theming. */
     val unthemed = container.appearance.unthemed
 
