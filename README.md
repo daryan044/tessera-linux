@@ -71,6 +71,35 @@ cast Linux apps to a TV.
 </tr>
 </table>
 
+## Screenshots
+
+<table>
+<tr>
+<td align="center" width="25%"><img src="docs/screenshots/apps.png" width="200" alt="Your Linux apps, as a launcher"><br><sub>Your Linux apps, as a launcher</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/store-flathub.png" width="200" alt="Debian or Flathub, one switch"><br><sub>Debian or Flathub, one switch</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/store-app.png" width="200" alt="Flathub apps, one tap to install"><br><sub>Flathub apps, one tap to install</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/panel.png" width="200" alt="The window panel over LibreOffice"><br><sub>The window panel over LibreOffice</sub></td>
+</tr>
+<tr>
+<td align="center" width="25%"><img src="docs/screenshots/scale.png" width="200" alt="Live scaling, kept per app"><br><sub>Live scaling, kept per app</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/tasks.png" width="200" alt="Task manager and Sessions"><br><sub>Task manager and Sessions</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/files.png" width="200" alt="Files: Android and Linux"><br><sub>Files: Android and Linux</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/setup.png" width="200" alt="Setup: PRoot or chroot"><br><sub>Setup: PRoot or chroot</sub></td>
+</tr>
+</table>
+
+**Your phone's theme, on Linux apps.** The same apps in dark mode, before and after Tessera's
+theming (GTK 3's Nemo and LibreOffice Impress):
+
+<table>
+<tr>
+<td align="center" width="25%"><img src="docs/look/before/nemo-dark.png" width="200" alt="Nemo, before"><br><sub>Nemo, before</sub></td>
+<td align="center" width="25%"><img src="docs/look/after/nemo-dark.png" width="200" alt="Nemo, themed"><br><sub>Nemo, themed</sub></td>
+<td align="center" width="25%"><img src="docs/look/before/libreoffice-impress-dark.png" width="200" alt="Impress, before"><br><sub>Impress, before</sub></td>
+<td align="center" width="25%"><img src="docs/look/after/libreoffice-impress-dark.png" width="200" alt="Impress, themed"><br><sub>Impress, themed</sub></td>
+</tr>
+</table>
+
 ## Why Tessera
 
 Running Linux on a phone has always meant a terminal app, a pile of commands from a forum post,
