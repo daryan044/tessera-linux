@@ -46,14 +46,18 @@ data class XWindows(
 class SessionFiles(
     private val dir: File,
     private val onFocus: (Boolean) -> Unit,
+    /** Taps and menus on a desktop's icons ([DesktopFiles.Events]); desktops only. */
+    private val onDesktop: ((DesktopEvent) -> Unit)? = null,
     private val onWindows: (XWindows) -> Unit,
 ) : FileObserver(dir.path, CREATE or MODIFY or MOVED_TO or CLOSE_WRITE) {
     private val focus = FocusReports(dir)
+    private val desktop = DesktopFiles.Events(dir)
 
     override fun onEvent(event: Int, path: String?) {
         when (path) {
             WINDOWS_FILE_NAME -> if (event and (MOVED_TO or CLOSE_WRITE) != 0) read()?.let(onWindows)
             FOCUS_FILE_NAME -> if (event and (CREATE or MODIFY) != 0) focus.poll()?.let(onFocus)
+            DESKTOP_EVENTS_NAME -> if (event and (CREATE or MODIFY) != 0) onDesktop?.let { desktop.poll().forEach(it) }
         }
     }
 

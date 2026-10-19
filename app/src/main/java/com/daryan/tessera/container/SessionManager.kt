@@ -95,6 +95,10 @@ class SessionManager(
     private val _focusChanges = kotlinx.coroutines.flow.MutableSharedFlow<Pair<String, Boolean>>(extraBufferCapacity = 16)
     /** (session id, whether a text field now has focus), from each GUI session's focus watcher. */
     val focusChanges: kotlinx.coroutines.flow.SharedFlow<Pair<String, Boolean>> = _focusChanges
+    private val _desktopEvents = kotlinx.coroutines.flow.MutableSharedFlow<Pair<String, DesktopEvent>>(extraBufferCapacity = 16)
+    /** (session id, a tap or a menu request on a desktop icon), from each desktop's helper. */
+    val desktopEvents: kotlinx.coroutines.flow.SharedFlow<Pair<String, DesktopEvent>> = _desktopEvents
+
     /** Per GUI session, the X windows that have an Android task of their own. */
     private val windowTasks = ConcurrentHashMap<String, MutableSet<Long>>()
 
@@ -183,6 +187,7 @@ class SessionManager(
         val spec = backend.buildLaunch(if (session.flatpak) app.copy(exec = listOf("/bin/sh", "-c", FLATPAK_HOLD)) else app, session)
 
         if (app.desktop) desktopBackends[session.id] = backend
+        if (backend is ChrootBackend) rootKill[session.id] = backend.su
         val running = if (app.gui) launchGui(app, backend, session, spec) else launchTerminal(app, backend, session, spec)
         _sessions.update { it + running }
         return running
@@ -240,7 +245,7 @@ class SessionManager(
                 windowTasks.remove(session.id)
                 audio?.stop()
                 // The app is gone; its session's detached daemons go with it.
-                ProcessTree.killSession(session.id)
+                killDetached(session.id, done = true)
                 servers.remove(session.id)?.destroy()
                 usbDevices.remove(session.id)?.close()
                 withContext(Dispatchers.Main + NonCancellable) { x11.closeWindow(session) }
@@ -397,7 +402,7 @@ class SessionManager(
             else -> servers.remove(id)?.destroy()
         }
         // And what detached from the tree on the way (D-Bus and accessibility-bus daemons).
-        ProcessTree.killSession(id)
+        killDetached(id, done = false)
     }
 
     fun stopAll() = _sessions.value.filter { it.running }.forEach { stop(it.session.id) }
@@ -416,7 +421,11 @@ class SessionManager(
      */
     private fun followWindows(session: Session, ownTasks: Boolean) {
         val tasks = windowTasks.getOrPut(session.id) { java.util.Collections.synchronizedSet(mutableSetOf()) }
-        val reports = SessionFiles(paths.x11SocketDir(session), onFocus = { _focusChanges.tryEmit(session.id to it) }) { windows ->
+        val reports = SessionFiles(
+            paths.x11SocketDir(session),
+            onFocus = { _focusChanges.tryEmit(session.id to it) },
+            onDesktop = if (ownTasks) null else ({ _desktopEvents.tryEmit(session.id to it) }),
+        ) { windows ->
             update(session.id) { it.copy(windows = windows) }
             if (!ownTasks) return@SessionFiles
             val primary = primaryWindow(windows, tasks)
@@ -463,6 +472,16 @@ class SessionManager(
 
     fun snapWindow(sessionId: String, windowId: Long, left: Boolean) {
         windowReports[sessionId]?.snap(windowId, left)
+    }
+
+    /** Chroot sessions' su, to end their processes with: the app can't see them itself. */
+    private val rootKill = ConcurrentHashMap<String, String>()
+
+    /** What detached from a session's tree on the way (D-Bus and accessibility-bus daemons). */
+    private fun killDetached(id: String, done: Boolean) {
+        ProcessTree.killSession(id)
+        val su = if (done) rootKill.remove(id) else rootKill[id]
+        su?.let { scope.launch(Dispatchers.IO) { ProcessTree.killSessionAsRoot(it, id) } }
     }
 
     /** Each running desktop's backend, for the Flathub apps opened in it. */
@@ -532,7 +551,7 @@ class SessionManager(
                 val transcript = finishedSession.emulator?.screen?.transcriptText.orEmpty()
                 diagnostics?.recordSession(s.app, s.session, s.backend, s.exitCode, transcript.trim())
             }
-            ProcessTree.killSession(id)
+            killDetached(id, done = true)
             usbDevices.remove(id)?.close()
         }
 

@@ -19,11 +19,32 @@ import java.io.File
 const val DESKTOP_COMMANDS_NAME = "launcher-desktop"
 /** What is on the desktop (~/Desktop), as [DESKTOP_HELPER] lists it. */
 const val DESKTOP_ITEMS_NAME = "launcher-desktop-items"
+/** Taps and menus on the desktop's icons, one per line, as [DESKTOP_HELPER] reports them. */
+const val DESKTOP_EVENTS_NAME = "launcher-desktop-events"
+
+/** A tap ([menu] false) or a long press or right click on the desktop icon at [path]; [x], [y] in X pixels. */
+data class DesktopEvent(val path: String, val menu: Boolean, val x: Int = 0, val y: Int = 0)
+
+internal fun parseEvent(line: String): DesktopEvent? = runCatching {
+    val (kind, arg) = line.split(" ", limit = 2).takeIf { it.size == 2 } ?: return null
+    when (kind) {
+        "open" -> DesktopEvent(Json.decodeFromString(JsonPrimitive.serializer(), arg).content, menu = false)
+        "menu" -> {
+            val o = Json.decodeFromString(JsonObject.serializer(), arg)
+            DesktopEvent(
+                (o["path"] as JsonPrimitive).content, menu = true,
+                x = (o["x"] as JsonPrimitive).content.toInt(), y = (o["y"] as JsonPrimitive).content.toInt(),
+            )
+        }
+        else -> null
+    }
+}.getOrNull()
 
 /** A file, folder or app shortcut on the desktop; [app] is a shortcut's launcher app id. */
 @Serializable
 data class DesktopItem(val name: String, val path: String, val kind: String, val app: String = "") {
     val isShortcut get() = kind == "app"
+    val isLink get() = kind == "link"
     val isFolder get() = kind == "dir"
 }
 private const val WALLPAPER_NAME = "desktop-wallpaper.raw"
@@ -77,19 +98,41 @@ class DesktopFiles(private val dir: File) {
     fun reserve(left: Boolean, px: Int): Boolean = send("strut ${if (left) "left" else "bottom"} $px")
 
     /**
-     * Shows [picture] behind the windows, cropped to fill a [width] × [height] X screen. Run off
-     * the main thread: it writes the whole screen's pixels.
+     * Shows [picture] behind the windows, cropped to fill a [width] × [height] X screen, with
+     * [icons] (the desktop's icons, drawn at the screen's proportions) over it, and tells the
+     * helper where each icon is, in X pixels, by its path. Run off the main thread: it writes
+     * the whole screen's pixels.
      */
-    fun wallpaper(picture: Bitmap, width: Int, height: Int): Boolean {
+    fun wallpaper(
+        picture: Bitmap,
+        width: Int,
+        height: Int,
+        icons: Bitmap? = null,
+        places: Map<String, android.graphics.Rect> = emptyMap(),
+    ): Boolean {
         // Not the whole screen's pixels for nobody: the helper may not be up yet.
         if (width <= 0 || height <= 0 || !File(dir, DESKTOP_COMMANDS_NAME).exists()) return false
         val scale = maxOf(width.toFloat() / picture.width, height.toFloat() / picture.height)
         val fitted = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         Canvas(fitted).apply {
+            save()
             translate((width - picture.width * scale) / 2, (height - picture.height * scale) / 2)
             scale(scale, scale)
             drawBitmap(picture, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
+            restore()
+            icons?.let { drawBitmap(it, null, android.graphics.Rect(0, 0, width, height), Paint(Paint.FILTER_BITMAP_FLAG)) }
         }
+        val spots = JsonArray(
+            places.map { (path, r) ->
+                JsonObject(
+                    mapOf(
+                        "path" to JsonPrimitive(path), "x" to JsonPrimitive(r.left), "y" to JsonPrimitive(r.top),
+                        "w" to JsonPrimitive(r.width()), "h" to JsonPrimitive(r.height()),
+                    ),
+                )
+            },
+        )
+        send("icons " + Json.encodeToString(JsonArray.serializer(), spots))
         // The X server's 24-bit pixels, as XPutImage takes them: B, G, R, unused.
         val pixels = IntArray(width * height)
         fitted.getPixels(pixels, 0, width, 0, 0, width, height)
@@ -109,6 +152,23 @@ class DesktopFiles(private val dir: File) {
     }
 
     private fun send(line: String) = sendLine(File(dir, DESKTOP_COMMANDS_NAME), line)
+
+    /** Reads what the helper reported since last asked: taps and menu requests on the icons. */
+    class Events(private val dir: File) {
+        private var read = 0L
+
+        fun poll(): List<DesktopEvent> {
+            val file = File(dir, DESKTOP_EVENTS_NAME)
+            if (!file.isFile || file.length() <= read) return emptyList()
+            val text = runCatching {
+                java.io.RandomAccessFile(file, "r").use { f ->
+                    f.seek(read)
+                    ByteArray((f.length() - read).toInt()).also { f.readFully(it); read = f.length() }.decodeToString()
+                }
+            }.getOrNull() ?: return emptyList()
+            return text.lines().mapNotNull(::parseEvent)
+        }
+    }
 
     companion object {
         private val itemsJson = Json { ignoreUnknownKeys = true }
@@ -283,10 +343,15 @@ exit ${'$'}status
  * - "launch <JSON argv>" starts an app in the desktop, in a session of its own;
  * - "strut left|bottom <px>" keeps that much of the edge for the dock, as a dock window's strut,
  *   so maximized windows stop at it;
- * - "wallpaper <file> <width> <height>" shows the file's B, G, R, x pixels behind the windows;
+ * - "wallpaper <file> <width> <height>" shows the file's B, G, R, x pixels behind the windows,
+ *   on a window of the desktop type under every other (the launcher draws the icons into it);
+ * - "icons <JSON [{path, x, y, w, h}]>" says where those icons are: a tap on one is reported as
+ *   "open <JSON path>", a right click or a long press as "menu <JSON {path, x, y}>", one per
+ *   line appended to [DESKTOP_EVENTS_NAME];
  * - "open <JSON path>" opens a file or folder on the desktop with its app (a .desktop file runs);
  * - "shortcut <JSON {id, name, argv}>" puts an app on the desktop as a .desktop file;
  * - "remove <JSON path>" takes a shortcut off the desktop, or moves a file there to the trash;
+ * Files and web links dragged from Linux apps onto the desktop window (XDND) are copied there.
  * - "import <JSON {from, name}>" moves a file dropped from Android (copied into the X11
  *   directory's incoming folder first) onto the desktop, under a name not taken yet.
  * It keeps [DESKTOP_ITEMS_NAME] to what is in ~/Desktop (the XDG desktop folder), as JSON.
@@ -305,6 +370,7 @@ null = subprocess.DEVNULL
 
 try:
     from Xlib import X, Xatom, display
+    from Xlib.protocol import event
     d = display.Display()
     root = d.screen().root
     A = d.intern_atom
@@ -423,6 +489,25 @@ def strut(side, px):
     d.flush()
 
 paper = None
+desk = None
+def ensure_desk(w, h):
+    # The desktop itself: a window of the desktop type (xfwm4 keeps it under every other one,
+    # undecorated), showing the wallpaper with the icons drawn in, and hearing taps on them.
+    global desk
+    if desk is None:
+        desk = root.create_window(0, 0, w, h, 0, d.screen().root_depth, X.InputOutput, X.CopyFromParent,
+                                  event_mask=X.ButtonPressMask | X.ButtonReleaseMask)
+        desk.change_property(A("_NET_WM_WINDOW_TYPE"), Xatom.ATOM, 32, [A("_NET_WM_WINDOW_TYPE_DESKTOP")])
+        desk.change_property(A("_NET_WM_STATE"), Xatom.ATOM, 32,
+                             [A("_NET_WM_STATE_BELOW"), A("_NET_WM_STATE_SKIP_TASKBAR"), A("_NET_WM_STATE_SKIP_PAGER"), A("_NET_WM_STATE_STICKY")])
+        desk.set_wm_name("Desktop")
+        desk.set_wm_class("tessera-desktop", "Tessera-desktop")
+        # Takes drops from Linux apps (XDND version 5): files, links.
+        desk.change_property(A("XdndAware"), Xatom.ATOM, 32, [5])
+        desk.map()
+    else:
+        desk.configure(x=0, y=0, width=w, height=h)
+
 def wallpaper(path, w, h):
     global paper
     if d is None:
@@ -444,10 +529,121 @@ def wallpaper(path, w, h):
     root.change_property(A("_XROOTPMAP_ID"), Xatom.PIXMAP, 32, [pm.id])
     root.change_property(A("ESETROOT_PMAP_ID"), Xatom.PIXMAP, 32, [pm.id])
     root.clear_area()
+    ensure_desk(w, h)
+    desk.change_attributes(background_pixmap=pm)
+    desk.clear_area()
     if paper is not None:
         paper.free()
     paper = pm
     d.flush()
+
+# Where each icon is on the desktop, in X pixels, as the launcher drew them.
+icons = []
+events_path = os.path.join(xdir, "launcher-desktop-events")
+
+def emit(line):
+    # For the launcher, which opens what was tapped (Flathub apps need it) and shows menus.
+    with open(events_path, "a") as f:
+        f.write(line + "\n")
+    os.chmod(events_path, 0o644)
+
+def hit(x, y):
+    for i in icons:
+        if i["x"] <= x < i["x"] + i["w"] and i["y"] <= y < i["y"] + i["h"]:
+            return i["path"]
+    return None
+
+from urllib.parse import unquote, urlparse
+
+def unique(name):
+    base, ext = os.path.splitext(name)
+    dest, n = os.path.join(desktop_dir, name), 2
+    while os.path.exists(dest):
+        dest = os.path.join(desktop_dir, "%s (%d)%s" % (base, n, ext))
+        n += 1
+    return dest
+
+def take(uris):
+    # What was dropped from a Linux app: files are copied here, web links become links.
+    for uri in uris:
+        u = urlparse(uri)
+        if u.scheme == "file":
+            src = unquote(u.path)
+            if os.path.dirname(os.path.realpath(src)) == desktop_dir or not os.path.exists(src):
+                continue
+            dest = unique(os.path.basename(src.rstrip("/")) or "Dropped")
+            if os.path.isdir(src):
+                shutil.copytree(src, dest, symlinks=True)
+            else:
+                shutil.copy2(src, dest)
+        elif u.scheme in ("http", "https"):
+            name = (u.netloc + u.path).strip("/").replace("/", " ")[:60] or "Link"
+            path = unique(name + ".desktop")
+            with open(path, "w") as f:
+                f.write("[Desktop Entry]\nType=Link\nName=%s\nURL=%s\n" % (name, uri))
+
+drag = {}
+def xdnd(e):
+    kind = e.client_type
+    data = e.data[1]
+    if kind == A("XdndEnter"):
+        drag.clear()
+        drag["source"] = data[0]
+    elif kind == A("XdndPosition"):
+        reply(data[0], "XdndStatus", [desk.id, 1, 0, 0, A("XdndActionCopy")])
+    elif kind == A("XdndLeave"):
+        drag.clear()
+    elif kind == A("XdndDrop"):
+        drag["source"] = data[0]
+        desk.convert_selection(A("XdndSelection"), A("text/uri-list"), A("TESSERA_DROP"), data[2])
+
+def reply(window, kind, data):
+    target = d.create_resource_object("window", window)
+    target.send_event(event.ClientMessage(window=target, client_type=A(kind), data=(32, data)))
+    d.flush()
+
+def dropped(e):
+    source = drag.pop("source", None)
+    ok = 0
+    if e.property != X.NONE:
+        p = desk.get_full_property(A("TESSERA_DROP"), X.AnyPropertyType, sizehint=1 << 20)
+        if p is not None:
+            text = p.value.decode(errors="replace") if isinstance(p.value, bytes) else str(p.value)
+            uris = [l.strip() for l in text.splitlines() if l.strip() and not l.startswith("#")]
+            try:
+                take(uris)
+                ok = 1
+            except OSError as err:
+                print("desktop: couldn't take the drop: %s" % err, file=sys.stderr)
+    if source:
+        reply(source, "XdndFinished", [desk.id, ok, A("XdndActionCopy") if ok else 0, 0, 0])
+
+press = None
+def on_event(e):
+    global press
+    if desk is None or getattr(e, "window", None) is None or e.window.id != desk.id:
+        return
+    if e.type == X.ClientMessage:
+        return xdnd(e)
+    if e.type == X.SelectionNotify:
+        return dropped(e)
+    if e.type == X.ButtonPress and e.detail == 1:
+        press = (e.event_x, e.event_y, e.time)
+    elif e.type == X.ButtonPress and e.detail == 3:
+        # A right click, or Termux:X11's touch and hold: the icon's menu.
+        p = hit(e.event_x, e.event_y)
+        if p:
+            emit("menu " + json.dumps({"path": p, "x": e.event_x, "y": e.event_y}))
+    elif e.type == X.ButtonRelease and e.detail == 1 and press:
+        x0, y0, t0 = press
+        press = None
+        if abs(e.event_x - x0) > 24 or abs(e.event_y - y0) > 24:
+            return
+        p = hit(e.event_x, e.event_y)
+        if p and (e.time - t0) % 0x100000000 > 600:
+            emit("menu " + json.dumps({"path": p, "x": e.event_x, "y": e.event_y}))
+        elif p:
+            emit("open " + json.dumps(p))
 
 def launch(argv):
     try:
@@ -498,10 +694,11 @@ def publish_desktop():
         p = os.path.join(desktop_dir, n)
         if n.endswith(".desktop"):
             e = entry(p)
-            items.append({"name": e.get("Name", n[:-8]), "path": p, "kind": "app", "app": e.get("X-Tessera-Id", "")})
+            kind = "link" if e.get("Type") == "Link" else "app"
+            items.append({"name": e.get("Name", n[:-8]), "path": p, "kind": kind, "app": e.get("X-Tessera-Id", "")})
         else:
             items.append({"name": n, "path": p, "kind": "dir" if os.path.isdir(p) else "file"})
-    order = {"app": 0, "dir": 1, "file": 2}
+    order = {"app": 0, "link": 1, "dir": 2, "file": 3}
     items.sort(key=lambda i: (order[i["kind"]], i["name"].lower()))
     text = json.dumps(items)
     if text == listed:
@@ -518,7 +715,9 @@ FIELD = re.compile(r"%[fFuUdDnNickvm]")
 def open_item(path):
     if path.endswith(".desktop"):
         e = entry(path)
-        if e.get("Exec"):
+        if e.get("Type") == "Link" and e.get("URL"):
+            path = e["URL"]
+        elif e.get("Exec"):
             argv = [a for a in shlex.split(FIELD.sub("", e["Exec"])) if a]
             if e.get("Terminal", "false").lower() == "true":
                 argv = ["x-terminal-emulator", "-e"] + argv
@@ -581,6 +780,8 @@ def run(line):
     elif parts[0] == "wallpaper" and len(parts) == 2:
         path, w, h = parts[1].split()
         wallpaper(path, int(w), int(h))
+    elif parts[0] == "icons" and len(parts) == 2:
+        icons[:] = [i for i in json.loads(parts[1]) if isinstance(i, dict)]
 
 if not os.path.exists(cmd_path):
     os.mkfifo(cmd_path)
@@ -612,5 +813,5 @@ while True:
         except Exception as e:
             print("desktop: %s" % e, file=sys.stderr)
     while d is not None and d.pending_events():
-        d.next_event()
+        on_event(d.next_event())
 """

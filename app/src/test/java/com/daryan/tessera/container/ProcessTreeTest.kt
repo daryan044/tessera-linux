@@ -47,4 +47,12 @@ class ProcessTreeTest {
         )
         assertEquals(setOf(500, 501), ProcessTree.leftovers(100, 10484, p).toSet())
     }
+
+    @Test fun `the root kill script finds a session's processes by their marker`() {
+        val one = ProcessTree.rootKillScript("s3")
+        assertTrue("grep -q '^LAUNCHER_SESSION=s3\$'" in one)
+        assertTrue("tr '\\0' '\\n' < \$e" in one)
+        assertTrue("grep -q '^LAUNCHER_SESSION='" in ProcessTree.rootKillScript(null))
+        java.io.File(System.getProperty("java.io.tmpdir"), "tessera-rootkill.sh").writeText(one)
+    }
 }
