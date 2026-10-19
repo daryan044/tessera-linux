@@ -344,9 +344,9 @@ class X11Window : MainActivity.MainActivityTagged() {
             private val desktop get() = id?.let { container.sessions.desktop(it) }
             private val prefs = getSharedPreferences(DESKTOP_PREFS, MODE_PRIVATE)
 
-            // A new desktop's dock starts with a terminal and the browser, where installed.
+            // A new desktop's dock starts empty: apps join it as they open, and stay when pinned.
             override val pins = MutableStateFlow(
-                prefs.getString(KEY_PINS, null)?.split('\n')?.filter { it.isNotEmpty() } ?: listOf("xterm", "firefox-esr"),
+                prefs.getString(KEY_PINS, null)?.split('\n')?.filter { it.isNotEmpty() }.orEmpty(),
             )
 
             override fun setPinned(appId: String, pinned: Boolean) {
@@ -405,6 +405,10 @@ class X11Window : MainActivity.MainActivityTagged() {
             }
 
             override fun toggleKeyboard() = actions.toggleKeyboard()
+            override fun keepFullscreen() = desktopFullscreen()
+            override fun returnFocus() {
+                if (cast == null) lorieView.requestFocus()
+            }
             override fun end() = actions.close(id)
         }
     }

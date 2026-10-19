@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 
 // Copyright (C) 2026 Daryan Kamaran Karim
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -32,6 +32,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowColumn
+import androidx.compose.foundation.layout.areSystemBarsVisible
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -108,6 +111,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -159,6 +163,13 @@ interface DesktopActions {
     /** Copies files dropped from another Android app onto the desktop; how many made it. */
     suspend fun importDropped(uris: List<Uri>): Int
     fun toggleKeyboard()
+    /** Hides the phone's bars again, after something brought them back. */
+    fun keepFullscreen()
+    /**
+     * Gives the keyboard and touch back to Linux's view: the Start menu's search field keeps
+     * Android's focus after the menu closes, and the X view then stops taking input.
+     */
+    fun returnFocus()
     /** Ends the desktop and everything open in it. */
     fun end()
 }
@@ -235,6 +246,13 @@ fun DesktopShell(actions: DesktopActions) {
     val motion = MaterialTheme.motionScheme
     val scope = rememberCoroutineScope()
     var startOpen by rememberSaveable { mutableStateOf(false) }
+    val focus = LocalFocusManager.current
+    LaunchedEffect(startOpen) {
+        if (!startOpen) {
+            focus.clearFocus(force = true)
+            actions.returnFocus()
+        }
+    }
     // How far the dock reaches in from its edge, in this view's pixels, and where it is.
     var dockReach by remember { mutableIntStateOf(0) }
     var dockBounds by remember { mutableStateOf(Rect.Zero) }
@@ -257,6 +275,15 @@ fun DesktopShell(actions: DesktopActions) {
     val desktopShows = main.none { !it.hidden } || dragging != null
     val entries = remember(pins, main, allApps) { dockEntries(pins, main, allApps) }
     val stillStarting = "The desktop is still starting"
+    // Termux:X11 shows the phone's bars again on its own (turning, settings, reconnecting);
+    // a swipe's brief look at them doesn't count as showing, so this only undoes those.
+    val barsShown = WindowInsets.areSystemBarsVisible
+    LaunchedEffect(barsShown) {
+        if (barsShown) {
+            delay(300)
+            actions.keepFullscreen()
+        }
+    }
 
     val activity = LocalContext.current as? Activity
     val dropTarget = remember(actions) {
@@ -388,6 +415,7 @@ fun DesktopShell(actions: DesktopActions) {
                 apps = apps,
                 pins = pins,
                 windows = main.size,
+                wide = vertical,
                 onLaunch = { app -> if (actions.launch(app)) startOpen = false else message = stillStarting },
                 onAddToDesktop = { app -> message = if (actions.addToDesktop(app)) "${app.name} is on the desktop" else stillStarting },
                 onPin = { app, on -> actions.setPinned(app.id, on) },
@@ -405,7 +433,7 @@ fun DesktopShell(actions: DesktopActions) {
                 },
                 onDragCancel = { dragging = null },
                 onEnd = actions::end,
-                maxHeight = with(density) { viewHeight.toDp() } * (if (vertical) 0.9f else 0.7f),
+                maxHeight = with(density) { viewHeight.toDp() } * (if (vertical) 0.94f else 0.7f),
             )
         }
 
@@ -478,6 +506,7 @@ private fun DesktopIcons(
     onRemove: (DesktopItem) -> Unit,
 ) {
     if (items.isEmpty()) {
+        // Takes no touches: everything but the words goes to Linux.
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f)) {
                 Text(
@@ -490,13 +519,15 @@ private fun DesktopIcons(
         }
         return
     }
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 84.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        items(items, key = { it.path }) { item ->
-            DesktopIcon(item, allApps.firstOrNull { it.id == item.app }?.takeIf { item.isShortcut }, onOpen, onRemove)
+    // Down the side and then across, as a Linux desktop lays them out. Not a scrolling list: only
+    // the icons themselves take touches, the rest of the screen stays Linux's (the trackpad too).
+    FlowColumn(verticalArrangement = Arrangement.spacedBy(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxHeight()) {
+        items.forEach { item ->
+            key(item.path) {
+                Box(Modifier.width(84.dp)) {
+                    DesktopIcon(item, allApps.firstOrNull { it.id == item.app }?.takeIf { item.isShortcut }, onOpen, onRemove)
+                }
+            }
         }
     }
 }
@@ -510,7 +541,8 @@ private fun DesktopIcon(item: DesktopItem, app: PermissionManifest?, onOpen: (De
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.clip(RoundedCornerShape(16.dp))
                 .combinedClickable(onClick = { onOpen(item) }, onLongClick = { menu = true })
-                .padding(vertical = 8.dp, horizontal = 4.dp),
+                .padding(vertical = 6.dp, horizontal = 4.dp)
+                .fillMaxWidth(),
         ) {
             if (app != null) {
                 val (container, onContainer) = appColors(app)
@@ -615,10 +647,10 @@ private fun Dock(
             },
     ) {
         val content = @Composable {
-            StartButton(startOpen) { onStart(!startOpen) }
+            StartButton(startOpen, compact = vertical) { onStart(!startOpen) }
             if (entries.isNotEmpty()) Separator(vertical)
             entries.forEach { e ->
-                key(e.app.id) { DockApp(e, active, launchable(e.app), onLaunch, onAddToDesktop, actions) }
+                key(e.app.id) { DockApp(e, active, launchable(e.app), onLaunch, onAddToDesktop, actions, compact = vertical) }
             }
             Separator(vertical)
             Status(vertical, showingDesktop, onShowDesktop, actions::toggleKeyboard)
@@ -626,8 +658,8 @@ private fun Dock(
         if (vertical) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.verticalScroll(rememberScrollState()).padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 8.dp),
             ) { content() }
         } else {
             Row(
@@ -640,13 +672,13 @@ private fun Dock(
 }
 
 @Composable
-private fun StartButton(open: Boolean, onClick: () -> Unit) {
+private fun StartButton(open: Boolean, compact: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val corner by animateDpAsState(if (open) 16.dp else 24.dp, MaterialTheme.motionScheme.fastSpatialSpec(), label = "start")
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(48.dp)
+            .size(if (compact) 44.dp else 48.dp)
             .clip(RoundedCornerShape(corner))
             .background(if (open) colors.primary else colors.primaryContainer)
             .clickable(onClickLabel = "Start", onClick = onClick),
@@ -677,6 +709,8 @@ private fun DockApp(
     onLaunch: (PermissionManifest) -> Unit,
     onAddToDesktop: (PermissionManifest) -> Unit,
     actions: DesktopActions,
+    /** In landscape's rail: a little smaller, the height is short. */
+    compact: Boolean,
 ) {
     val colors = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
@@ -708,13 +742,13 @@ private fun DockApp(
         ) {
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.size(44.dp)
+                modifier = Modifier.size(if (compact) 38.dp else 44.dp)
                     .alpha(if (windows.isNotEmpty() && windows.all { it.hidden }) 0.55f else 1f)
                     .clip(appShape(app)).background(container),
             ) {
-                AppGlyph(app, 22.dp, onContainer)
+                AppGlyph(app, if (compact) 19.dp else 22.dp, onContainer)
             }
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(if (compact) 3.dp else 4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.height(3.dp)) {
                 if (windows.isNotEmpty()) {
                     Box(
@@ -728,7 +762,7 @@ private fun DockApp(
             }
         }
         // Several windows: which one.
-        DropdownMenu(expanded = picker, onDismissRequest = { picker = false }, shape = RoundedCornerShape(16.dp)) {
+        DropdownMenu(expanded = picker, onDismissRequest = { picker = false; actions.returnFocus() }, shape = RoundedCornerShape(16.dp)) {
             MenuTitle(app.name)
             windows.forEach { w ->
                 DropdownMenuItem(
@@ -741,11 +775,11 @@ private fun DockApp(
                             modifier = Modifier.widthIn(max = 260.dp),
                         )
                     },
-                    onClick = { picker = false; actions.activate(w.id) },
+                    onClick = { picker = false; actions.activate(w.id); actions.returnFocus() },
                 )
             }
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(16.dp)) {
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false; actions.returnFocus() }, shape = RoundedCornerShape(16.dp)) {
             val only = windows.singleOrNull()
             MenuTitle(only?.title?.ifBlank { null } ?: app.name)
             val choices = buildList<Pair<String, () -> Unit>> {
@@ -761,7 +795,9 @@ private fun DockApp(
                     add((if (entry.pinned) "Unpin from dock" else "Pin to dock") to { actions.setPinned(app.id, !entry.pinned) })
                 }
             }
-            choices.forEach { (label, action) -> DropdownMenuItem(text = { Text(label) }, onClick = { menu = false; action() }) }
+            choices.forEach { (label, action) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = { menu = false; action(); actions.returnFocus() })
+            }
             if (windows.isNotEmpty()) {
                 HorizontalDivider()
                 DropdownMenuItem(
@@ -870,6 +906,8 @@ private fun StartMenu(
     apps: List<PermissionManifest>,
     pins: List<String>,
     windows: Int,
+    /** Landscape: wider, as tall as the screen allows, more apps to a row. */
+    wide: Boolean,
     onLaunch: (PermissionManifest) -> Unit,
     onAddToDesktop: (PermissionManifest) -> Unit,
     onPin: (PermissionManifest, Boolean) -> Unit,
@@ -892,13 +930,13 @@ private fun StartMenu(
         color = colors.surfaceContainer,
         contentColor = colors.onSurface,
         shadowElevation = 16.dp,
-        modifier = Modifier.widthIn(max = 440.dp).fillMaxWidth().heightIn(max = maxHeight)
+        modifier = Modifier.widthIn(max = if (wide) 620.dp else 440.dp).fillMaxWidth().heightIn(max = maxHeight)
             .border(1.dp, colors.outlineVariant.copy(alpha = 0.35f), RoundedCornerShape(28.dp)),
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(if (wide) 12.dp else 16.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().height(52.dp).clip(CircleShape)
+                modifier = Modifier.fillMaxWidth().height(if (wide) 44.dp else 52.dp).clip(CircleShape)
                     .background(colors.surfaceContainerHighest).padding(horizontal = 16.dp),
             ) {
                 Icon(LauncherIcons.Search, null, tint = colors.onSurfaceVariant)
@@ -941,7 +979,7 @@ private fun StartMenu(
                 )
             }
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 84.dp),
+                columns = GridCells.Adaptive(minSize = if (wide) 80.dp else 84.dp),
                 contentPadding = PaddingValues(bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.weight(1f, fill = false),

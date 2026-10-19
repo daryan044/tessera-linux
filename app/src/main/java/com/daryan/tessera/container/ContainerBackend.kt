@@ -145,9 +145,9 @@ private fun guiWrapper(wm: String) =
 
 private const val GUI_WRAPPER = """
 watcher=${'$'}1; out=${'$'}2; windows=${'$'}3; windows_out=${'$'}4; theme=${'$'}5; wm=${'$'}6; shift 6
-if [ -n "${'$'}TESSERA_FLATPAK" ] && [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-daemon >/dev/null 2>&1; then
+if { [ -n "${'$'}TESSERA_FLATPAK" ] || [ "${'$'}wm" = desktop ]; } && [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-daemon >/dev/null 2>&1; then
   # A Flathub app runs in a root of its own, which shares only the X11 directory with this
-  # one: the bus lives there.
+  # one: the bus lives there. So does a desktop's, which Flathub apps open in it share.
   bus=${'$'}(dbus-daemon --session --address=unix:path=/tmp/.X11-unix/bus --fork --print-pid)
   export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/.X11-unix/bus
 elif [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-launch >/dev/null 2>&1; then
