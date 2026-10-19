@@ -69,13 +69,34 @@ cast Linux apps to a TV.
 
 </td>
 </tr>
+<tr>
+<td valign="top">
+
+**🖥️ A desktop, too** *(new)*<br>
+One tap for a whole Linux desktop: windows you move and snap, a Material dock and Start menu,
+your wallpaper and colors.
+
+</td>
+<td valign="top">
+
+**🔍 Find any app**<br>
+Android's own search pill on top of your Linux apps, with full-screen results as you type.
+
+</td>
+<td valign="top">
+
+**📁 Files and tasks**<br>
+A file manager across Android and Linux, and a task manager with live CPU and memory per app.
+
+</td>
+</tr>
 </table>
 
 ## Screenshots
 
 <table>
 <tr>
-<td align="center" width="25%"><img src="docs/screenshots/apps.png" width="200" alt="Your Linux apps, as a launcher"><br><sub>Your Linux apps, as a launcher</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/apps.png" width="200" alt="Your Linux apps, as a launcher, with search and the desktop button"><br><sub>Your Linux apps, with search and the desktop</sub></td>
 <td align="center" width="25%"><img src="docs/screenshots/store-flathub.png" width="200" alt="Debian or Flathub, one switch"><br><sub>Debian or Flathub, one switch</sub></td>
 <td align="center" width="25%"><img src="docs/screenshots/store-app.png" width="200" alt="Flathub apps, one tap to install"><br><sub>Flathub apps, one tap to install</sub></td>
 <td align="center" width="25%"><img src="docs/screenshots/panel.png" width="200" alt="The window panel over LibreOffice"><br><sub>The window panel over LibreOffice</sub></td>
@@ -260,6 +281,7 @@ makes).
 | GPU acceleration (Turnip + Zink) in PRoot mode | ✅ Works on Adreno 740 |
 | Chroot mode with root | ✅ Works; GPU in chroot mode is new |
 | Flathub apps (install from the Store, launch, GPU) | ✅ Works in PRoot and chroot mode |
+| Desktop (xfwm4, dock, Start menu, wallpaper) | 🧪 New; first runs on a Snapdragon 8 Gen 2 in chroot mode |
 | Material You theming, live dark mode (GTK, libadwaita, Qt, LibreOffice, Firefox) | ✅ Works |
 | Live per-app scaling, white pointer, window panel | ✅ Works |
 | Files tab, task manager | 🧪 New |
