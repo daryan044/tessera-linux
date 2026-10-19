@@ -13,7 +13,7 @@ import java.io.File
 /** Light or dark for Linux apps. */
 @Serializable
 enum class ColorMode(val label: String) {
-    SYSTEM("Follow Android"),
+    SYSTEM("System"),
     LIGHT("Light"),
     DARK("Dark"),
 }
@@ -29,6 +29,11 @@ data class Appearance(
     val colorMode: ColorMode = ColorMode.SYSTEM,
     /** Colors from the wallpaper (Android 12+); otherwise a fixed palette. */
     val dynamicColor: Boolean = true,
+    /**
+     * An imported Linux theme's family ([LinuxThemes]), used instead of the phone's colors: by
+     * Linux apps as it is, and for Tessera's own colors and shapes. Null: the phone's colors.
+     */
+    val linuxTheme: String? = null,
 )
 
 /**

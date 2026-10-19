@@ -116,6 +116,8 @@ dependencies {
     implementation(libs.haze)
     implementation(libs.haze.blur.materials)
     implementation(libs.kotlinx.serialization.json)
+    // .tar.xz theme archives (Linux themes are mostly shared that way).
+    implementation(libs.xz)
     implementation(project(":lorie"))
     implementation(libs.termux.terminal.view)
     implementation(libs.termux.terminal.emulator)
