@@ -44,7 +44,9 @@ object Flatpak {
      */
     fun setupScript(helpers: List<String>): String =
         "export DEBIAN_FRONTEND=noninteractive; apt-get update && " +
-            "apt-get install -y --no-install-recommends flatpak ${helpers.joinToString(" ")} && " +
+            // ca-certificates: flatpak only recommends it, and without it a fresh system can't
+            // reach Flathub over HTTPS ("Problem with the SSL CA cert").
+            "apt-get install -y --no-install-recommends flatpak ca-certificates ${helpers.joinToString(" ")} && " +
             "flatpak remote-add --if-not-exists $REMOTE $REMOTE_URL && echo 'Flathub is ready'"
 
     /**
