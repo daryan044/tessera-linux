@@ -34,6 +34,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -51,8 +53,9 @@ private val SLIDES = listOf(
     Slide(
         LauncherIcons.Apps,
         "Linux apps on your phone",
-        "Firefox, VS Code, GIMP, LibreOffice and the rest of Debian, each with its own icon and " +
-            "its own window. No terminal setup, no VNC, no guides to follow.",
+        "Firefox, VS Code, GIMP, LibreOffice, all of Debian and Flathub, each with its own icon " +
+            "and its own window, on your phone's GPU and in your phone's colors. No terminal " +
+            "setup, no VNC, no guides to follow.",
     ),
     Slide(
         LauncherIcons.Terminal,
@@ -67,9 +70,12 @@ private val SLIDES = listOf(
     Slide(
         LauncherIcons.Store,
         "Pick apps from the Store",
-        "Nearly 2,000 Debian desktop apps with icons, categories and search. Installs run in the " +
-            "background while you keep using your phone.",
-        listOf("Anything you install yourself with apt or a .deb shows up in the launcher too."),
+        "Nearly 2,000 Debian desktop apps, and with one switch Flathub's 2,800 more, with icons, " +
+            "screenshots and search. Installs run in the background while you keep using your phone.",
+        listOf(
+            "Flathub is optional: the first time, one tap sets it up. Its apps run like any other, GPU included, no root needed.",
+            "Anything you install yourself with apt or a .deb shows up in the launcher too.",
+        ),
     ),
     Slide(
         LauncherIcons.Keyboard,
@@ -79,8 +85,19 @@ private val SLIDES = listOf(
         listOf(
             "The keyboard opens by itself when you tap a text field.",
             "Clipboard works both ways, and sound plays through Android.",
-            "Scroll and pinch with your fingers, or switch to touchpad or mouse mode.",
-            "Swipe from the edge for right click, Esc, Tab, Ctrl+C, Alt+Tab and F11.",
+            "Scroll and pinch with your fingers, or switch to touchpad or mouse mode, where touch and hold right-clicks.",
+            "Swipe in from the edge for the window panel: right click, keys, Scale (bigger or smaller, live, kept per app), cast and USB.",
+        ),
+    ),
+    Slide(
+        LauncherIcons.Palette,
+        "Your phone's look, on Linux",
+        "Linux apps take your wallpaper's colors and follow dark mode, live: flip Android to dark " +
+            "and every open Linux app follows within seconds.",
+        listOf(
+            "Prefer a Linux theme? Import one in Settings → Appearance, and Linux apps and Tessera itself both wear it, colors and corners.",
+            "A white, rounded pointer in every app.",
+            "An app looks wrong themed? Hold its icon, Look and graphics, and leave it out.",
         ),
     ),
     Slide(
@@ -94,11 +111,21 @@ private val SLIDES = listOf(
         ),
     ),
     Slide(
-        LauncherIcons.Folder,
+        Icons.Rounded.Lock,
         "Every app in its own sandbox",
         "An app only gets what you grant it: certain folders, the network, sound, a display, " +
             "devices. Change any of it from the app's page.",
         listOf("Tessera tells you honestly which permissions it can enforce and which are best-effort."),
+    ),
+    Slide(
+        LauncherIcons.Folder,
+        "And the tools around them",
+        "The dock has more than apps.",
+        listOf(
+            "Files: your phone's storage and the Linux system side by side. Copy, compress, edit, open with any app, install a .deb.",
+            "Sessions: a task manager with every Linux process, live CPU and memory, and End task (tap twice to be sure).",
+            "PC trackpad, in the side menu: your phone becomes a trackpad and keyboard for a computer, over Bluetooth (or USB, with root).",
+        ),
     ),
     Slide(
         LauncherIcons.Spark,
