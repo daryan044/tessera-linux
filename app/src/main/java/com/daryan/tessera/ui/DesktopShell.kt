@@ -163,9 +163,12 @@ interface DesktopActions {
     fun end()
 }
 
-/** Apps the Start menu can open in a desktop: not another desktop, a Flathub app or one that wants root. */
+/**
+ * Apps the Start menu can open in a desktop: not another desktop, or one that wants root (it
+ * would run as the desktop's user). Flathub apps come too, in their own root as always.
+ */
 fun desktopApps(apps: List<PermissionManifest>): List<PermissionManifest> =
-    apps.filter { !it.desktop && it.flatpak == null && !it.permissions.root }
+    apps.filter { !it.desktop && !it.permissions.root }
 
 /**
  * The launcher app [window] belongs to, by its WM_CLASS against each app's program ("XTerm"
@@ -175,7 +178,7 @@ fun appForWindow(window: XWindow, apps: List<PermissionManifest>): PermissionMan
     val cls = window.windowClass.lowercase()
     val match = if (cls.isEmpty()) null else apps.firstOrNull { a ->
         val program = a.exec.firstOrNull()?.substringAfterLast('/')?.lowercase().orEmpty()
-        a.id == cls || program == cls || (program.length > 2 && cls.startsWith(program)) || a.name.lowercase() == cls
+        a.id.lowercase() == cls || program == cls || (program.length > 2 && cls.startsWith(program)) || a.name.lowercase() == cls
     }
     return match ?: PermissionManifest(
         id = cls.ifEmpty { "window-${window.id}" },

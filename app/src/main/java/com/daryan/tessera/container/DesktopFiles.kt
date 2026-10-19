@@ -263,10 +263,14 @@ class DesktopFiles(private val dir: File) {
 /**
  * A desktop session ([PermissionManifest.desktop]), run by [GUI_WRAPPER] in place of an app:
  * [DESKTOP_HELPER] beside the desktop's window manager (the rest of the arguments), for as long
- * as the window manager runs.
+ * as the window manager runs. Its environment is published for Flathub apps, which run beside
+ * it ([SessionManager.launchFlatpakInDesktop]).
  */
 internal const val DESKTOP_SESSION = """
 helper=${'$'}1; shift
+# What a Flathub app opened in the desktop takes from it (its bus, its theme), as FLATPAK_HOLD
+# publishes it for an app's own session.
+env > /tmp/.X11-unix/$FLATPAK_ENV_FILE.tmp && mv /tmp/.X11-unix/$FLATPAK_ENV_FILE.tmp /tmp/.X11-unix/$FLATPAK_ENV_FILE
 python3 -c "${'$'}helper" /tmp/.X11-unix & dh=${'$'}!
 "${'$'}@"; status=${'$'}?
 kill ${'$'}dh 2>/dev/null

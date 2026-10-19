@@ -357,13 +357,21 @@ class X11Window : MainActivity.MainActivityTagged() {
             /** Command-line apps get a terminal of their own in the desktop. */
             private fun argv(app: PermissionManifest) = if (app.gui) app.exec else listOf("x-terminal-emulator", "-e") + app.exec
 
-            override fun launch(app: PermissionManifest): Boolean = desktop?.launch(argv(app)) ?: false
+            override fun launch(app: PermissionManifest): Boolean = when {
+                app.flatpak != null -> id?.let { container.sessions.launchFlatpakInDesktop(it, app) } ?: false
+                else -> desktop?.launch(argv(app)) ?: false
+            }
 
             override fun items(): List<DesktopItem> = desktop?.items().orEmpty()
 
             override fun open(item: DesktopItem) { desktop?.open(item.path) }
 
-            override fun addToDesktop(app: PermissionManifest): Boolean = desktop?.addShortcut(app.id, app.name, argv(app)) ?: false
+            // A Flathub app's shortcut opens through Tessera (by its id), which gives it its root;
+            // run from inside Linux, it says so.
+            override fun addToDesktop(app: PermissionManifest): Boolean = desktop?.addShortcut(
+                app.id, app.name,
+                if (app.flatpak != null) listOf("echo", "${app.name} opens from Tessera's desktop") else argv(app),
+            ) ?: false
 
             override fun removeFromDesktop(item: DesktopItem) { desktop?.remove(item.path) }
 
