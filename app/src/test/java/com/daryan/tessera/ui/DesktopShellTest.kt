@@ -33,4 +33,15 @@ class DesktopShellTest {
         val root = app("root-shell", "/bin/bash").copy(gui = false, permissions = Permissions(root = true))
         assertEquals(apps, desktopApps(apps + desktop + flathub + root))
     }
+
+    @Test fun `the dock has pinned apps first, then each running app once with its windows`() {
+        val firefox = XWindow(1, "Mozilla Firefox", windowClass = "firefox-esr")
+        val firefox2 = XWindow(2, "Library", windowClass = "firefox-esr")
+        val gimp = XWindow(3, "GIMP", windowClass = "Gimp-2.10")
+        val entries = dockEntries(pins = listOf("xterm", "firefox-esr", "gone"), windows = listOf(gimp, firefox, firefox2), apps = apps)
+        assertEquals(listOf("xterm", "firefox-esr", "gimp"), entries.map { it.app.id })
+        assertEquals(listOf(true, true, false), entries.map { it.pinned })
+        assertEquals(emptyList<XWindow>(), entries[0].windows)
+        assertEquals(listOf(firefox, firefox2), entries[1].windows)
+    }
 }

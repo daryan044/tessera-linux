@@ -6,7 +6,10 @@ package com.daryan.tessera.container
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.ByteArrayOutputStream
@@ -14,6 +17,15 @@ import java.io.File
 
 /** The desktop helper's command FIFO in the session's X11 directory; see [DESKTOP_HELPER]. */
 const val DESKTOP_COMMANDS_NAME = "launcher-desktop"
+/** What is on the desktop (~/Desktop), as [DESKTOP_HELPER] lists it. */
+const val DESKTOP_ITEMS_NAME = "launcher-desktop-items"
+
+/** A file, folder or app shortcut on the desktop; [app] is a shortcut's launcher app id. */
+@Serializable
+data class DesktopItem(val name: String, val path: String, val kind: String, val app: String = "") {
+    val isShortcut get() = kind == "app"
+    val isFolder get() = kind == "dir"
+}
 private const val WALLPAPER_NAME = "desktop-wallpaper.raw"
 
 /**
@@ -28,6 +40,38 @@ class DesktopFiles(private val dir: File) {
      */
     fun launch(argv: List<String>): Boolean =
         send("launch " + Json.encodeToString(JsonArray.serializer(), JsonArray(argv.map(::JsonPrimitive))))
+
+    /** What is on the desktop now; empty until the helper has looked. */
+    fun items(): List<DesktopItem> = runCatching {
+        itemsJson.decodeFromString(ListSerializer(DesktopItem.serializer()), File(dir, DESKTOP_ITEMS_NAME).readText())
+    }.getOrDefault(emptyList())
+
+    /** Opens [path] with its app inside the desktop; a .desktop file runs its command. */
+    fun open(path: String): Boolean = send("open " + Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(path)))
+
+    /** Puts a shortcut that runs [argv] on the desktop, named [name], for the launcher's app [id]. */
+    fun addShortcut(id: String, name: String, argv: List<String>): Boolean = send(
+        "shortcut " + Json.encodeToString(
+            JsonObject.serializer(),
+            JsonObject(mapOf("id" to JsonPrimitive(id), "name" to JsonPrimitive(name), "argv" to JsonArray(argv.map(::JsonPrimitive)))),
+        ),
+    )
+
+    /**
+     * Puts a copy of [content] on the desktop as [name]: written to the X11 directory, which
+     * both sides reach, then moved into ~/Desktop by the helper. Off the main thread.
+     */
+    fun import(name: String, content: java.io.InputStream): Boolean {
+        val incoming = File(dir, INCOMING).apply { mkdirs() }
+        val file = File.createTempFile("drop", null, incoming)
+        file.outputStream().use { content.copyTo(it) }
+        file.setReadable(true, false)
+        val spec = JsonObject(mapOf("from" to JsonPrimitive("/tmp/.X11-unix/$INCOMING/${file.name}"), "name" to JsonPrimitive(name)))
+        return send("import " + Json.encodeToString(JsonObject.serializer(), spec)).also { if (!it) file.delete() }
+    }
+
+    /** Takes a shortcut off the desktop; a file or folder goes to the trash. */
+    fun remove(path: String): Boolean = send("remove " + Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(path)))
 
     /** Keeps [px] X pixels along the bottom, or the [left] edge, clear of maximized windows. */
     fun reserve(left: Boolean, px: Int): Boolean = send("strut ${if (left) "left" else "bottom"} $px")
@@ -67,6 +111,8 @@ class DesktopFiles(private val dir: File) {
     private fun send(line: String) = sendLine(File(dir, DESKTOP_COMMANDS_NAME), line)
 
     companion object {
+        private val itemsJson = Json { ignoreUnknownKeys = true }
+        private const val INCOMING = "incoming"
         private const val THEME_DIR = "desktop"
         /** Names the theme in use; [DESKTOP_HELPER] sets xfwm4's theme to the path in it. */
         private const val CURRENT = "current"
@@ -77,8 +123,9 @@ class DesktopFiles(private val dir: File) {
          * changes), and points [CURRENT] at it. [titlePx]: the title bar's height in X pixels.
          *
          * It is Circela's look (addy-dclxvi's xfwm4 theme) in the phone's colors: a title bar
-         * the color of the apps' own header bars, no title text (the taskbar has it), ring
-         * buttons, and close as a filled accent circle on the focused window.
+         * the color of the apps' own header bars with the window's name in it, ring buttons, and
+         * close as a filled accent circle on the focused window. The frame is wider than
+         * Circela's, in the bar's color, so a finger can catch an edge to resize.
          */
         fun writeTheme(themeDir: File, palette: Palette, titlePx: Int) {
             val root = File(themeDir, THEME_DIR)
@@ -88,15 +135,22 @@ class DesktopFiles(private val dir: File) {
             themeFiles(palette, titlePx.coerceIn(24, 160)).forEach { (name, bytes) -> File(out, name).writeBytes(bytes) }
             val current = File(root, CURRENT)
             val tmp = File(root, "$CURRENT.tmp")
-            tmp.writeText("${ThemeFiles.GUEST_DIR}/$THEME_DIR/$generation\n")
+            // The theme, then its title font: sized to the bar, which xfwm4 takes from settings.
+            tmp.writeText("${ThemeFiles.GUEST_DIR}/$THEME_DIR/$generation\n${titleFont(titlePx.coerceIn(24, 160))}\n")
             tmp.renameTo(current)
             // The one before stays: xfwm4 may still be reading it.
             existing.filter { it < generation - 1 }.forEach { File(root, "$it").deleteRecursively() }
         }
 
+        /** The title's font for a [title]-pixel bar, in points at X's 96 dpi. */
+        internal fun titleFont(title: Int) = "Sans Bold ${(title * 0.30f * 72 / 96).toInt().coerceAtLeast(6)}"
+
+        /** How wide the frame's sides and bottom are, for a [title]-pixel bar: easy to catch. */
+        internal fun edgeFor(title: Int) = (title * 0.2f).toInt().coerceAtLeast(4)
+
         internal fun themeFiles(p: Palette, title: Int): Map<String, ByteArray> {
             val bar = opaque(p.headerbar)
-            val edge = 2
+            val edge = edgeFor(title)
             val button = (title * 1.15f).toInt()
             val files = linkedMapOf<String, ByteArray>()
             files["themerc"] = themerc(p, title).toByteArray()
@@ -120,8 +174,8 @@ class DesktopFiles(private val dir: File) {
         }
 
         private fun themerc(p: Palette, title: Int): String {
-            // The title text the color of the bar: there, so xfwm4 lays the bar out, but unseen.
-            val hidden = "#%06x".format(p.headerbar and 0xFFFFFF)
+            val active = "#%06x".format(p.onWindow and 0xFFFFFF)
+            val inactive = "#%06x".format(blend(p.onWindow, p.headerbar, 0.55f))
             return """
                 |button_offset=${title / 6}
                 |button_spacing=0
@@ -131,10 +185,8 @@ class DesktopFiles(private val dir: File) {
                 |title_horizontal_offset=0
                 |title_vertical_offset_active=0
                 |title_vertical_offset_inactive=0
-                |active_text_color=$hidden
-                |active_text_shadow_color=$hidden
-                |inactive_text_color=$hidden
-                |inactive_text_shadow_color=$hidden
+                |active_text_color=$active
+                |inactive_text_color=$inactive
                 |show_app_icon=false
                 |maximized_offset=0
                 |shadow_delta_height=${title / 4}
@@ -186,6 +238,14 @@ class DesktopFiles(private val dir: File) {
 
         private fun opaque(rgb: Int) = withAlpha(rgb, 1f)
 
+        /** [a] over [b] at [amount] of [a], as 0xRRGGBB. */
+        private fun blend(a: Int, b: Int, amount: Float): Int {
+            fun ch(c: Int, shift: Int) = (c shr shift) and 0xFF
+            return listOf(16, 8, 0).fold(0) { acc, sh ->
+                acc or ((ch(a, sh) * amount + ch(b, sh) * (1 - amount)).toInt() shl sh)
+            }
+        }
+
         private fun withAlpha(rgb: Int, alpha: Float) = ((alpha * 255).toInt() shl 24) or (rgb and 0xFFFFFF)
 
         private fun png(width: Int, height: Int, draw: Canvas.() -> Unit): ByteArray {
@@ -219,13 +279,19 @@ exit ${'$'}status
  * - "launch <JSON argv>" starts an app in the desktop, in a session of its own;
  * - "strut left|bottom <px>" keeps that much of the edge for the dock, as a dock window's strut,
  *   so maximized windows stop at it;
- * - "wallpaper <file> <width> <height>" shows the file's B, G, R, x pixels behind the windows.
+ * - "wallpaper <file> <width> <height>" shows the file's B, G, R, x pixels behind the windows;
+ * - "open <JSON path>" opens a file or folder on the desktop with its app (a .desktop file runs);
+ * - "shortcut <JSON {id, name, argv}>" puts an app on the desktop as a .desktop file;
+ * - "remove <JSON path>" takes a shortcut off the desktop, or moves a file there to the trash;
+ * - "import <JSON {from, name}>" moves a file dropped from Android (copied into the X11
+ *   directory's incoming folder first) onto the desktop, under a name not taken yet.
+ * It keeps [DESKTOP_ITEMS_NAME] to what is in ~/Desktop (the XDG desktop folder), as JSON.
  * It also sets xfwm4 up for touch the first time (snap to edges, center new windows, shadows;
  * the user's own changes are kept after that) and sets its theme to the one [DesktopFiles.writeTheme]
  * names, again whenever that changes.
  */
 internal const val DESKTOP_HELPER = """
-import json, os, select, shutil, subprocess, sys, time
+import json, os, re, select, shlex, shutil, subprocess, sys, time
 
 xdir = sys.argv[1]
 cmd_path = os.path.join(xdir, "launcher-desktop")
@@ -250,7 +316,7 @@ def xfconf(prop, kind, value):
         return 1
 
 def first_run():
-    marker = os.path.expanduser("~/.config/tessera/desktop-configured")
+    marker = os.path.expanduser("~/.config/tessera/desktop-configured-2")
     if os.path.exists(marker) or not shutil.which("xfconf-query"):
         return
     # xfconfd comes up with xfwm4; give it a few tries.
@@ -262,6 +328,7 @@ def first_run():
         return
     for prop, kind, value in [
         ("button_layout", "string", "|HMC"),
+        ("title_alignment", "string", "center"),
         ("placement_mode", "string", "center"),
         ("placement_ratio", "int", 100),
         ("tile_on_move", "bool", "true"),
@@ -287,11 +354,44 @@ def follow_theme():
     if not current:
         return
     try:
-        path = open(current).read().strip()
+        text = open(current).read()
     except OSError:
         return
-    if path and path != theme_seen and xfconf("theme", "string", path) == 0:
-        theme_seen = path
+    lines = text.split("\n")
+    if lines[0] and text != theme_seen and xfconf("theme", "string", lines[0]) == 0:
+        if len(lines) > 1 and lines[1]:
+            xfconf("title_font", "string", lines[1])
+        theme_seen = text
+
+seen = set()
+def give_title_bars():
+    # Apps that ask for no frame at all (Electron's and Chrome's own title bars, Qt's frameless
+    # windows) get xfwm4's: on a phone there is no other way to move, size or close them. GTK's
+    # header bars (they mark their frame extents) and splash screens keep their own.
+    if d is None:
+        return
+    clients = root.get_full_property(A("_NET_CLIENT_LIST"), X.AnyPropertyType)
+    ids = list(clients.value) if clients else []
+    for wid in ids:
+        if wid in seen:
+            continue
+        seen.add(wid)
+        try:
+            w = d.create_resource_object("window", wid)
+            hints = w.get_full_property(A("_MOTIF_WM_HINTS"), X.AnyPropertyType)
+            if not hints or len(hints.value) < 3 or not (hints.value[0] & 2) or hints.value[2] != 0:
+                continue
+            if w.get_full_property(A("_GTK_FRAME_EXTENTS"), X.AnyPropertyType) is not None:
+                continue
+            types = w.get_full_property(A("_NET_WM_WINDOW_TYPE"), X.AnyPropertyType)
+            if types and A("_NET_WM_WINDOW_TYPE_NORMAL") not in list(types.value):
+                continue
+            if w.get_wm_transient_for() is not None:
+                continue
+            w.delete_property(A("_MOTIF_WM_HINTS"))
+            d.flush()
+        except Exception:
+            pass
 
 dock = None
 def strut(side, px):
@@ -351,9 +451,123 @@ def launch(argv):
     except OSError as e:
         print("desktop: couldn't start %s: %s" % (argv[0] if argv else "?", e), file=sys.stderr)
 
+def find_desktop():
+    try:
+        p = subprocess.run(["xdg-user-dir", "DESKTOP"], capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception:
+        p = ""
+    home = os.path.expanduser("~")
+    if not p or os.path.realpath(p) == os.path.realpath(home):
+        p = os.path.join(home, "Desktop")
+    os.makedirs(p, exist_ok=True)
+    return os.path.realpath(p)
+
+desktop_dir = find_desktop()
+listing_path = os.path.join(xdir, "launcher-desktop-items")
+listed = None
+
+def entry(path):
+    fields, section = {}, None
+    try:
+        with open(path, errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("["):
+                    section = line
+                elif section == "[Desktop Entry]" and "=" in line:
+                    k, v = line.split("=", 1)
+                    fields.setdefault(k.strip(), v.strip())
+    except OSError:
+        pass
+    return fields
+
+def publish_desktop():
+    global listed
+    items = []
+    try:
+        names = os.listdir(desktop_dir)
+    except OSError:
+        names = []
+    for n in names:
+        if n.startswith("."):
+            continue
+        p = os.path.join(desktop_dir, n)
+        if n.endswith(".desktop"):
+            e = entry(p)
+            items.append({"name": e.get("Name", n[:-8]), "path": p, "kind": "app", "app": e.get("X-Tessera-Id", "")})
+        else:
+            items.append({"name": n, "path": p, "kind": "dir" if os.path.isdir(p) else "file"})
+    order = {"app": 0, "dir": 1, "file": 2}
+    items.sort(key=lambda i: (order[i["kind"]], i["name"].lower()))
+    text = json.dumps(items)
+    if text == listed:
+        return
+    listed = text
+    tmp = listing_path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, listing_path)
+
+FIELD = re.compile(r"%[fFuUdDnNickvm]")
+
+def open_item(path):
+    if path.endswith(".desktop"):
+        e = entry(path)
+        if e.get("Exec"):
+            argv = [a for a in shlex.split(FIELD.sub("", e["Exec"])) if a]
+            if e.get("Terminal", "false").lower() == "true":
+                argv = ["x-terminal-emulator", "-e"] + argv
+            return launch(argv)
+    for opener in (["xdg-open"], ["gio", "open"]):
+        if shutil.which(opener[0]):
+            return launch(opener + [path])
+    print("desktop: nothing to open %s with (install xdg-utils)" % path, file=sys.stderr)
+
+def on_desktop(path):
+    real = os.path.realpath(path)
+    return os.path.dirname(real) == desktop_dir
+
+def shortcut(spec):
+    safe = re.sub(r"[^A-Za-z0-9._-]", "-", str(spec["id"]))
+    path = os.path.join(desktop_dir, "tessera-%s.desktop" % safe)
+    name = str(spec["name"]).replace("\n", " ")
+    with open(path, "w") as f:
+        f.write("[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nX-Tessera-Id=%s\n"
+                % (name, " ".join(shlex.quote(str(a)) for a in spec["argv"]), spec["id"]))
+    os.chmod(path, 0o755)
+
+def remove(path):
+    if not on_desktop(path):
+        return
+    if path.endswith(".desktop"):
+        os.remove(path)
+    elif shutil.which("gio"):
+        subprocess.call(["gio", "trash", path], stdout=null, stderr=null)
+
+def import_file(spec):
+    src = str(spec["from"])
+    if os.path.dirname(os.path.realpath(src)) != os.path.realpath(os.path.join(xdir, "incoming")):
+        return
+    name = os.path.basename(str(spec["name"])) or "Dropped file"
+    base, ext = os.path.splitext(name)
+    dest, n = os.path.join(desktop_dir, name), 2
+    while os.path.exists(dest):
+        dest = os.path.join(desktop_dir, "%s (%d)%s" % (base, n, ext))
+        n += 1
+    shutil.move(src, dest)
+
 def run(line):
     parts = line.split(" ", 1)
-    if parts[0] == "launch" and len(parts) == 2:
+    if parts[0] == "import" and len(parts) == 2:
+        import_file(json.loads(parts[1]))
+    elif parts[0] == "open" and len(parts) == 2:
+        open_item(json.loads(parts[1]))
+    elif parts[0] == "shortcut" and len(parts) == 2:
+        shortcut(json.loads(parts[1]))
+    elif parts[0] == "remove" and len(parts) == 2:
+        remove(json.loads(parts[1]))
+    elif parts[0] == "launch" and len(parts) == 2:
         argv = json.loads(parts[1])
         if isinstance(argv, list) and argv:
             launch([str(a) for a in argv])
@@ -376,6 +590,11 @@ pending = b""
 first_run()
 while True:
     follow_theme()
+    give_title_bars()
+    try:
+        publish_desktop()
+    except OSError as e:
+        print("desktop: %s" % e, file=sys.stderr)
     watch = [cmd] + ([d.fileno()] if d is not None else [])
     select.select(watch, [], [], 1)
     try:

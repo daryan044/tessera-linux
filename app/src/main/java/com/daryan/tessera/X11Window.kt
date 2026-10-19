@@ -31,6 +31,11 @@ import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import android.view.WindowManager
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
@@ -54,6 +59,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.daryan.tessera.container.PermissionManifest
+import com.daryan.tessera.container.DesktopItem
+import android.net.Uri
+import android.provider.OpenableColumns
 import com.daryan.tessera.container.RunningSession
 import com.daryan.tessera.ui.DesktopActions
 import com.daryan.tessera.ui.DesktopShell
@@ -74,6 +82,8 @@ import com.termux.x11.input.InputStub
  */
 class X11Window : MainActivity.MainActivityTagged() {
     private var lastTouch = 0L
+    /** A desktop's title bars waiting to be redrawn for a new scale; see setScale. */
+    private var rescale: kotlinx.coroutines.Job? = null
     /** The cast to another display, while there is one; the phone is its trackpad meanwhile. */
     private var cast: CastPresentation? = null
     private val castState = MutableStateFlow<CastState?>(null)
@@ -127,6 +137,41 @@ class X11Window : MainActivity.MainActivityTagged() {
         followFocus()
         followDisplays()
         followUsb()
+        desktopFullscreen()
+    }
+
+    private val isDesktop get() = sessionTag?.let { container.sessions.forWindowTag(it) }?.app?.desktop == true
+
+    /**
+     * A desktop takes the whole screen, under the camera cutout too, whatever the display
+     * setting says: its dock has the clock and battery, and a swipe from an edge brings the
+     * phone's bars back for a moment. Termux:X11 applies its own setting on resume and on every
+     * focus change, so this follows it each time.
+     */
+    private fun desktopFullscreen() {
+        if (!isDesktop) return
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        findViewById<android.widget.FrameLayout>(android.R.id.content).getChildAt(0)?.let { content ->
+            if (content.fitsSystemWindows) {
+                content.fitsSystemWindows = false
+                ViewCompat.requestApplyInsets(content)
+            }
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            val cutout = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            if (window.attributes.layoutInDisplayCutoutMode != cutout) {
+                window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = cutout }
+            }
+        }
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) desktopFullscreen()
     }
 
     override fun onDestroy() {
@@ -268,6 +313,7 @@ class X11Window : MainActivity.MainActivityTagged() {
         // Termux:X11 focuses its own view on resume; while casting, typing goes to the cast.
         if (cast != null) keyboardProxy.requestFocus()
         usbDevices.value = currentUsb()
+        desktopFullscreen()
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
@@ -296,11 +342,41 @@ class X11Window : MainActivity.MainActivityTagged() {
             override val apps: StateFlow<List<PermissionManifest>> get() = container.launcherApps
             private val id get() = session.value?.session?.id
             private val desktop get() = id?.let { container.sessions.desktop(it) }
+            private val prefs = getSharedPreferences(DESKTOP_PREFS, MODE_PRIVATE)
 
-            override fun launch(app: PermissionManifest): Boolean {
-                // Command-line apps get a terminal of their own in the desktop.
-                val argv = if (app.gui) app.exec else listOf("x-terminal-emulator", "-e") + app.exec
-                return desktop?.launch(argv) ?: false
+            // A new desktop's dock starts with a terminal and the browser, where installed.
+            override val pins = MutableStateFlow(
+                prefs.getString(KEY_PINS, null)?.split('\n')?.filter { it.isNotEmpty() } ?: listOf("xterm", "firefox-esr"),
+            )
+
+            override fun setPinned(appId: String, pinned: Boolean) {
+                pins.value = if (pinned) (pins.value - appId) + appId else pins.value - appId
+                prefs.edit().putString(KEY_PINS, pins.value.joinToString("\n")).apply()
+            }
+
+            /** Command-line apps get a terminal of their own in the desktop. */
+            private fun argv(app: PermissionManifest) = if (app.gui) app.exec else listOf("x-terminal-emulator", "-e") + app.exec
+
+            override fun launch(app: PermissionManifest): Boolean = desktop?.launch(argv(app)) ?: false
+
+            override fun items(): List<DesktopItem> = desktop?.items().orEmpty()
+
+            override fun open(item: DesktopItem) { desktop?.open(item.path) }
+
+            override fun addToDesktop(app: PermissionManifest): Boolean = desktop?.addShortcut(app.id, app.name, argv(app)) ?: false
+
+            override fun removeFromDesktop(item: DesktopItem) { desktop?.remove(item.path) }
+
+            override suspend fun importDropped(uris: List<Uri>): Int = withContext(Dispatchers.IO) {
+                val desktop = desktop ?: return@withContext 0
+                uris.count { uri ->
+                    runCatching {
+                        val name = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                            if (c.moveToFirst()) c.getString(0) else null
+                        } ?: uri.lastPathSegment ?: "Dropped file"
+                        contentResolver.openInputStream(uri)!!.use { desktop.import(name, it) }
+                    }.getOrDefault(false)
+                }
             }
 
             override fun activate(windowId: Long) { id?.let { container.sessions.activateWindow(it, windowId) } }
@@ -386,6 +462,16 @@ class X11Window : MainActivity.MainActivityTagged() {
             val id = appId ?: return
             X11Scale.set(this@X11Window, id, percent)
             applyScale()
+            // A desktop's title bars are drawn in X pixels: redrawn for the new scale once the
+            // slider rests, they keep their size on the phone.
+            val session = sessionTag?.let { container.sessions.forWindowTag(it) }
+            if (session?.app?.desktop == true) {
+                rescale?.cancel()
+                rescale = lifecycleScope.launch {
+                    kotlinx.coroutines.delay(400)
+                    container.sessions.rescaleDesktop(session.session.id)
+                }
+            }
         }
 
         override fun openPermissions(appId: String) {
@@ -428,6 +514,8 @@ class X11Window : MainActivity.MainActivityTagged() {
 }
 
 private const val TAP_WINDOW_MS = 1500L
+private const val DESKTOP_PREFS = "desktop"
+private const val KEY_PINS = "dock_pins"
 
 /** A soft gradient for a desktop's background, where the phone's wallpaper can't be read. */
 private fun gradientWallpaper(top: Int, bottom: Int): Bitmap =

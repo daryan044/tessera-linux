@@ -32,13 +32,13 @@ object ThemeFiles {
     )
 
     /** The files for [palette], by path under the directory. [pack]: the theme pack is installed. */
-    fun files(palette: Palette, generation: Int, pack: Boolean): Map<String, String> {
+    fun files(palette: Palette, generation: Int, pack: Boolean, desktop: Boolean = false): Map<String, String> {
         val theme = "$THEME_PREFIX$generation"
         return linkedMapOf(
             "share/themes/$theme/index.theme" to "[Desktop Entry]\nType=X-GNOME-Metatheme\nName=$theme\n",
             "share/themes/$theme/gtk-3.0/gtk.css" to gtk3(palette, pack),
             "share/themes/$theme/gtk-4.0/gtk.css" to gtk4(palette),
-            XSETTINGS_FILE to xsettings(theme),
+            XSETTINGS_FILE to xsettings(theme, desktop),
             PORTAL_FILE to portal(palette),
         )
     }
@@ -47,12 +47,12 @@ object ThemeFiles {
      * Writes [palette]'s files into [dir] and drops themes older than the one before (a window
      * may still be switching away from that). Returns the generation written.
      */
-    fun write(dir: File, palette: Palette, pack: Boolean): Int {
+    fun write(dir: File, palette: Palette, pack: Boolean, desktop: Boolean = false): Int {
         dir.mkdirs()
         val themes = File(dir, "share/themes")
         val existing = themes.list().orEmpty().mapNotNull { it.removePrefix(THEME_PREFIX).toIntOrNull() }
         val generation = (existing.maxOrNull() ?: 0) + 1
-        files(palette, generation, pack).forEach { (path, text) -> writeWhole(File(dir, path), text) }
+        files(palette, generation, pack, desktop).forEach { (path, text) -> writeWhole(File(dir, path), text) }
         existing.filter { it < generation - 1 }.forEach { File(themes, "$THEME_PREFIX$it").deleteRecursively() }
         return generation
     }
@@ -62,11 +62,11 @@ object ThemeFiles {
      * copied in (GTK looks for it by name in the directory's share/themes), named in xsettingsd's
      * settings, and light or dark with its accent for the portal, from [palette] (its colors).
      */
-    fun writeImported(dir: File, theme: LinuxTheme, folder: File, palette: Palette) {
+    fun writeImported(dir: File, theme: LinuxTheme, folder: File, palette: Palette, desktop: Boolean = false) {
         dir.mkdirs()
         val target = File(dir, "share/themes/${theme.id}")
         if (!target.isDirectory) folder.copyRecursively(target, overwrite = true)
-        writeWhole(File(dir, XSETTINGS_FILE), xsettings(theme.id))
+        writeWhole(File(dir, XSETTINGS_FILE), xsettings(theme.id, desktop))
         writeWhole(File(dir, PORTAL_FILE), portal(palette))
     }
 
@@ -136,13 +136,17 @@ object ThemeFiles {
         "error_fg_color" to hex(p.onError),
     )
 
-    private fun xsettings(theme: String) = """
+    /**
+     * An app alone on its screen needs no window buttons: Android's own task does that. In a
+     * [desktop], apps that draw their own title bar (GTK's header bars) need all of them.
+     */
+    private fun xsettings(theme: String, desktop: Boolean) = """
         Net/ThemeName "$theme"
         Net/IconThemeName "Adwaita"
         Gtk/CursorThemeName "${ThemePack.CURSOR}"
         Gtk/CursorThemeSize ${ThemePack.CURSOR_SIZE}
         Net/EnableEventSounds 0
-        Gtk/DecorationLayout "menu:"
+        Gtk/DecorationLayout "${if (desktop) "menu:minimize,maximize,close" else "menu:"}"
     """.trimIndent() + "\n"
 
     /** color-scheme as the portal has it: 1 prefers dark, 2 prefers light; the accent as 0..1 RGB. */

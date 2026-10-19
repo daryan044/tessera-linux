@@ -57,4 +57,19 @@ class ThemeFilesTest {
         assertTrue(File(dir, ThemeFiles.XSETTINGS_FILE).readText().contains("Tessera-3"))
         assertFalse(dir.walk().any { it.name.endsWith(".tmp") })
     }
+
+    @Test fun `apps on a desktop get their window buttons, apps alone on a screen none`() {
+        assertTrue("Gtk/DecorationLayout \"menu:\"" in ThemeFiles.files(dark, 1, pack = true).getValue(ThemeFiles.XSETTINGS_FILE))
+        assertTrue(
+            "Gtk/DecorationLayout \"menu:minimize,maximize,close\"" in
+                ThemeFiles.files(dark, 1, pack = true, desktop = true).getValue(ThemeFiles.XSETTINGS_FILE),
+        )
+    }
+
+    @Test fun `a desktop's title font and edges follow its title bar`() {
+        assertEquals("Sans Bold 9", DesktopFiles.titleFont(40))
+        assertEquals("Sans Bold 18", DesktopFiles.titleFont(80))
+        assertEquals(8, DesktopFiles.edgeFor(40))
+        assertEquals(4, DesktopFiles.edgeFor(10))
+    }
 }
