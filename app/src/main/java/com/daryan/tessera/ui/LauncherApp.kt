@@ -48,6 +48,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberSearchBarState
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -137,8 +139,9 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var showTrackpad by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     val filesUi = remember { FilesUi() }
-    /** Non-null while the Apps tab's search is open. */
-    var appQuery by rememberSaveable { mutableStateOf<String?>(null) }
+    /** The Apps tab's search: a pill in its bar, opening to full-screen results. */
+    val appSearch = rememberSearchBarState()
+    val appQuery = rememberTextFieldState()
     val queue by vm.queue.collectAsStateWithLifecycle()
     val catalog by vm.catalog.collectAsStateWithLifecycle()
     val flathubCatalog by vm.flathubCatalog.collectAsStateWithLifecycle()
@@ -200,9 +203,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     // The Files tab follows the engine: PRoot's system or chroot's, once it's usable.
     LaunchedEffect(status, mode) { vm.files.useEngine(vm.filesEngine(status, mode)) }
     // Search belongs to the Apps tab; leaving it closes the search.
-    LaunchedEffect(destination) { if (destination != Destination.Apps) appQuery = null }
-    androidx.activity.compose.BackHandler(enabled = appQuery != null) { appQuery = null }
-    val appResults = remember(apps, appQuery) { appQuery?.let { searchApps(apps, it) } }
+    LaunchedEffect(destination) { if (destination != Destination.Apps) appSearch.snapTo(0f) }
+    val appResults = remember(apps, appQuery.text) { searchApps(apps, appQuery.text.toString()) }
     // The task manager samples only while Sessions is on screen; chroot mode reads as root to
     // see apps running as root too.
     val monitorSu = if (mode == BackendMode.CHROOT) status?.su else null
@@ -340,8 +342,11 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 )
                 // The Store's history: every install and removal, with apt's output.
                 val actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
+                    // Where search used to be: the desktop, which opens its sheet like any app.
                     if (destination == Destination.Apps) {
-                        IconButton(onClick = { appQuery = "" }) { Icon(LauncherIcons.Search, "Search apps") }
+                        apps.firstOrNull { it.desktop }?.let { desktop ->
+                            IconButton(onClick = { openApp = desktop }) { Icon(LauncherIcons.Desktop, desktop.name) }
+                        }
                     }
                     if (destination == Destination.Store) {
                         val active = queue.count { it.active }
@@ -352,14 +357,15 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                         }
                     }
                 }
-                val q = appQuery
-                if (destination == Destination.Apps && q != null) {
-                    AppSearchBar(
-                        query = q,
-                        onQuery = { appQuery = it },
-                        onClose = { appQuery = null },
-                        // The keyboard's search key opens the best match.
-                        onSubmit = { appResults?.firstOrNull()?.let { openApp = it } },
+                if (destination == Destination.Apps) {
+                    AppsSearchBar(
+                        state = appSearch,
+                        query = appQuery,
+                        count = apps.size,
+                        results = appResults,
+                        onOpen = { openApp = it },
+                        navigationIcon = menuButton,
+                        actions = actions,
                     )
                 } else if (shortScreen) {
                     // The large flexible bar would eat half a landscape screen; go compact there.
@@ -382,7 +388,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     QueueStrip(queue, onOpenQueue = { showQueue = true })
                 }
                 AnimatedVisibility(
-                    visible = destination == Destination.Apps && appQuery == null,
+                    visible = destination == Destination.Apps,
                     enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
                     exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
                 ) {
@@ -447,7 +453,6 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     onEditExec = { execApp = it },
                     graphics = gpuGraphics || appearance.enabled,
                     onGraphics = { graphicsApp = it },
-                    search = appResults,
                 )
                 Destination.Files -> FilesScreen(vm.files, filesUi, padding, onMessage = filesMessage)
                 Destination.Store -> StoreScreen(
@@ -734,7 +739,14 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             installed = vm.installed(app, status, mode),
             customTabs = customTabs,
             onToggleTab = { vm.tabStore.toggle(it, app.id) },
-            onLaunch = { startApp(app) },
+            // One desktop at a time: opening it again goes back to the one running.
+            onLaunch = {
+                val runningDesktop = if (app.desktop) sessions.firstOrNull { it.app.id == app.id && it.running } else null
+                if (runningDesktop != null) {
+                    openApp = null
+                    vm.sessions.showWindow(runningDesktop.session.id)
+                } else startApp(app)
+            },
             onInstall = {
                 if (vm.install(app)) {
                     openApp = null
@@ -748,6 +760,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onResetPermissions = { vm.resetPermissions(app.id) },
             gpu = remember(app.id, gpuApps, gpuEnabled, mode) { vm.gpuFor(app) },
             onGpu = { vm.setGpuFor(app, it) },
+            extras = if (app.desktop) ({ DesktopSheetNotes(running = sessions.any { it.app.id == app.id && it.running }) }) else null,
         )
     } }
 

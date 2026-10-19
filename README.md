@@ -140,6 +140,15 @@ dark and every open Linux app turns dark within seconds, no restart.
 - **A white, rounded pointer** (Bibata) instead of X's sharp black arrow, in every app.
 - Theming is per app: hold any app for **Look and graphics** to leave it out.
 
+### 🖥️ A whole desktop, when you want one *(new)*
+The **desktop button** next to the search bar opens a Linux desktop, through the same sheet as any
+app (install, permissions, graphics). Windows move, snap to half the screen and minimize, in the
+style of addy-dclxvi's Circela xfwm4 theme redrawn in your phone's colors: title bars that match
+the apps' own, ring buttons sized for fingers, your wallpaper behind it all. A floating Material
+dock (a rail on the left in landscape) has the Start menu with search, a button per open window
+(hold it to maximize, snap or close) and the clock. Apps opened from the Start menu run inside the
+desktop, under its permissions. It runs xfwm4, installed the first time you open it.
+
 ### 🔍 Live scaling, per app *(new)*
 Swipe in the window panel and drag **Scale**: the app re-lays out at the new size *while you
 drag*, from tiny-and-dense to big-and-touchable, and remembers it for next time.
@@ -326,7 +335,8 @@ Each launcher entry is a manifest: what to run, and what it may touch.
 ```
 
 Store installs write these for you from each app's desktop file, with permissions that suit its
-category.
+category. A manifest with `"desktop": true` is a whole desktop instead: its `exec` is the window
+manager, and apps opened from its Start menu run inside it (see `apps/desktop.json`).
 
 ## Building
 

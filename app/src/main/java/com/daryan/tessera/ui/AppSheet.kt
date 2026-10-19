@@ -24,6 +24,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -85,6 +86,8 @@ fun AppSheet(
     /** This app's GPU acceleration; null when it can't have any (no window, or no Adreno GPU). */
     gpu: Boolean?,
     onGpu: (Boolean) -> Unit,
+    /** What only this kind of app has to say, under its launch button (a desktop's way of working). */
+    extras: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     // Follows the finger: opens to the Permissions heading, drags up for the rest, down to close.
     DraggableSheet(onDismissRequest = onDismiss) { peek ->
@@ -133,6 +136,10 @@ fun AppSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp),
                 )
+            }
+            if (extras != null) {
+                Spacer(Modifier.height(16.dp))
+                extras()
             }
             if (gpu != null) {
                 Spacer(Modifier.height(16.dp))
@@ -201,5 +208,22 @@ internal fun EnforcementPill(e: Enforcement) {
     }
     Surface(shape = CircleShape, color = bg, contentColor = fg) {
         Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+    }
+}
+
+/** A desktop's part of its sheet: how its windows and apps work, before its permissions. */
+@Composable
+fun DesktopSheetNotes(running: Boolean) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(if (running) "Running" else "Windows you can move", style = MaterialTheme.typography.titleSmall)
+            Text(
+                if (running) "Opening it again goes back to it, with its windows as you left them."
+                else "Drag windows by their top bar, to an edge to fill half the screen. " +
+                    "Apps opened from its Start menu run inside it, with the permissions below.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

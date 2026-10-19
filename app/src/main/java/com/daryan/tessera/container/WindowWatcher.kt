@@ -11,9 +11,11 @@ const val WINDOW_COMMANDS_NAME = "launcher-wincmd"
 /**
  * Runs next to a GUI app (see [guestCommand]) with python3-xlib. It keeps [WINDOWS_FILE_GUEST]
  * up to date with the app's windows as JSON, {"active": id, "windows": [{"id", "title",
- * "main"}]}, replaced atomically on every change, where "main" means a window of its own
- * rather than a dialog. Commands come one per line through the FIFO next to it:
- * "activate <id>" brings a window to the front, "close <id>" asks it to close.
+ * "main", "class", "hidden", "maximized"}], "screen": [width, height]}, replaced atomically on
+ * every change, where "main" means a window of its own rather than a dialog. Commands come one
+ * per line through the FIFO next to it: "activate <id>" brings a window to the front (and back
+ * from minimized), "close <id>" asks it to close; for a desktop's taskbar also "minimize <id>",
+ * "maximize <id>" (toggles) and "snap <id> left|right" (half of the work area).
  */
 internal const val WINDOW_WATCHER = """
 import json, os, select, sys
@@ -27,7 +29,12 @@ root = d.screen().root
 A = d.intern_atom
 CLIENTS, ACTIVE, CLOSE = A("_NET_CLIENT_LIST"), A("_NET_ACTIVE_WINDOW"), A("_NET_CLOSE_WINDOW")
 NAME, TYPE, NORMAL = A("_NET_WM_NAME"), A("_NET_WM_WINDOW_TYPE"), A("_NET_WM_WINDOW_TYPE_NORMAL")
-root.change_attributes(event_mask=X.PropertyChangeMask)
+STATE, HIDDEN = A("_NET_WM_STATE"), A("_NET_WM_STATE_HIDDEN")
+MAX_V, MAX_H = A("_NET_WM_STATE_MAXIMIZED_VERT"), A("_NET_WM_STATE_MAXIMIZED_HORZ")
+CHANGE_STATE, WORKAREA = A("WM_CHANGE_STATE"), A("_NET_WORKAREA")
+MOVERESIZE, EXTENTS = A("_NET_MOVERESIZE_WINDOW"), A("_NET_FRAME_EXTENTS")
+# Structure too: the screen changes size when the phone turns.
+root.change_attributes(event_mask=X.PropertyChangeMask | X.StructureNotifyMask)
 watched = set()
 
 def prop(w, atom):
@@ -58,14 +65,25 @@ def describe(wid):
         transient = w.get_wm_transient_for()
     except error.XError:
         transient = None
-    return {"id": wid, "title": name or "", "main": transient is None and (not types or NORMAL in types)}
+    try:
+        cls = (w.get_wm_class() or ("", ""))[1] or ""
+    except error.XError:
+        cls = ""
+    states = list(prop(w, STATE) or [])
+    return {"id": wid, "title": name or "", "main": transient is None and (not types or NORMAL in types),
+            "class": cls, "hidden": HIDDEN in states, "maximized": MAX_V in states and MAX_H in states}
 
 last = None
 def publish():
     global last
     ids = list(prop(root, CLIENTS) or [])
     active = (prop(root, ACTIVE) or [0])[0]
-    text = json.dumps({"active": active, "windows": [describe(i) for i in ids]})
+    try:
+        g = root.get_geometry()
+        screen = [g.width, g.height]
+    except error.XError:
+        screen = []
+    text = json.dumps({"active": active, "windows": [describe(i) for i in ids], "screen": screen})
     if text == last:
         return
     last = text
@@ -79,6 +97,19 @@ def message(wid, atom, data):
     ev = event.ClientMessage(window=d.create_resource_object("window", wid), client_type=atom, data=(32, data))
     root.send_event(ev, event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask)
     d.flush()
+
+def snap(wid, side):
+    area = list(prop(root, WORKAREA) or [])[:4]
+    if len(area) < 4:
+        return
+    x, y, w, h = area
+    l, r, t, b = (list(prop(d.create_resource_object("window", wid), EXTENTS) or []) + [0, 0, 0, 0])[:4]
+    half = w // 2
+    left = x if side == "left" else x + half
+    message(wid, STATE, [0, MAX_V, MAX_H, 1, 0])
+    # Static gravity, with x, y, width and height given, from a pager (source 2): the client
+    # goes inside its frame's share of the area.
+    message(wid, MOVERESIZE, [10 | 0xF00 | 0x2000, left + l, y + t, half - l - r, h - t - b])
 
 if not os.path.exists(cmd_path):
     os.mkfifo(cmd_path)
@@ -96,7 +127,7 @@ while True:
     while b"\n" in pending:
         line, pending = pending.split(b"\n", 1)
         parts = line.decode(errors="replace").split()
-        if len(parts) != 2:
+        if len(parts) not in (2, 3):
             continue
         try:
             wid = int(parts[1], 0)
@@ -106,6 +137,12 @@ while True:
             message(wid, ACTIVE, [2, X.CurrentTime, 0, 0, 0])
         elif parts[0] == "close":
             message(wid, CLOSE, [X.CurrentTime, 2, 0, 0, 0])
+        elif parts[0] == "minimize":
+            message(wid, CHANGE_STATE, [3, 0, 0, 0, 0])
+        elif parts[0] == "maximize":
+            message(wid, STATE, [2, MAX_V, MAX_H, 1, 0])
+        elif parts[0] == "snap" and len(parts) == 3:
+            snap(wid, parts[2])
     while d.pending_events():
         d.next_event()
     publish()

@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 
 // Copyright (C) 2026 Daryan Kamaran Karim
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -13,19 +13,18 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.clearText
+import androidx.compose.material3.AppBarWithSearch
+import androidx.compose.material3.ExpandedFullScreenContainedSearchBar
+import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.SearchBarState
+import androidx.compose.material3.SearchBarValue
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
@@ -73,6 +72,8 @@ import androidx.compose.material3.ripple
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -171,8 +172,6 @@ fun AppsPager(
     /** Whether [onGraphics] has anything for windowed apps (theming, or the phone's GPU driver). */
     graphics: Boolean,
     onGraphics: (PermissionManifest) -> Unit,
-    /** While searching: the matching apps, shown in one grid in place of the tabs. */
-    search: List<PermissionManifest>? = null,
 ) {
     val context = LocalContext.current
     val homeScreen = remember { HomeShortcuts.supported(context) }
@@ -194,44 +193,7 @@ fun AppsPager(
             modifier = modifier,
         )
     }
-    AnimatedContent(
-        targetState = search != null,
-        transitionSpec = {
-            (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
-                .togetherWith(fadeOut(motion.fastEffectsSpec()))
-        },
-        label = "appsSearch",
-        modifier = Modifier.fillMaxSize(),
-    ) { searching ->
-        if (searching) SearchResults(search.orEmpty(), padding, tile)
-        else TabsPager(tabs, pagerState, padding, tile, onTrackpad, onNewShortcut)
-    }
-}
-
-/** Every app that matches, in one grid; the tiles slide into place as the query narrows. */
-@Composable
-private fun SearchResults(
-    results: List<PermissionManifest>,
-    padding: PaddingValues,
-    tile: @Composable (PermissionManifest, Int?, Modifier) -> Unit,
-) {
-    if (results.isEmpty()) {
-        EmptyState(title = "No apps match", body = "Apps not installed yet are in the Store.", padding = padding)
-        return
-    }
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 104.dp),
-        contentPadding = PaddingValues(
-            start = 12.dp,
-            end = 12.dp,
-            top = padding.calculateTopPadding() + 8.dp,
-            bottom = padding.calculateBottomPadding() + 24.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        items(results, key = { it.id }) { app -> tile(app, null, Modifier.animateItem()) }
-    }
+    TabsPager(tabs, pagerState, padding, tile, onTrackpad, onNewShortcut)
 }
 
 /**
@@ -260,35 +222,72 @@ fun searchApps(apps: List<PermissionManifest>, query: String): List<PermissionMa
         .map { it.second }
 }
 
-/** The Apps tab's bar while searching: a field where the title was. */
+/**
+ * The Apps tab's bar: a search pill between the menu and the tab's actions, as Android's own
+ * apps have it, opening to full-screen results where the tiles slide into place as the query
+ * narrows. The keyboard's search key opens the best match.
+ */
 @Composable
-fun AppSearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit, onSubmit: () -> Unit) {
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
-    TopAppBar(
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
-        navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Close search") } },
-        title = {
-            Box(contentAlignment = Alignment.CenterStart) {
-                if (query.isEmpty()) {
-                    Text("Search apps", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+fun AppsSearchBar(
+    state: SearchBarState,
+    query: TextFieldState,
+    count: Int,
+    results: List<PermissionManifest>,
+    onOpen: (PermissionManifest) -> Unit,
+    navigationIcon: @Composable () -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val expanded = state.targetValue == SearchBarValue.Expanded
+    // Closed, it starts over next time.
+    LaunchedEffect(state.currentValue) { if (state.currentValue == SearchBarValue.Collapsed) query.clearText() }
+    val open: (PermissionManifest) -> Unit = { app ->
+        scope.launch { state.animateToCollapsed() }
+        onOpen(app)
+    }
+    val input = @Composable {
+        SearchBarDefaults.InputField(
+            textFieldState = query,
+            searchBarState = state,
+            onSearch = { results.firstOrNull()?.let(open) },
+            placeholder = { Text(if (count == 1) "Search 1 app" else "Search $count apps") },
+            leadingIcon = {
+                if (expanded) {
+                    IconButton(onClick = { scope.launch { state.animateToCollapsed() } }) {
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Close search")
+                    }
+                } else {
+                    Icon(LauncherIcons.Search, null)
                 }
-                BasicTextField(
-                    value = query,
-                    onValueChange = onQuery,
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
-                    modifier = Modifier.fillMaxWidth().focusRequester(focus),
-                )
-            }
-        },
-        actions = {
-            if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) { Icon(Icons.Rounded.Close, "Clear") }
-        },
+            },
+            trailingIcon = {
+                if (expanded && query.text.isNotEmpty()) {
+                    IconButton(onClick = { query.clearText() }) { Icon(Icons.Rounded.Close, "Clear") }
+                }
+            },
+        )
+    }
+    AppBarWithSearch(
+        state = state,
+        inputField = input,
+        navigationIcon = navigationIcon,
+        actions = actions,
+        colors = SearchBarDefaults.appBarWithSearchColors(appBarContainerColor = Color.Transparent),
     )
+    ExpandedFullScreenContainedSearchBar(state = state, inputField = input) {
+        if (results.isEmpty()) {
+            EmptyState(title = "No apps match", body = "Apps not installed yet are in the Store.", padding = PaddingValues(0.dp))
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 96.dp),
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                items(results, key = { it.id }) { app -> CompactAppTile(app, Modifier.animateItem()) { open(app) } }
+            }
+        }
+    }
 }
 
 @Composable

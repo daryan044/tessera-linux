@@ -164,6 +164,9 @@ class LauncherContainer(private val app: Application) {
     /** The modes (each has its own system) already checked for missing GUI helpers this run. */
     val guiHelpersChecked: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
 
+    /** The launcher's apps as it last listed them, for a desktop's Start menu (in its own window). */
+    val launcherApps = kotlinx.coroutines.flow.MutableStateFlow<List<com.daryan.tessera.container.PermissionManifest>>(emptyList())
+
     /** An app whose sheet the launcher should open (set from an X11 window's Permissions tile). */
     val showAppRequests = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
