@@ -136,7 +136,8 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
             ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.adoptFd(fd)).bufferedReader().use { r ->
                 try {
                     r.lineSequence().forEach { raw ->
-                        val line = raw.trimEnd('\r')
+                        // Without terminal colors: flatpak colors its errors even on a pipe.
+                        val line = raw.trimEnd('\r').replace(ANSI, "")
                         if (job.script == null) parser.feed(line)?.let { (p, msg) -> state = JobState.Running(p, msg) }
                         // Other tools' progress isn't machine-readable: their latest line says it.
                         else if (line.isNotBlank()) state = JobState.Running(null, line.trim().take(120))
@@ -185,6 +186,8 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
 
     companion object {
         private const val MAX_LOG = 64 * 1024
+        /** Terminal color and cursor codes (ESC [ ... letter). */
+        private val ANSI = Regex("\u001B\\[[0-9;?]*[A-Za-z]")
         private const val LOG_PUBLISH_MS = 250L
 
         /** apt in two phases with machine-readable progress; markers tell [AptProgress] which. */
