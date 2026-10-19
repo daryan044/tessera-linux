@@ -34,7 +34,9 @@ class Screenshots(private val dir: File) {
 
     /** Up to [max] of [app]'s screenshots as local files; empty when there are none or offline. */
     suspend fun forApp(app: StoreApp, max: Int = 4): List<File> = withContext(Dispatchers.IO) {
-        val urls = found[app.id] ?: runCatching { lookup(app) }.getOrNull()?.also { found[app.id] = it } ?: emptyList()
+        // Flathub's catalog lists them; Debian's has to be matched against Flathub.
+        val urls = app.screenshots.ifEmpty { null } ?: found[app.id]
+            ?: runCatching { lookup(app) }.getOrNull()?.also { found[app.id] = it } ?: emptyList()
         urls.take(max).mapNotNull { runCatching { download(it) }.getOrNull() }
     }
 
