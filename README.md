@@ -4,15 +4,18 @@
 
 # Tessera
 
-### Linux apps on Android, as easy as installing an app.
+### A real Linux desktop's apps on your phone. As easy as installing an app.
 
-Firefox, GIMP, VS Code, LibreOffice and the rest of Debian on your phone, each with its own icon,
-its own window and its own card in Recents. No terminal setup, no VNC, no guides to follow.
+Firefox, GIMP, VS Code, LibreOffice, all of Debian **and Flathub** on Android, each with its own
+icon, its own window and its own card in Recents, running on the phone's GPU and wearing the
+phone's own colors. No terminal setup, no VNC, no guides to follow.
 
 [![Build](https://github.com/daryan044/tessera-linux/actions/workflows/build.yml/badge.svg)](https://github.com/daryan044/tessera-linux/actions/workflows/build.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 ![Android 7+](https://img.shields.io/badge/Android-7%2B-3DDC84?logo=android&logoColor=white)
 ![Root optional](https://img.shields.io/badge/root-optional-8EE3B8)
+![Flathub](https://img.shields.io/badge/Flathub-2%2C800%2B%20apps-4A86CF?logo=flathub&logoColor=white)
+![GPU](https://img.shields.io/badge/GPU-OpenGL%204.6%20%2B%20Vulkan-E2231A)
 
 **[⬇ Download Tessera 0.1.0 (alpha)](https://github.com/daryan044/tessera-linux/releases/download/v0.1.0/tessera-v0.1.0.apk)**
 · [All releases](https://github.com/daryan044/tessera-linux/releases)
@@ -21,6 +24,53 @@ its own window and its own card in Recents. No terminal setup, no VNC, no guides
 
 ---
 
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**📦 Flathub on Android**<br>
+2,800+ Flathub apps in a phone app store. No root, no bubblewrap, no user namespaces needed, and
+still on the GPU.
+
+</td>
+<td width="33%" valign="top">
+
+**🎨 Material You for Linux**<br>
+GTK, libadwaita, Qt, LibreOffice and Firefox take your wallpaper's colors and follow dark mode,
+**live**, no restart.
+
+</td>
+<td width="33%" valign="top">
+
+**🚀 Desktop-class GPU**<br>
+OpenGL 4.6 and Vulkan on Adreno through our own Turnip + Zink build. glxgears at ~240 fps.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**🪟 One app, one Android app**<br>
+Every Linux app and every one of its windows gets its own Recents card. Pin them to your home
+screen.
+
+</td>
+<td valign="top">
+
+**🔒 A sandbox per app**<br>
+Folders, network, sound, USB, root: granted one by one, enforced by the kernel in chroot mode.
+
+</td>
+<td valign="top">
+
+**🖱️ Your phone as a PC trackpad**<br>
+Pair it with a computer over Bluetooth (or USB, with root) and it's a trackpad and keyboard. Or
+cast Linux apps to a TV.
+
+</td>
+</tr>
+</table>
+
 ## Why Tessera
 
 Running Linux on a phone has always meant a terminal app, a pile of commands from a forum post,
@@ -28,13 +78,51 @@ a VNC viewer showing a whole desktop shrunk to a phone screen, and starting over
 breaks. Tessera turns all of that into an app launcher:
 
 1. **Open Tessera and tap Install.** It downloads Debian 13 (digest-verified) and sets it up.
-2. **Pick apps from the Store.** Debian's catalog of nearly 2,000 desktop apps, with icons,
-   categories and search. Installs run in the background.
+2. **Pick apps from the Store.** Debian's catalog of nearly 2,000 desktop apps, and with one tap
+   **Flathub's 2,800+**, with icons, screenshots, categories and search. Installs run in the
+   background.
 3. **Tap an app.** It opens in its own window, like any Android app.
 
 That's it. Everything below happens on its own.
 
 ## What makes it different
+
+### 📦 Flathub, on a phone, without root *(new)*
+Flatpak normally needs **bubblewrap**, which needs **user namespaces**, which Android kernels don't
+have. So `flatpak run` simply can't work on a phone. Tessera runs Flathub apps anyway:
+- **Flatpak installs, Tessera runs.** `flatpak` downloads apps and runtimes as usual; Tessera then
+  builds each app's world itself: the runtime mounted at `/usr`, the app at `/app`, the runtime's
+  GL drivers where it expects them. In PRoot mode that's done with path translation, **no root
+  at all**; in chroot mode with a private mount namespace.
+- **Full integration, not a side door.** A Flathub app gets the same window, Recents cards,
+  keyboard, sound, clipboard, theme and per-app permissions as every Debian app.
+- **On the GPU.** Tessera's own Turnip driver loads inside Flathub's runtimes: OpenGL 4.6 on
+  Adreno, confirmed with Flathub's mpv.
+- **Optional, and one tap.** The Store switches between **Debian** and **Flathub**; the first
+  time, one button installs flatpak and adds Flathub. 2,800+ arm64 apps, with screenshots.
+
+### 🎨 Linux apps that look like Android apps *(new)*
+Linux apps usually look like a 2010 desktop on a phone. Tessera themes them with **your phone's
+Material You colors**, taken from your wallpaper, and **follows dark mode live**: flip Android to
+dark and every open Linux app turns dark within seconds, no restart.
+- **GTK 3** with a recolored adw-gtk3, **GTK 4 / libadwaita** through a settings portal Tessera
+  serves itself, **Qt** through its GTK theme, **LibreOffice** on its modern GTK front end,
+  **Firefox** and Chromium apps following light and dark.
+- **A white, rounded pointer** (Bibata) instead of X's sharp black arrow, in every app.
+- Theming is per app: hold any app for **Look and graphics** to leave it out.
+
+### 🔍 Live scaling, per app *(new)*
+Swipe in the window panel and drag **Scale**: the app re-lays out at the new size *while you
+drag*, from tiny-and-dense to big-and-touchable, and remembers it for next time.
+
+### 📁 A real file manager *(new)*
+The **Files** tab browses phone storage and the whole Linux system side by side: copy, move,
+compress, extract, edit text, change permissions, open files in Android or Linux apps, install a
+.deb with a tap, or browse as root.
+
+### 📊 Task manager *(new)*
+Every Linux process, live CPU and memory per app, and **End task** with a two-tap "Sure?" right
+on each app's card.
 
 ### 🪟 Every Linux app is a real Android app
 - Each app gets **its own window** and **its own card in Recents**, named and with its icon;
@@ -50,7 +138,7 @@ That's it. Everything below happens on its own.
 - **Clipboard works both ways** between Linux and Android apps.
 - **Sound** plays through Android, per app.
 - **Touch is touch:** scroll and pinch in Firefox with your fingers, or switch an app to touchpad
-  or mouse mode from its side menu.
+  or mouse mode from its side menu, where **touch and hold right-clicks**.
 - A side menu on every window (swipe from the edge) has what a phone lacks: right click, Esc,
   Tab, Ctrl+C, Alt+Tab, F11.
 
@@ -58,8 +146,10 @@ That's it. Everything below happens on its own.
 - Tessera ships its own build of Mesa: **Turnip** (Vulkan for Adreno GPUs, talking to Android's
   own GPU driver interface) and **Zink** (OpenGL on top of it). Apps get **OpenGL 4.6 and
   Vulkan** with no setup; on an Adreno 740, glxgears runs at ~240 fps.
-- **Graphics fixes per app:** hold an app's icon to switch its GPU off or turn on workarounds for
-  driver bugs, named after what you see ("Fix black blocks", "Fix flicker").
+- **Graphics fixes per app:** hold an app's icon (**Look and graphics**) to switch its GPU off or
+  turn on workarounds for driver bugs, named after what you see ("Fix black blocks", "Fix
+  flicker").
+- **Works for Flathub apps too:** the same driver loads inside Flathub's runtimes.
 
 ### 🔒 Every app in its own sandbox
 - Each app runs in a container that gets **only what it's granted**: specific folders (read-only
@@ -75,10 +165,17 @@ That's it. Everything below happens on its own.
   fingers to scroll or right-click, with a dot field that lights up under your fingers. The
   keyboard still pops up by itself for text fields.
 
-### 🔌 USB devices without root *(new, experimental)*
+### 🔌 USB devices, drives and flashing tools *(new, experimental)*
 - Give an app a USB device, and Tessera asks Android's permission and hands it over at launch.
   Inside, apps use it through libusb as usual, even in PRoot mode, where Android normally keeps
   apps away from USB entirely.
+- **All USB** for tools like fastboot, adb, heimdall and EDL: in chroot mode the bus is shared
+  live, so a phone that reboots into fastboot under a new number is still there.
+- **USB drives and SD cards** appear where Linux file managers look for them.
+
+### 🖱️ The phone as a PC trackpad *(new)*
+- Pair the phone with a computer over Bluetooth, or plug it in by USB (with root), and it becomes
+  a **trackpad and keyboard** for that PC. No app needed on the computer.
 
 ### 🧰 And everything around it
 - **Terminal** for command-line apps, with extra keys and pinch to zoom.
@@ -124,9 +221,13 @@ makes).
 | Store, installs, apps installed with apt or .deb | ✅ Works |
 | GPU acceleration (Turnip + Zink) in PRoot mode | ✅ Works on Adreno 740 |
 | Chroot mode with root | ✅ Works; GPU in chroot mode is new |
+| Flathub apps (install from the Store, launch, GPU) | ✅ Works in PRoot and chroot mode |
+| Material You theming, live dark mode (GTK, libadwaita, Qt, LibreOffice, Firefox) | ✅ Works |
+| Live per-app scaling, white pointer, window panel | ✅ Works |
+| Files tab, task manager | 🧪 New |
 | Casting to a TV with the phone as trackpad | 🧪 New |
-| USB devices for PRoot apps | 🧪 Experimental |
-| Store screenshots (from Flathub) | 🧪 New |
+| The phone as a PC trackpad (USB, Bluetooth) | 🧪 New |
+| USB devices for PRoot apps, all-USB for flashing tools | 🧪 Experimental |
 
 Full detail, item by item: [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -146,6 +247,12 @@ flowchart LR
         Mesa["Mesa: Turnip + Zink"]
         App --> Mesa
     end
+    subgraph Flat["Flathub app (its own root)"]
+        Rt["Runtime at /usr"]
+        FApp["App at /app"]
+    end
+    Box -. "shares the session:<br/>X socket, D-Bus, sound, theme" .- Flat
+    FApp --> Mesa
     SM -- "PRoot (no root)<br/>or chroot + namespaces (root)" --> Box
     App -- "X11 socket" --> X
     Mesa -- "/dev/kgsl-3d0" --> GPU["Adreno GPU"]
@@ -157,6 +264,11 @@ flowchart LR
 - **Display:** each app gets its own X server and display, so apps can't see each other's
   windows. A small window manager keeps the app fullscreen; Tessera follows its windows to give
   each its own Android task.
+- **Flathub apps:** Debian's flatpak installs them; Tessera runs them in a root of their own
+  (runtime at /usr, app at /app) beside the session's helpers, sharing its X socket, D-Bus and
+  sound, with no bubblewrap.
+- **Theming:** a per-session theme (adw-gtk3 recolored from Android's Material colors), xsettingsd,
+  and a small settings portal on the session bus; rewritten live when Android's colors change.
 - **Graphics:** frames from Zink reach the X server as images (Kopper and Vulkan's software
   presentation path), since Android offers no shared-buffer path for them.
 - **Permissions** come from per-app manifests ([below](#app-manifests)), changed by the user in
@@ -209,16 +321,22 @@ Release builds (`./gradlew assembleRelease`) are signed with the key in `keystor
 at the top of the project (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; never
 committed), or the `TESSERA_KEYSTORE*` environment variables; without either, with the debug key.
 GitHub Actions ([build.yml](.github/workflows/build.yml)) builds everything from source on each
-push, and publishes a release for each `v*` tag, signed when the `TESSERA_KEYSTORE_BASE64`,
-`TESSERA_KEYSTORE_PASSWORD`, `TESSERA_KEY_ALIAS` and `TESSERA_KEY_PASSWORD` secrets are set.
+push, and publishes a release for a `v*` tag only when the `TESSERA_KEYSTORE_BASE64`,
+`TESSERA_KEYSTORE_PASSWORD`, `TESSERA_KEY_ALIAS` and `TESSERA_KEY_PASSWORD` secrets are set;
+otherwise releases are signed and published by hand.
 
 ## FAQ
 
 **Do I need root?** No. Everything works in PRoot mode. Root adds chroot mode, which enforces
 permissions properly and runs faster.
 
-**Which apps work?** Desktop apps from Debian's catalog, and anything you install with apt or as a
-.deb for arm64. Electron apps like VS Code work.
+**Which apps work?** Desktop apps from Debian's catalog, Flathub's arm64 apps, and anything you
+install with apt or as a .deb for arm64. Electron apps like VS Code work.
+
+**Flatpak needs bubblewrap. How does Flathub work here?** Flatpak only installs; Tessera runs the
+apps itself, building each one's file system (runtime at /usr, app at /app) with PRoot or a mount
+namespace instead of bubblewrap. That also means no Flatpak sandbox: Tessera's own per-app
+permissions apply instead.
 
 **Why isn't it on Google Play?** Play requires a newer target API level, and those forbid running
 programs from app storage, which is what Linux needs. F-Droid has no such rule.
@@ -226,7 +344,7 @@ programs from app storage, which is what Linux needs. F-Droid has no such rule.
 **My apps stop in the background.** Android 12 and newer limit background processes. Setup shows
 whether the limit is on, and lifts it in one tap with root, or gives you the adb command.
 
-**An app draws wrong with the GPU on.** Hold its icon, open Graphics fixes, and try the fix that
+**An app draws wrong with the GPU on.** Hold its icon, open Look and graphics, and try the fix that
 matches what you see, or switch its GPU off.
 
 **An app won't start and I can't tell why.** The error is usually in Android's log, which a
@@ -256,6 +374,8 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 | [Mesa](https://mesa3d.org) | MIT | GPU driver (Turnip, Zink), built by `scripts/gpu/build-mesa.sh` |
 | [libusb](https://libusb.info) | LGPL-2.1-or-later | USB for PRoot apps, built by `scripts/usb/build-usb.sh` |
 | [adw-gtk3](https://github.com/lassekongo83/adw-gtk3) | LGPL-2.1 | GTK 3 theme for Linux apps, packed by `scripts/theme/build-theme.sh` |
+| [Bibata Cursor](https://github.com/ful1e5/Bibata_Cursor) | GPL-3.0 | the white pointer, packed by `scripts/theme/build-theme.sh` |
+| [Flatpak](https://flatpak.org) / [Flathub](https://flathub.org) | LGPL-2.1-or-later / per app | Flathub apps (installed in the container, not shipped) |
 | [Termux terminal-emulator / terminal-view](https://github.com/termux/termux-app) | Apache-2.0 | terminal |
 | [Haze](https://github.com/chrisbanes/haze) | Apache-2.0 | background blur |
 | AndroidX, Jetpack Compose, Material 3 | Apache-2.0 | UI |
