@@ -28,6 +28,11 @@ data class PermissionManifest(
     /** Distro packages that provide [exec]; offered for install when it's missing. */
     val packages: List<String> = emptyList(),
     val permissions: Permissions = Permissions(),
+    /**
+     * A whole desktop rather than one app: [exec] is its window manager, and apps opened from
+     * its Start menu run inside it, under these permissions. See [DesktopFiles].
+     */
+    val desktop: Boolean = false,
     /** A Flathub app: where its files are and what to run; see [FlatpakRef]. */
     val flatpak: FlatpakRef? = null,
 ) {
@@ -35,6 +40,7 @@ data class PermissionManifest(
         if (!ID.matches(id)) add("id '$id' must match ${ID.pattern}")
         if (exec.isEmpty()) add("exec is empty")
         if (gui && !permissions.display) add("gui apps need the display permission")
+        if (desktop && !gui) add("a desktop needs gui")
         permissions.filesystem.forEach { addAll(it.validate()) }
         packages.forEach { if (!PACKAGE.matches(it)) add("package '$it' is not a valid package name") }
         permissions.devices.forEach {

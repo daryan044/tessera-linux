@@ -16,5 +16,19 @@ class WindowReportsTest {
         assertEquals(4194341L, w.active)
         assertEquals(listOf(4194306L, 4194341L), w.main.map { it.id })
         assertEquals("Restore Session — Mozilla Firefox", w.windows.first().title)
+        // Older reports had none of the desktop's fields.
+        assertEquals(emptyList<Int>(), w.screen)
+        assertEquals("", w.windows.first().windowClass)
+    }
+
+    @Test fun `parses what a desktop's taskbar needs`() {
+        val w = SessionFiles.parseWindows(
+            """{"active": 2, "windows": [{"id": 2, "title": "xterm", "main": true, "class": "XTerm", "hidden": false, "maximized": true}, """ +
+                """{"id": 3, "title": "GIMP", "main": true, "class": "Gimp-2.10", "hidden": true, "maximized": false}], "screen": [1080, 2280]}""",
+        )
+        assertEquals(listOf(1080, 2280), w.screen)
+        assertEquals("XTerm", w.windows[0].windowClass)
+        assertEquals(true, w.windows[0].maximized)
+        assertEquals(true, w.windows[1].hidden)
     }
 }

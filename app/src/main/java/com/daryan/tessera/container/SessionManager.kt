@@ -205,7 +205,7 @@ class SessionManager(
         scope.launch(Dispatchers.IO) {
             try {
                 servers[session.id] = x11.start(session)
-                followWindows(session)
+                followWindows(session, ownTasks = !app.desktop)
                 audio?.let { launch { it.run() } }
                 withContext(Dispatchers.Main) { x11.showWindow(session) }
                 awaitWindow(session)
@@ -324,7 +324,20 @@ class SessionManager(
             } else {
                 ThemeFiles.write(paths.sessionTheme(session), Palette.current(context, look.colorMode, look.dynamicColor), pack)
             }
+            if (app.desktop) {
+                val palette = imported?.let(Palette::from) ?: Palette.current(context, look.colorMode, look.dynamicColor)
+                DesktopFiles.writeTheme(paths.sessionTheme(session), palette, desktopTitlePx(app))
+            }
         }.onFailure { Log.w(TAG, "couldn't write the theme for ${session.id}", it) }
+    }
+
+    /**
+     * A desktop's title bars in X pixels: [DESKTOP_TITLE_DP] on the phone, through the scale
+     * its X screen is drawn at (X pixels are the view's × 100 / scale).
+     */
+    private fun desktopTitlePx(app: PermissionManifest): Int {
+        val scale = com.daryan.tessera.X11Scale.forApp(context, app.id) ?: com.daryan.tessera.X11Scale.default(context)
+        return (DESKTOP_TITLE_DP * context.resources.displayMetrics.density * 100 / scale.coerceAtLeast(1)).toInt()
     }
 
     /**
@@ -373,12 +386,14 @@ class SessionManager(
     /**
      * Every main window an app opens after its first gets an Android task of its own (its own
      * card in Recents), the way a native app's second activity would. The first main window
-     * stays with the session's own window, see [primaryWindow].
+     * stays with the session's own window, see [primaryWindow]. Not so in a desktop
+     * ([ownTasks] false): its windows stay in it, on its taskbar.
      */
-    private fun followWindows(session: Session) {
+    private fun followWindows(session: Session, ownTasks: Boolean) {
         val tasks = windowTasks.getOrPut(session.id) { java.util.Collections.synchronizedSet(mutableSetOf()) }
         val reports = SessionFiles(paths.x11SocketDir(session), onFocus = { _focusChanges.tryEmit(session.id to it) }) { windows ->
             update(session.id) { it.copy(windows = windows) }
+            if (!ownTasks) return@SessionFiles
             val primary = primaryWindow(windows, tasks)
             tasks.retainAll(windows.main.map { it.id }.toSet())
             val fresh = windows.main.filter { it.id != primary && it.id !in tasks }
@@ -393,11 +408,14 @@ class SessionManager(
     private fun primaryWindow(windows: XWindows, tasks: Set<Long>): Long? =
         windows.main.firstOrNull { it.id !in tasks }?.id
 
-    /** The X window the Android window for [windowId] shows; null [windowId] means the session's own. */
+    /**
+     * The X window the Android window for [windowId] shows; null [windowId] means the session's
+     * own. None for a desktop, which shows them all.
+     */
     fun windowFor(sessionId: String, windowId: Long?): Long? {
         if (windowId != null) return windowId
-        val windows = byId(sessionId)?.windows ?: return null
-        return primaryWindow(windows, windowTasks[sessionId].orEmpty())
+        val running = byId(sessionId)?.takeUnless { it.app.desktop } ?: return null
+        return primaryWindow(running.windows, windowTasks[sessionId].orEmpty())
     }
 
     /** Brings [windowId] to the front of its app's screen. */
@@ -409,6 +427,22 @@ class SessionManager(
     fun closeWindow(sessionId: String, windowId: Long) {
         windowReports[sessionId]?.close(windowId)
     }
+
+    fun minimizeWindow(sessionId: String, windowId: Long) {
+        windowReports[sessionId]?.minimize(windowId)
+    }
+
+    fun toggleMaximizeWindow(sessionId: String, windowId: Long) {
+        windowReports[sessionId]?.toggleMaximize(windowId)
+    }
+
+    fun snapWindow(sessionId: String, windowId: Long, left: Boolean) {
+        windowReports[sessionId]?.snap(windowId, left)
+    }
+
+    /** What a running desktop session's taskbar can ask of it; null for anything else. */
+    fun desktop(sessionId: String): DesktopFiles? =
+        byId(sessionId)?.takeIf { it.running && it.app.desktop }?.let { DesktopFiles(paths.x11SocketDir(it.session)) }
 
     private fun update(id: String, f: (RunningSession) -> RunningSession) =
         _sessions.update { list -> list.map { if (it.session.id == id) f(it) else it } }
@@ -467,6 +501,8 @@ class SessionManager(
             "DBUS_SESSION_BUS_ADDRESS", "QT_QPA_PLATFORMTHEME", "SAL_USE_VCLPLUGIN", "AT_SPI_BUS_ADDRESS",
         )
         const val TAG = "Sessions"
+        /** A desktop's title bars, tall enough to hit their buttons with a finger. */
+        const val DESKTOP_TITLE_DP = 40
         const val PREFS = "launcher"
         const val KEY_GPU = "gpu_acceleration"
         const val KEY_GPU_APP = "gpu_acceleration_"

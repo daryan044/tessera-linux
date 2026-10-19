@@ -327,6 +327,13 @@ object LauncherIcons {
         moveTo(12f, 19f); lineTo(12f, 5f)
         moveTo(6f, 11f); lineTo(12f, 5f); lineTo(18f, 11f)
     }
+    /** A screen on a stand with a window on it; the Linux desktop. */
+    val Desktop = outline("Desktop") {
+        roundRect(3f, 4f, 21f, 16f, 2.5f)
+        moveTo(9f, 20f); lineTo(15f, 20f)
+        moveTo(12f, 16f); lineTo(12f, 20f)
+        moveTo(7f, 8.5f); lineTo(13f, 8.5f)
+    }
     val Search = outline("Search") {
         moveTo(10.5f, 4f)
         arcTo(6.5f, 6.5f, 0f, true, true, 10.49f, 4f)
@@ -359,6 +366,7 @@ fun appIcon(key: String): ImageVector = when (key) {
     "palette" -> Icons.Rounded.Create
     "folder" -> LauncherIcons.Folder
     "spark" -> LauncherIcons.Spark
+    "desktop" -> LauncherIcons.Desktop
     else -> LauncherIcons.Terminal
 }
 

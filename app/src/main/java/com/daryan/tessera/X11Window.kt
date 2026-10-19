@@ -3,12 +3,17 @@
 
 package com.daryan.tessera
 
+import android.app.WallpaperManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Shader
 import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.hardware.usb.UsbManager
@@ -26,7 +31,11 @@ import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -40,6 +49,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.daryan.tessera.container.PermissionManifest
+import com.daryan.tessera.container.RunningSession
+import com.daryan.tessera.ui.DesktopActions
+import com.daryan.tessera.ui.DesktopShell
 import kotlinx.coroutines.launch
 import com.daryan.tessera.ui.X11Overlay
 import com.daryan.tessera.ui.theme.LauncherTheme
@@ -94,10 +111,12 @@ class X11Window : MainActivity.MainActivityTagged() {
                 setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                 setContent {
                     LauncherTheme {
-                        X11Overlay(
-                            session = intent?.data?.let { container.sessions.forWindowTag(it.host ?: it.toString()) },
-                            actions = actions,
-                        )
+                        val session = intent?.data?.let { container.sessions.forWindowTag(it.host ?: it.toString()) }
+                        Box(Modifier.fillMaxSize()) {
+                            // A desktop has its own taskbar under the window panel.
+                            if (session?.app?.desktop == true) DesktopShell(desktopActions)
+                            X11Overlay(session = session, actions = actions)
+                        }
                     }
                 }
             },
@@ -268,6 +287,44 @@ class X11Window : MainActivity.MainActivityTagged() {
         if (cast != null) setProxyKeyboard(text) else lorieView.setKeyboardVisible(text)
     }
 
+    /** What a desktop session's taskbar and Start menu do, through its session. */
+    private val desktopActions by lazy {
+        object : DesktopActions {
+            override val session: StateFlow<RunningSession?> = container.sessions.sessions
+                .map { list -> list.firstOrNull { X11Server.windowTag(it.session) == sessionTag } }
+                .stateIn(lifecycleScope, SharingStarted.Eagerly, sessionTag?.let { container.sessions.forWindowTag(it) })
+            override val apps: StateFlow<List<PermissionManifest>> get() = container.launcherApps
+            private val id get() = session.value?.session?.id
+            private val desktop get() = id?.let { container.sessions.desktop(it) }
+
+            override fun launch(app: PermissionManifest): Boolean {
+                // Command-line apps get a terminal of their own in the desktop.
+                val argv = if (app.gui) app.exec else listOf("x-terminal-emulator", "-e") + app.exec
+                return desktop?.launch(argv) ?: false
+            }
+
+            override fun activate(windowId: Long) { id?.let { container.sessions.activateWindow(it, windowId) } }
+            override fun minimize(windowId: Long) { id?.let { container.sessions.minimizeWindow(it, windowId) } }
+            override fun toggleMaximize(windowId: Long) { id?.let { container.sessions.toggleMaximizeWindow(it, windowId) } }
+            override fun snap(windowId: Long, left: Boolean) { id?.let { container.sessions.snapWindow(it, windowId, left) } }
+            override fun close(windowId: Long) { id?.let { container.sessions.closeWindow(it, windowId) } }
+            override fun reserve(left: Boolean, px: Int): Boolean = desktop?.reserve(left, px) ?: false
+
+            override suspend fun wallpaper(width: Int, height: Int, top: Int, bottom: Int): Boolean = withContext(Dispatchers.IO) {
+                val desktop = desktop ?: return@withContext false
+                // Reading it takes the storage permission; without it, a gradient in the theme's colors.
+                val phone = runCatching {
+                    @Suppress("MissingPermission")
+                    WallpaperManager.getInstance(this@X11Window).drawable?.toBitmap()
+                }.getOrNull()
+                desktop.wallpaper(phone ?: gradientWallpaper(top, bottom), width, height)
+            }
+
+            override fun toggleKeyboard() = actions.toggleKeyboard()
+            override fun end() = actions.close(id)
+        }
+    }
+
     /** What the floating button can do to this window and its app. */
     private val actions = object : X11Actions {
         override fun toggleKeyboard() {
@@ -371,6 +428,12 @@ class X11Window : MainActivity.MainActivityTagged() {
 }
 
 private const val TAP_WINDOW_MS = 1500L
+
+/** A soft gradient for a desktop's background, where the phone's wallpaper can't be read. */
+private fun gradientWallpaper(top: Int, bottom: Int): Bitmap =
+    Bitmap.createBitmap(270, 540, Bitmap.Config.ARGB_8888).also { b ->
+        Canvas(b).drawPaint(Paint().apply { shader = LinearGradient(0f, 0f, 0f, 540f, top, bottom, Shader.TileMode.CLAMP) })
+    }
 
 /**
  * Average perceived brightness of [bitmap], 0 (black) to 1 (white); null when it holds nothing

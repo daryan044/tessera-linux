@@ -1,0 +1,28 @@
+{
+  "id": "desktop",
+  "name": "Desktop",
+  "description": "A Linux desktop with movable windows, in your phone's colors. Apps opened from its Start menu share its window.",
+  "category": "System",
+  "icon": "desktop",
+  "gui": true,
+  "desktop": true,
+  "exec": [
+    "/usr/bin/xfwm4"
+  ],
+  "packages": [
+    "xfwm4",
+    "xfconf",
+    "xterm"
+  ],
+  "permissions": {
+    "network": true,
+    "display": true,
+    "audio": true,
+    "filesystem": [
+      {
+        "path": "/storage/emulated/0/Download",
+        "mountAt": "/home/user/Downloads"
+      }
+    ]
+  }
+}

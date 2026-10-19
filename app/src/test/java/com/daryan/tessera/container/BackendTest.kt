@@ -116,8 +116,20 @@ class BackendTest {
         assertTrue("Xlib" in gui[6])
         assertEquals(WINDOWS_FILE_GUEST, gui[7])
         assertTrue("org.freedesktop.portal.Settings" in gui[8])
-        assertEquals(firefox.exec, gui.drop(9))
+        assertEquals("app", gui[9])
+        assertEquals(firefox.exec, gui.drop(10))
         assertEquals(offline.exec, guestCommand(offline))
+    }
+
+    @Test fun `a desktop runs its window manager beside the desktop helper, not matchbox`() {
+        val desktop = firefox.copy(id = "desktop", desktop = true, exec = listOf("/usr/bin/xfwm4"))
+        val cmd = guestCommand(desktop)
+        assertEquals(guestCommand(firefox).take(9), cmd.take(9))
+        assertEquals("desktop", cmd[9])
+        assertEquals(listOf("/bin/sh", "-c", DESKTOP_SESSION, "desktop", DESKTOP_HELPER), cmd.subList(10, 15))
+        assertEquals(listOf("/usr/bin/xfwm4"), cmd.drop(15))
+        assertTrue(desktop.validate().isEmpty())
+        assertEquals(listOf("a desktop needs gui"), offline.copy(desktop = true).validate())
     }
 
     @Test fun `shellQuote round-trips awkward strings`() {

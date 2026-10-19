@@ -17,10 +17,20 @@ data class XWindow(
     val title: String = "",
     /** A window of its own (it gets its own Android task), not a dialog of another. */
     val main: Boolean = true,
+    /** The second part of its WM_CLASS ("Firefox-esr"), to tell which app it belongs to. */
+    @kotlinx.serialization.SerialName("class") val windowClass: String = "",
+    /** Minimized. */
+    val hidden: Boolean = false,
+    val maximized: Boolean = false,
 )
 
 @Serializable
-data class XWindows(val active: Long = 0, val windows: List<XWindow> = emptyList()) {
+data class XWindows(
+    val active: Long = 0,
+    val windows: List<XWindow> = emptyList(),
+    /** The X screen's size in its pixels, [width, height]; empty until reported. */
+    val screen: List<Int> = emptyList(),
+) {
     val main get() = windows.filter { it.main }
 }
 
@@ -54,18 +64,15 @@ class SessionFiles(
 
     fun close(id: Long) = send("close $id")
 
-    /** Non-blocking: when the watcher isn't running there's no reader, and nothing to tell. */
-    private fun send(line: String) {
-        runCatching {
-            val fd = Os.open(File(dir, WINDOW_COMMANDS_NAME).path, OsConstants.O_WRONLY or OsConstants.O_NONBLOCK, 0)
-            try {
-                val bytes = "$line\n".toByteArray()
-                Os.write(fd, bytes, 0, bytes.size)
-            } finally {
-                Os.close(fd)
-            }
-        }
-    }
+    fun minimize(id: Long) = send("minimize $id")
+
+    /** Maximizes [id], or restores it when it is. */
+    fun toggleMaximize(id: Long) = send("maximize $id")
+
+    /** Puts [id] on the [left] or right half of the screen. */
+    fun snap(id: Long, left: Boolean) = send("snap $id ${if (left) "left" else "right"}")
+
+    private fun send(line: String) { sendLine(File(dir, WINDOW_COMMANDS_NAME), line) }
 
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
@@ -73,3 +80,18 @@ class SessionFiles(
         fun parseWindows(text: String): XWindows = json.decodeFromString(XWindows.serializer(), text)
     }
 }
+
+/**
+ * Writes [line] to a helper's command FIFO. Non-blocking: with no helper reading, nothing to
+ * tell; false then (and on any other failure).
+ */
+internal fun sendLine(fifo: File, line: String): Boolean =
+    runCatching {
+        val fd = Os.open(fifo.path, OsConstants.O_WRONLY or OsConstants.O_NONBLOCK, 0)
+        try {
+            val bytes = "$line\n".toByteArray()
+            Os.write(fd, bytes, 0, bytes.size)
+        } finally {
+            Os.close(fd)
+        }
+    }.isSuccess

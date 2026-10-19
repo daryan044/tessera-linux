@@ -265,6 +265,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refresh()
+        viewModelScope.launch { apps.collect { container.launcherApps.value = it } }
         // Re-probe once an install finishes so Setup and the launch buttons update.
         viewModelScope.launch {
             installState.collect { if (it == InstallState.Done) refresh() }
@@ -378,6 +379,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         pinned: List<String> = emptyList(),
         favorites: List<String> = emptyList(),
     ): List<LauncherTab> {
+        val apps = apps.filterNot { it.desktop }
         val byId = apps.associateBy { it.id }
         val pins = pinned.mapNotNull { byId[it] }
         fun arranged(list: List<PermissionManifest>) = pins.filter { it in list } + list.filterNot { it.id in pinned }
