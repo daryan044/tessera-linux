@@ -292,8 +292,11 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             )
         },
     ) {
+    // Only where the large title bar is there to collapse: without it the scroll behavior never
+    // learns how far it may go, and takes every scroll up for itself (the Apps tab's grid froze).
+    val collapsingBar = destination != Destination.Apps && destination != Destination.Files && !shortScreen
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier = if (collapsingBar) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else Modifier,
         containerColor = MaterialTheme.colorScheme.surface,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = topBar@{
