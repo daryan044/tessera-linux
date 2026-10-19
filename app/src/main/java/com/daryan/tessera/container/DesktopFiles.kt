@@ -433,6 +433,49 @@ def follow_theme():
             xfconf("title_font", "string", lines[1])
         theme_seen = text
 
+fitted = {}
+def fit_new_windows():
+    # A phone's screen is smaller than most apps' windows: one that doesn't fit, its buttons off
+    # the edge, is maximized when it opens (a dialog is moved into the screen instead). Looked
+    # at half a second after it appears, once the app has sized it.
+    if d is None:
+        return
+    clients = root.get_full_property(A("_NET_CLIENT_LIST"), X.AnyPropertyType)
+    area = root.get_full_property(A("_NET_WORKAREA"), X.AnyPropertyType)
+    if not clients or not area or len(area.value) < 4:
+        return
+    ax, ay, aw, ah = list(area.value)[:4]
+    now = time.time()
+    for wid in clients.value:
+        first = fitted.setdefault(wid, now)
+        if first is None or now - first < 0.5:
+            continue
+        fitted[wid] = None
+        try:
+            w = d.create_resource_object("window", wid)
+            types = w.get_full_property(A("_NET_WM_WINDOW_TYPE"), X.AnyPropertyType)
+            types = list(types.value) if types else []
+            dialog = A("_NET_WM_WINDOW_TYPE_DIALOG") in types or w.get_wm_transient_for() is not None
+            if types and not dialog and A("_NET_WM_WINDOW_TYPE_NORMAL") not in types:
+                continue
+            g = w.get_geometry()
+            ext = w.get_full_property(A("_NET_FRAME_EXTENTS"), X.AnyPropertyType)
+            l, r, t, b = (list(ext.value) + [0, 0, 0, 0])[:4] if ext else (0, 0, 0, 0)
+            if g.width + l + r <= aw and g.height + t + b <= ah:
+                continue
+            if dialog:
+                message(wid, A("_NET_MOVERESIZE_WINDOW"), [1 | 0x300 | 0x2000, ax + l, ay + t, 0, 0])
+            else:
+                message(wid, A("_NET_WM_STATE"), [1, A("_NET_WM_STATE_MAXIMIZED_VERT"), A("_NET_WM_STATE_MAXIMIZED_HORZ"), 2, 0])
+        except Exception:
+            pass
+
+def message(wid, atom, data):
+    w = d.create_resource_object("window", wid)
+    root.send_event(event.ClientMessage(window=w, client_type=atom, data=(32, data)),
+                    event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask)
+    d.flush()
+
 seen = set()
 def give_title_bars():
     # Apps that ask for no frame at all (Electron's and Chrome's own title bars, Qt's frameless
@@ -796,6 +839,7 @@ first_run()
 while True:
     follow_theme()
     give_title_bars()
+    fit_new_windows()
     try:
         publish_desktop()
     except OSError as e:
