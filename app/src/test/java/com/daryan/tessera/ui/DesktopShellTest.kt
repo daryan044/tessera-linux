@@ -27,11 +27,11 @@ class DesktopShellTest {
         assertEquals("window-5", appForWindow(XWindow(5, ""), apps).id)
     }
 
-    @Test fun `the start menu leaves out desktops, flathub apps and root`() {
+    @Test fun `the start menu has flathub apps but not desktops or root`() {
         val desktop = app("desktop", "/usr/bin/xfwm4").copy(desktop = true)
         val flathub = app("org.gnome.Calculator", "calc").copy(flatpak = FlatpakRef("org.gnome.Calculator", appDir = "/app", runtimeDir = "/runtime", command = "gnome-calculator"))
         val root = app("root-shell", "/bin/bash").copy(gui = false, permissions = Permissions(root = true))
-        assertEquals(apps, desktopApps(apps + desktop + flathub + root))
+        assertEquals(apps + flathub, desktopApps(apps + desktop + flathub + root))
     }
 
     @Test fun `the dock has pinned apps first, then each running app once with its windows`() {

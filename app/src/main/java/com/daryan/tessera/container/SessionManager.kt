@@ -182,6 +182,7 @@ class SessionManager(
         // A Flathub app: the session runs around FLATPAK_HOLD, and the app beside it.
         val spec = backend.buildLaunch(if (session.flatpak) app.copy(exec = listOf("/bin/sh", "-c", FLATPAK_HOLD)) else app, session)
 
+        if (app.desktop) desktopBackends[session.id] = backend
         val running = if (app.gui) launchGui(app, backend, session, spec) else launchTerminal(app, backend, session, spec)
         _sessions.update { it + running }
         return running
@@ -235,6 +236,7 @@ class SessionManager(
                 update(session.id) { it.copy(output = "Couldn't start: ${e.message}", exitCode = -1) }
             } finally {
                 windowReports.remove(session.id)?.stopWatching()
+                desktopBackends.remove(session.id)
                 windowTasks.remove(session.id)
                 audio?.stop()
                 // The app is gone; its session's detached daemons go with it.
@@ -461,6 +463,41 @@ class SessionManager(
 
     fun snapWindow(sessionId: String, windowId: Long, left: Boolean) {
         windowReports[sessionId]?.snap(windowId, left)
+    }
+
+    /** Each running desktop's backend, for the Flathub apps opened in it. */
+    private val desktopBackends = ConcurrentHashMap<String, ContainerBackend>()
+
+    /**
+     * Opens the Flathub [app] in the running desktop [sessionId]: in a root of its own as
+     * always, with its own permissions, but on the desktop's display and bus (the desktop
+     * publishes its environment as a Flathub app's session does). False when the desktop isn't
+     * up yet.
+     */
+    fun launchFlatpakInDesktop(sessionId: String, app: PermissionManifest): Boolean {
+        val running = byId(sessionId)?.takeIf { it.running && it.app.desktop } ?: return false
+        val ref = app.flatpak ?: return false
+        val backend = desktopBackends[sessionId] ?: return false
+        val published = File(paths.x11SocketDir(running.session), FLATPAK_ENV_FILE)
+        if (!published.isFile) return false
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val session = running.session
+                val shared = published.readLines().mapNotNull { line ->
+                    line.indexOf('=').takeIf { it > 0 }?.let { line.substring(0, it) to line.substring(it + 1) }
+                }.toMap().filterKeys { it in FLATPAK_SHARED_ENV }
+                val base = guestEnv(app, session) + shared
+                val spec = backend.buildFlatpakLaunch(app, session, base + Flatpak.env(ref, session.gpu, base))
+                val pid = IntArray(1)
+                val fd = Pty.spawn(spec, rows = 24, cols = 80, pidOut = pid)
+                launch { readOutput(sessionId, fd) }
+                Pty.waitFor(pid[0])
+            }.onFailure { e ->
+                Log.w(TAG, "Flathub app ${app.id} couldn't start in ${running.session.id}", e)
+                update(sessionId) { it.copy(output = it.output + "\nCouldn't start ${app.name}: ${e.message}") }
+            }
+        }
+        return true
     }
 
     /** What a running desktop session's taskbar can ask of it; null for anything else. */
