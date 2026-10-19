@@ -14,6 +14,9 @@ its own window and its own card in Recents. No terminal setup, no VNC, no guides
 ![Android 7+](https://img.shields.io/badge/Android-7%2B-3DDC84?logo=android&logoColor=white)
 ![Root optional](https://img.shields.io/badge/root-optional-8EE3B8)
 
+**[⬇ Download Tessera 0.1.0 (alpha)](https://github.com/daryan044/tessera-linux/releases/download/v0.1.0/tessera-v0.1.0.apk)**
+· [All releases](https://github.com/daryan044/tessera-linux/releases)
+
 </div>
 
 ---
@@ -99,9 +102,9 @@ That's it. Everything below happens on its own.
 untested), a few GB of free storage. GPU acceleration needs a Snapdragon (Adreno) GPU. Root is
 optional.
 
-1. Download the APK. The first release is on its way; until then, take the APK from the latest
-   successful [build](https://github.com/daryan044/tessera-linux/actions/workflows/build.yml)
-   or build it yourself (below).
+1. Download the APK: [tessera-v0.1.0.apk](https://github.com/daryan044/tessera-linux/releases/download/v0.1.0/tessera-v0.1.0.apk)
+   (alpha; see the [releases](https://github.com/daryan044/tessera-linux/releases) for notes and
+   newer versions), or build it yourself (below).
 2. Open Tessera, go to **Setup** and install Debian. Allow it to lift the background process
    limit when asked, so Android doesn't stop your apps.
 3. Open the **Store**, install an app, and tap it.
