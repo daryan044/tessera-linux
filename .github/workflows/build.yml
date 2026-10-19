@@ -3,8 +3,9 @@
 # in scripts/, cached by their inputs since they rarely change and take a while.
 #
 # Signing: with the repository secrets TESSERA_KEYSTORE_BASE64 (the keystore, base64), TESSERA_KEYSTORE_PASSWORD,
-# TESSERA_KEY_ALIAS and TESSERA_KEY_PASSWORD set, releases are signed with that key; otherwise with a
-# throwaway debug key (fine for trying a build, not for updating an installed release).
+# TESSERA_KEY_ALIAS and TESSERA_KEY_PASSWORD set, releases are signed with that key and published;
+# otherwise the APK is signed with a throwaway debug key (fine for trying a build, not for updating
+# an installed release) and only kept as a build artifact.
 name: Build
 
 on:
@@ -137,8 +138,10 @@ jobs:
           name: ${{ env.APK }}
           path: ${{ env.APK }}
 
+      # Only a signed build becomes a release; without the secrets, releases are published by
+      # hand from a local, signed build, and CI's debug-signed APK stays a build artifact.
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != ''
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.APK }}
