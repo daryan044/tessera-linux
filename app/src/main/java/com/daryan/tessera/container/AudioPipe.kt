@@ -6,10 +6,9 @@ package com.daryan.tessera.container
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
-import android.system.Os
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import java.io.File
-import java.io.FileInputStream
 import java.io.IOException
 
 /**
@@ -46,9 +45,10 @@ class AudioPipe(private val fifo: File) {
         try {
             // PulseAudio keeps its end open read-write, so this doesn't wait for a writer, and
             // reads end (EOF) once PulseAudio exits with the session.
-            FileInputStream(fifo).use { input ->
+            val pipe = ParcelFileDescriptor.open(fifo, ParcelFileDescriptor.MODE_READ_ONLY)
+            ParcelFileDescriptor.AutoCloseInputStream(pipe).use { input ->
                 // A 64 KiB pipe is a third of a second of lag; a smaller one keeps sound in step.
-                runCatching { Os.fcntlInt(input.fd, F_SETPIPE_SZ, PIPE_BYTES) }
+                Pty.fcntlInt(pipe.fd, F_SETPIPE_SZ, PIPE_BYTES)
                 track.play()
                 val buf = ByteArray(4096)
                 while (!stopped) {

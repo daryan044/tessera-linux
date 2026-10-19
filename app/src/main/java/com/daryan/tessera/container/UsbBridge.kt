@@ -13,7 +13,6 @@ import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.ParcelFileDescriptor
-import android.system.Os
 import android.system.OsConstants
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -84,7 +83,7 @@ object UsbBridge {
             }
             // A copy without close-on-exec, so the app's process inherits it.
             val copy = ParcelFileDescriptor.fromFd(connection.fileDescriptor)
-            Os.fcntlInt(copy.fileDescriptor, OsConstants.F_SETFD, 0)
+            Pty.fcntlInt(copy.fd, OsConstants.F_SETFD, 0)
             connections += connection
             inherited += copy
             fds[path] = copy.fd
