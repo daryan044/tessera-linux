@@ -96,6 +96,11 @@ import androidx.compose.ui.draganddrop.mimeTypes
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.runtime.mutableStateMapOf
+import com.daryan.tessera.container.DesktopEvent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -150,10 +155,23 @@ interface DesktopActions {
     /** Keeps [px] X pixels along the [left] or bottom edge for the dock. */
     fun reserve(left: Boolean, px: Int): Boolean
     /**
-     * Puts the phone's wallpaper behind the windows, fitted to a [width] × [height] X screen;
-     * where it can't be read, a gradient from [top] to [bottom] (ARGB).
+     * Puts the phone's wallpaper behind the windows, fitted to a [width] × [height] X screen
+     * (where it can't be read, a gradient from [top] to [bottom], ARGB), with [icons] painted
+     * over it: a picture of this view's [viewWidth] × [viewHeight], each icon at [places] in it.
      */
-    suspend fun wallpaper(width: Int, height: Int, top: Int, bottom: Int): Boolean
+    suspend fun wallpaper(
+        width: Int,
+        height: Int,
+        top: Int,
+        bottom: Int,
+        icons: android.graphics.Bitmap?,
+        places: Map<String, android.graphics.Rect>,
+        viewWidth: Int,
+        viewHeight: Int,
+    ): Boolean
+    /** A long press or right click on a desktop icon, until the menu it asks for closes. */
+    val iconMenu: StateFlow<DesktopEvent?>
+    fun dismissIconMenu()
     /** What is on the desktop (~/Desktop) now. */
     fun items(): List<DesktopItem>
     fun open(item: DesktopItem)
@@ -272,7 +290,6 @@ fun DesktopShell(actions: DesktopActions) {
             delay(1500)
         }
     }
-    val desktopShows = main.none { !it.hidden } || dragging != null
     val entries = remember(pins, main, allApps) { dockEntries(pins, main, allApps) }
     val stillStarting = "The desktop is still starting"
     // Termux:X11 shows the phone's bars again on its own (turning, settings, reconnecting);
@@ -324,35 +341,51 @@ fun DesktopShell(actions: DesktopActions) {
         }
         val top = colors.primaryContainer.toArgb()
         val bottom = colors.surface.toArgb()
-        LaunchedEffect(screen) {
-            if (screen.size != 2) return@LaunchedEffect
-            retrying { actions.wallpaper(screen[0], screen[1], top, bottom) }
-        }
         val reach = with(density) { dockReach.toDp() }
 
-        // The desktop's icons, like a home screen's, while nothing covers them.
-        AnimatedVisibility(
-            visible = desktopShows && screen.isNotEmpty(),
-            enter = fadeIn(motion.defaultEffectsSpec()),
-            exit = fadeOut(motion.fastEffectsSpec()),
-            modifier = Modifier.fillMaxSize()
+        // The desktop's icons live in its wallpaper, under every window, as on any desktop: laid
+        // out and painted here off screen, then drawn into the picture the desktop's window shows.
+        // The desktop's helper hears the taps on them (see DesktopActions.iconMenu).
+        val picture = rememberGraphicsLayer()
+        val places = remember { mutableStateMapOf<String, Rect>() }
+        Box(
+            Modifier.fillMaxSize()
+                .drawWithContent { picture.record { this@drawWithContent.drawContent() } }
                 .windowInsetsPadding(WindowInsets.displayCutout)
-                .padding(
-                    start = if (vertical) reach + 8.dp else 8.dp,
-                    bottom = if (vertical) 0.dp else reach + 8.dp,
-                    top = 8.dp,
-                    end = 8.dp,
-                ),
+                .padding(start = if (vertical) reach + 8.dp else 8.dp, bottom = if (vertical) 0.dp else reach + 8.dp, top = 8.dp, end = 8.dp),
         ) {
-            DesktopIcons(
-                items,
-                allApps,
-                onOpen = { item ->
-                    val app = allApps.firstOrNull { it.id == item.app }.takeIf { item.isShortcut }
-                    if (app != null) actions.launch(app) else actions.open(item)
-                },
-                onRemove = actions::removeFromDesktop,
-            )
+            DesktopIcons(items, allApps, onPlaced = { path, r -> places[path] = r })
+        }
+        LaunchedEffect(screen, items, allApps, reach, vertical, top, bottom) {
+            if (screen.size != 2) return@LaunchedEffect
+            // Long enough for the icons' own pictures to load.
+            delay(700)
+            val image = runCatching { picture.toImageBitmap().asAndroidBitmap() }.getOrNull()
+            val spots = items.mapNotNull { i ->
+                places[i.path]?.let { r -> i.path to android.graphics.Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt()) }
+            }.toMap()
+            retrying { actions.wallpaper(screen[0], screen[1], top, bottom, image, spots, viewWidth, viewHeight) }
+        }
+        val openItem: (DesktopItem) -> Unit = { item ->
+            val app = allApps.firstOrNull { it.id == item.app }.takeIf { item.isShortcut }
+            if (app != null) actions.launch(app) else actions.open(item)
+        }
+        val iconMenu by actions.iconMenu.collectAsStateWithLifecycle()
+        iconMenu?.let { event ->
+            val item = items.firstOrNull { it.path == event.path }
+            if (item != null && ratio > 0f) {
+                Box(Modifier.offset { IntOffset((event.x / ratio).roundToInt(), (event.y / ratio).roundToInt()) }) {
+                    val close = { actions.dismissIconMenu(); actions.returnFocus() }
+                    DropdownMenu(expanded = true, onDismissRequest = close, shape = RoundedCornerShape(16.dp)) {
+                        MenuTitle(item.name)
+                        DropdownMenuItem(text = { Text("Open") }, onClick = { close(); openItem(item) })
+                        DropdownMenuItem(
+                            text = { Text(if (item.isShortcut || item.isLink) "Remove from desktop" else "Move to Trash", color = colors.error) },
+                            onClick = { close(); actions.removeFromDesktop(item) },
+                        )
+                    }
+                }
+            }
         }
 
         Starting(session, screen.isEmpty(), Modifier.align(Alignment.Center))
@@ -502,11 +535,10 @@ private fun Starting(session: RunningSession?, waiting: Boolean, modifier: Modif
 private fun DesktopIcons(
     items: List<DesktopItem>,
     allApps: List<PermissionManifest>,
-    onOpen: (DesktopItem) -> Unit,
-    onRemove: (DesktopItem) -> Unit,
+    /** Where each icon is, by its path, in this view's pixels. */
+    onPlaced: (String, Rect) -> Unit,
 ) {
     if (items.isEmpty()) {
-        // Takes no touches: everything but the words goes to Linux.
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f)) {
                 Text(
@@ -519,13 +551,12 @@ private fun DesktopIcons(
         }
         return
     }
-    // Down the side and then across, as a Linux desktop lays them out. Not a scrolling list: only
-    // the icons themselves take touches, the rest of the screen stays Linux's (the trackpad too).
+    // Down the side and then across, as a Linux desktop lays them out.
     FlowColumn(verticalArrangement = Arrangement.spacedBy(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxHeight()) {
         items.forEach { item ->
             key(item.path) {
                 Box(Modifier.width(84.dp)) {
-                    DesktopIcon(item, allApps.firstOrNull { it.id == item.app }?.takeIf { item.isShortcut }, onOpen, onRemove)
+                    DesktopIcon(item, allApps.firstOrNull { it.id == item.app }?.takeIf { item.isShortcut }, onPlaced)
                 }
             }
         }
@@ -533,14 +564,13 @@ private fun DesktopIcons(
 }
 
 @Composable
-private fun DesktopIcon(item: DesktopItem, app: PermissionManifest?, onOpen: (DesktopItem) -> Unit, onRemove: (DesktopItem) -> Unit) {
+private fun DesktopIcon(item: DesktopItem, app: PermissionManifest?, onPlaced: (String, Rect) -> Unit) {
     val colors = MaterialTheme.colorScheme
-    var menu by remember { mutableStateOf(false) }
     Box {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.clip(RoundedCornerShape(16.dp))
-                .combinedClickable(onClick = { onOpen(item) }, onLongClick = { menu = true })
+            modifier = Modifier
+                .onGloballyPositioned { onPlaced(item.path, it.boundsInRoot()) }
                 .padding(vertical = 6.dp, horizontal = 4.dp)
                 .fillMaxWidth(),
         ) {
@@ -556,7 +586,11 @@ private fun DesktopIcon(item: DesktopItem, app: PermissionManifest?, onOpen: (De
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        if (item.isShortcut) LauncherIcons.Terminal else fileIcon(item),
+                        when {
+                            item.isShortcut -> LauncherIcons.Terminal
+                            item.isLink -> LauncherIcons.Link
+                            else -> fileIcon(item)
+                        },
                         null,
                         tint = if (item.isFolder) colors.onPrimaryContainer else colors.onSurfaceVariant,
                     )
@@ -571,13 +605,6 @@ private fun DesktopIcon(item: DesktopItem, app: PermissionManifest?, onOpen: (De
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-            )
-        }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(16.dp)) {
-            DropdownMenuItem(text = { Text("Open") }, onClick = { menu = false; onOpen(item) })
-            DropdownMenuItem(
-                text = { Text(if (item.isShortcut) "Remove from desktop" else "Move to Trash", color = colors.error) },
-                onClick = { menu = false; onRemove(item) },
             )
         }
     }

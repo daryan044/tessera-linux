@@ -60,6 +60,27 @@ object ProcessTree {
 
     fun killSession(sessionId: String) = inSession(sessionId).forEach { android.os.Process.sendSignal(it, SIGKILL) }
 
+    /**
+     * As [killSession], through root, for chroot mode: its sessions run under su's SELinux
+     * domain, which hides them from the app's own view of /proc, so they were never found and
+     * their daemons (D-Bus, PulseAudio, gvfs) piled up. [sessionId] null: every session's, for
+     * what an earlier run of the app left behind. Blocks; call off the main thread.
+     */
+    fun killSessionAsRoot(su: String, sessionId: String?) {
+        runCatching {
+            val p = ProcessBuilder(su, "-c", rootKillScript(sessionId)).redirectErrorStream(true).start()
+            p.inputStream.readBytes()
+            p.waitFor()
+        }
+    }
+
+    /** The shell for [killSessionAsRoot]: every process whose environment has the session's marker. */
+    internal fun rootKillScript(sessionId: String?): String {
+        val marker = if (sessionId == null) "^$SESSION_ENV=" else "^$SESSION_ENV=$sessionId${'$'}"
+        return "for e in /proc/[0-9]*/environ; do p=${'$'}{e%/environ}; p=${'$'}{p#/proc/}; " +
+            "tr '\\0' '\\n' < ${'$'}e 2>/dev/null | grep -q '$marker' && kill -9 ${'$'}p 2>/dev/null; done; true"
+    }
+
     private fun ByteArray.split(sep: Byte): List<ByteArray> {
         val out = mutableListOf<ByteArray>()
         var start = 0

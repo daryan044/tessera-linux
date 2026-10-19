@@ -164,6 +164,9 @@ class LauncherContainer(private val app: Application) {
     /** The modes (each has its own system) already checked for missing GUI helpers this run. */
     val guiHelpersChecked: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
 
+    /** Whether this run already ended what earlier runs left running in chroot mode. */
+    @Volatile var chrootSwept = false
+
     /** The launcher's apps as it last listed them, for a desktop's Start menu (in its own window). */
     val launcherApps = kotlinx.coroutines.flow.MutableStateFlow<List<com.daryan.tessera.container.PermissionManifest>>(emptyList())
 

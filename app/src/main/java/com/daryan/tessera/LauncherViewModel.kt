@@ -38,6 +38,7 @@ import com.daryan.tessera.container.HostStatus
 import com.daryan.tessera.container.InstallState
 import com.daryan.tessera.container.PackageInstall
 import com.daryan.tessera.container.PermissionManifest
+import com.daryan.tessera.container.ProcessTree
 import com.daryan.tessera.container.PhantomLimit
 import com.daryan.tessera.container.GpuDriver
 import com.daryan.tessera.container.GpuFix
@@ -412,6 +413,12 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             }
             _status.value = s
             if (s.su == null && _mode.value == BackendMode.CHROOT) _mode.value = BackendMode.PROOT
+            // Chroot sessions an earlier run of the app left behind (an update, being killed):
+            // once a run, before anything starts. Only root can see them.
+            if (_mode.value == BackendMode.CHROOT && s.su != null && !container.chrootSwept && sessions.sessions.value.none { it.running }) {
+                container.chrootSwept = true
+                withContext(Dispatchers.IO) { ProcessTree.killSessionAsRoot(s.su, null) }
+            }
             // Unpack the GPU driver ahead of launches (after Linux is installed, or an app update).
             if (s.prootRootfs && GpuDriver.available(getApplication())) {
                 withContext(Dispatchers.IO) { GpuDriver.install(getApplication(), paths.prootRootfs) }

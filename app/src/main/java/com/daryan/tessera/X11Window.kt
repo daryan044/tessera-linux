@@ -60,6 +60,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.daryan.tessera.container.PermissionManifest
 import com.daryan.tessera.container.DesktopItem
+import com.daryan.tessera.container.DesktopEvent
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.daryan.tessera.container.RunningSession
@@ -137,7 +138,19 @@ class X11Window : MainActivity.MainActivityTagged() {
         followFocus()
         followDisplays()
         followUsb()
+        followDesktopIcons()
         desktopFullscreen()
+    }
+
+    /** A desktop's icon taps and menus, as its helper hears them on the desktop window. */
+    private fun followDesktopIcons() {
+        if (!isDesktop) return
+        val actions = desktopActions
+        lifecycleScope.launch {
+            container.sessions.desktopEvents.collect { (sessionId, event) ->
+                if (sessionId == actions.session.value?.session?.id) actions.onIconEvent(event)
+            }
+        }
     }
 
     private val isDesktop get() = sessionTag?.let { container.sessions.forWindowTag(it) }?.app?.desktop == true
@@ -394,14 +407,48 @@ class X11Window : MainActivity.MainActivityTagged() {
             override fun close(windowId: Long) { id?.let { container.sessions.closeWindow(it, windowId) } }
             override fun reserve(left: Boolean, px: Int): Boolean = desktop?.reserve(left, px) ?: false
 
-            override suspend fun wallpaper(width: Int, height: Int, top: Int, bottom: Int): Boolean = withContext(Dispatchers.IO) {
+            /** The phone's wallpaper, read once: it's redrawn with the icons whenever they change. */
+            private var phoneWallpaper: android.graphics.Bitmap? = null
+
+            override suspend fun wallpaper(
+                width: Int,
+                height: Int,
+                top: Int,
+                bottom: Int,
+                icons: android.graphics.Bitmap?,
+                places: Map<String, android.graphics.Rect>,
+                viewWidth: Int,
+                viewHeight: Int,
+            ): Boolean = withContext(Dispatchers.IO) {
                 val desktop = desktop ?: return@withContext false
                 // Reading it takes the storage permission; without it, a gradient in the theme's colors.
-                val phone = runCatching {
+                val picture = phoneWallpaper ?: runCatching {
                     @Suppress("MissingPermission")
                     WallpaperManager.getInstance(this@X11Window).drawable?.toBitmap()
-                }.getOrNull()
-                desktop.wallpaper(phone ?: gradientWallpaper(top, bottom), width, height)
+                }.getOrNull()?.also { phoneWallpaper = it }
+                // A picture of the view may come as a hardware bitmap, which a canvas can't draw.
+                val overlay = icons?.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                val sx = width.toFloat() / viewWidth.coerceAtLeast(1)
+                val sy = height.toFloat() / viewHeight.coerceAtLeast(1)
+                val spots = places.mapValues { (_, r) ->
+                    android.graphics.Rect((r.left * sx).toInt(), (r.top * sy).toInt(), (r.right * sx).toInt(), (r.bottom * sy).toInt())
+                }
+                desktop.wallpaper(picture ?: gradientWallpaper(top, bottom), width, height, overlay, spots).also { overlay?.recycle() }
+            }
+
+            override val iconMenu = MutableStateFlow<DesktopEvent?>(null)
+
+            override fun dismissIconMenu() { iconMenu.value = null }
+
+            /** A tap on a desktop icon (opened here, so Flathub apps get their root) or a menu request. */
+            fun onIconEvent(event: DesktopEvent) {
+                if (event.menu) {
+                    iconMenu.value = event
+                    return
+                }
+                val item = items().firstOrNull { it.path == event.path } ?: return
+                val app = container.launcherApps.value.firstOrNull { it.id == item.app }.takeIf { item.isShortcut }
+                if (app != null) launch(app) else open(item)
             }
 
             override fun toggleKeyboard() = actions.toggleKeyboard()

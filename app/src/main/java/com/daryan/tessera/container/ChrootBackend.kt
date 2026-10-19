@@ -10,7 +10,8 @@ package com.daryan.tessera.container
  */
 class ChrootBackend(
     private val paths: ContainerPaths,
-    private val su: String,
+    /** The su to run as root with; also what ends a session's processes ([ProcessTree.killSessionAsRoot]). */
+    internal val su: String,
     /** The uid apps run as inside: the launcher's own (not 1000, which is Android's "system"). */
     private val appUid: Int = android.os.Process.myUid(),
 ) : ContainerBackend {
