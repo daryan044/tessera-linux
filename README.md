@@ -409,3 +409,4 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 | [Haze](https://github.com/chrisbanes/haze) | Apache-2.0 | background blur |
 | AndroidX, Jetpack Compose, Material 3 | Apache-2.0 | UI |
 | kotlinx.serialization | Apache-2.0 | manifests |
+| [XZ for Java](https://tukaani.org/xz/java.html) | 0BSD | reading .tar.xz theme archives |
