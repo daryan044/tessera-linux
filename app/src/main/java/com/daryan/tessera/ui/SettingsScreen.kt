@@ -210,11 +210,17 @@ private fun ThemePicker(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
     )
+    // The phone's own palette, whatever Tessera wears at the moment (it may be a Linux theme's).
+    val context = LocalContext.current
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val phone = if (Build.VERSION.SDK_INT >= 31) {
+        if (dark) androidx.compose.material3.dynamicDarkColorScheme(context) else androidx.compose.material3.dynamicLightColorScheme(context)
+    } else MaterialTheme.colorScheme
     ThemeChoice(
         title = "Phone colors",
         detail = "Material You, from your wallpaper",
         selected = appearance.linuxTheme == null,
-        swatches = listOf(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onSurface),
+        swatches = listOf(phone.surface, phone.primary, phone.onSurface),
         onClick = { onAppearance(appearance.copy(linuxTheme = null)) },
     )
     families.forEach { (family, variants) ->
