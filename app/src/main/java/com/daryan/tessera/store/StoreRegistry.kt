@@ -60,7 +60,13 @@ class StoreRegistry(private val appsDir: File, private val catalog: StoreCatalog
         val iconFile = icon?.let { src ->
             File(appsDir, "icons/${idFor(app)}.png").also { dst -> dst.parentFile?.mkdirs(); src.copyTo(dst, overwrite = true) }
         }
-        val manifest = manifestFor(app, null, iconFile?.path).copy(exec = listOf(ref.command), packages = emptyList(), flatpak = ref)
+        // Its own desktop file says how to start it from a menu (mpv opens its window only with
+        // --player-operation-mode=pseudo-gui); the metadata's command is the bare program.
+        val desktop = app.desktopId
+            ?.let { runCatching { store.read("${ref.appDir}/share/applications/$it") }.getOrNull() }
+            ?.let(DesktopEntry::parse)
+        val manifest = manifestFor(app, desktop, iconFile?.path)
+            .copy(exec = desktop?.exec ?: listOf(ref.command), packages = emptyList(), flatpak = ref)
         File(appsDir, "${manifest.id}.json").apply { parentFile?.mkdirs() }
             .writeText(json.encodeToString(PermissionManifest.serializer(), manifest))
         _userApps.update { list -> list.filterNot { it.id == manifest.id } + manifest }

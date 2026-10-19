@@ -78,6 +78,7 @@ import com.daryan.tessera.TerminalActivity
 import com.daryan.tessera.container.ConfigFile
 import com.daryan.tessera.store.CatalogState
 import com.daryan.tessera.store.StoreApp
+import com.daryan.tessera.store.StoreSource
 import com.daryan.tessera.container.PermissionManifest
 import com.daryan.tessera.Shortcut
 import com.daryan.tessera.store.SystemApps
@@ -140,6 +141,10 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var appQuery by rememberSaveable { mutableStateOf<String?>(null) }
     val queue by vm.queue.collectAsStateWithLifecycle()
     val catalog by vm.catalog.collectAsStateWithLifecycle()
+    val flathubCatalog by vm.flathubCatalog.collectAsStateWithLifecycle()
+    val storeSource by vm.storeSource.collectAsStateWithLifecycle()
+    val flathubReady by vm.flathubReady.collectAsStateWithLifecycle()
+    val flathubInstalled by vm.flathubInstalled.collectAsStateWithLifecycle()
     val installedPackages by vm.installedPackages.collectAsStateWithLifecycle()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val launchApp: (PermissionManifest) -> Unit = { app ->
@@ -312,7 +317,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                         when (destination) {
                             Destination.Apps -> "${mode.label} · ${apps.size} apps"
                             Destination.Files -> ""
-                            Destination.Store -> (catalog as? CatalogState.Ready)?.let { "${it.apps.size} apps from Debian" } ?: "Apps from Debian"
+                            Destination.Store -> ((if (storeSource == StoreSource.FLATHUB) flathubCatalog else catalog) as? CatalogState.Ready)
+                                ?.let { "${it.apps.size} apps from ${storeSource.label}" } ?: "Apps from ${storeSource.label}"
                             Destination.Sessions -> if (running == 0) "Nothing running" else "$running running"
                             Destination.Setup -> blocker ?: "Ready to launch apps"
                         },
@@ -440,10 +446,19 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 )
                 Destination.Files -> FilesScreen(vm.files, filesUi, padding, onMessage = filesMessage)
                 Destination.Store -> StoreScreen(
-                    catalog = catalog,
-                    installed = installedPackages,
+                    source = storeSource,
+                    onSource = vm::setStoreSource,
+                    catalog = if (storeSource == StoreSource.FLATHUB) flathubCatalog else catalog,
+                    installed = { app ->
+                        if (app.source == StoreSource.FLATHUB) app.id in flathubInstalled else installedPackages?.contains(app.pkg)
+                    },
+                    flathubReady = flathubReady,
+                    flathubSetup = vm.flathubSetupJob(queue),
+                    onSetUpFlathub = {
+                        if (!vm.setupFlathub()) scope.launch { snackbar.showSnackbar(blocker ?: "Linux isn't ready yet") }
+                    },
                     padding = padding,
-                    iconFor = vm::storeIcon,
+                    loadIcon = vm::loadStoreIcon,
                     onRetry = { vm.openStore(refresh = true) },
                     onOpenApp = { openStoreApp = it },
                 )
@@ -525,15 +540,17 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     }
 
     openStoreApp?.let { app ->
-        // The launcher entry for this package, once it's been installed from here or bundled.
-        val entry = apps.firstOrNull { app.pkg in it.packages }
+        // The launcher entry for this package (or Flathub app), once it's been installed from here or bundled.
+        val flathub = app.source == StoreSource.FLATHUB
+        val entry = apps.firstOrNull { if (flathub) it.flatpak?.app == app.id else app.pkg in it.packages }
+        val key = vm.storeJobKey(app)
         StoreAppSheet(
             app = app,
             icon = vm.storeIcon(app),
             screenshots = { vm.storeScreenshots(app) },
-            installed = installedPackages?.contains(app.pkg),
+            installed = if (flathub) app.id in flathubInstalled else installedPackages?.contains(app.pkg),
             blocker = blocker,
-            job = queue.lastOrNull { app.pkg in it.packages && it.active },
+            job = queue.lastOrNull { key in it.packages && it.active },
             onInstall = {
                 if (vm.storeInstall(app)) {
                     openStoreApp = null
