@@ -1,3 +1,3 @@
 User-agent: *
 Allow: /
-Sitemap: https://daryan044.github.io/tessera-linux/sitemap.xml
+Sitemap: https://daryandev.me/tessera-linux/sitemap.xml
