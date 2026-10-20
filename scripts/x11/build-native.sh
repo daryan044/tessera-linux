@@ -28,7 +28,10 @@ OUT="$ROOT/build/x11/jniLibs"
 git -C "$SRC" submodule update --init --depth 1 --jobs 8
 [ -f "$SRC/local.properties" ] || echo "sdk.dir=$ANDROID_HOME" > "$SRC/local.properties"
 
-(cd "$SRC" && ./gradlew --console=plain :lorie:mergeReleaseNativeLibs)
+# Termux:X11's own Gradle wrapper; where it was taken out (F-Droid removes wrappers, as binaries,
+# and puts its own gradle on the PATH, which reads the wrapper's settings), plain gradle.
+if [ -x "$SRC/gradlew" ] && [ -f "$SRC/gradle/wrapper/gradle-wrapper.jar" ]; then GRADLE=./gradlew; else GRADLE=gradle; fi
+(cd "$SRC" && $GRADLE --console=plain :lorie:mergeReleaseNativeLibs)
 
 LIBS="$SRC/lorie/build/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib"
 rm -rf "$OUT"
