@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tessera: run Linux desktop apps on Android</title>
+<meta name="description" content="Tessera runs Linux desktop apps on Android as real Android apps: Debian and 2,800+ Flathub apps, GPU acceleration (OpenGL 4.6, Vulkan), a full desktop mode, Material You theming, PRoot or chroot. Free and open source.">
+<meta name="keywords" content="Linux on Android, run Linux apps on Android, Flathub on Android, Debian on Android, Termux X11, PRoot, chroot, Linux desktop Android, Turnip, Zink">
+<link rel="canonical" href="https://daryan044.github.io/tessera-linux/">
+<link rel="icon" href="tessera-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Tessera: Linux desktop apps on Android">
+<meta property="og:description" content="Debian and Flathub apps on your phone, each as its own Android app, on the GPU, in your phone's colors. Plus a full desktop mode.">
+<meta property="og:url" content="https://daryan044.github.io/tessera-linux/">
+<meta property="og:image" content="https://daryan044.github.io/tessera-linux/screenshots/desktop.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Tessera",
+  "alternateName": "tessera-linux",
+  "operatingSystem": "Android 7+",
+  "applicationCategory": "UtilitiesApplication",
+  "description": "Runs Linux desktop apps (Debian and Flathub) on Android as real Android apps, with GPU acceleration, a desktop mode and Material You theming.",
+  "url": "https://daryan044.github.io/tessera-linux/",
+  "downloadUrl": "https://github.com/daryan044/tessera-linux/releases/latest",
+  "softwareVersion": "0.2.0",
+  "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+  "codeRepository": "https://github.com/daryan044/tessera-linux"
+}
+</script>
+<style>
+:root {
+  --bg: #f7f9f6; --surface: #ffffff; --text: #191c1a; --muted: #4f5a53;
+  --accent: #1f6b4a; --accent-text: #ffffff; --line: #dce5de;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #101412; --surface: #1a201c; --text: #e1e4df; --muted: #a8b3ab;
+          --accent: #8ed6ae; --accent-text: #003822; --line: #2c352f; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+       font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 0 16px 64px; }
+header { text-align: center; padding: 56px 0 32px; }
+header img { width: 96px; height: 96px; }
+h1 { font-size: clamp(2rem, 6vw, 3rem); margin: 12px 0 8px; letter-spacing: -0.02em; }
+.lead { font-size: 1.2rem; color: var(--muted); max-width: 640px; margin: 0 auto 28px; }
+.buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.btn { display: inline-block; padding: 12px 24px; border-radius: 999px; text-decoration: none;
+       font-weight: 600; border: 1px solid var(--line); color: var(--text); background: var(--surface); }
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.shots { display: flex; gap: 16px; overflow-x: auto; padding: 8px 0 20px; scroll-snap-type: x mandatory; }
+.shots img { height: 420px; width: auto; border-radius: 20px; border: 1px solid var(--line);
+             scroll-snap-align: center; flex: none; }
+h2 { font-size: 1.6rem; margin: 48px 0 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 20px; }
+.card h3 { margin: 0 0 6px; font-size: 1.1rem; }
+.card p { margin: 0; color: var(--muted); }
+ol { padding-left: 1.3em; }
+a { color: var(--accent); }
+footer { text-align: center; color: var(--muted); font-size: 0.9rem; margin-top: 56px; }
+@media (max-width: 480px) { .shots img { height: 340px; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <img src="tessera-icon.png" alt="Tessera icon">
+  <h1>Tessera</h1>
+  <p class="lead">Run Linux desktop apps on Android. Firefox, GIMP, VS Code, LibreOffice, all of
+  Debian and 2,800+ Flathub apps, each as its own Android app, on your phone's GPU and in your
+  phone's colors. No terminal, no VNC, root optional.</p>
+  <div class="buttons">
+    <a class="btn primary" href="https://github.com/daryan044/tessera-linux/releases/latest">Download the APK</a>
+    <a class="btn" href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/daryan044/tessera-linux">Get it on Obtainium</a>
+    <a class="btn" href="https://github.com/daryan044/tessera-linux">Source on GitHub</a>
+  </div>
+</header>
+
+<section class="shots" aria-label="Screenshots">
+  <img src="screenshots/apps.png" alt="Tessera's app launcher with Linux apps" loading="lazy">
+  <img src="screenshots/desktop.png" alt="Tessera's Linux desktop mode with windows and a dock" loading="lazy">
+  <img src="screenshots/desktop-start.png" alt="The desktop mode's Start menu" loading="lazy">
+  <img src="screenshots/store-flathub.png" alt="Installing Flathub apps on Android" loading="lazy">
+  <img src="screenshots/store-app.png" alt="An app page in Tessera's store" loading="lazy">
+  <img src="screenshots/files.png" alt="Tessera's file manager" loading="lazy">
+  <img src="screenshots/tasks.png" alt="Tessera's task manager" loading="lazy">
+</section>
+
+<h2>What it does</h2>
+<div class="grid">
+  <div class="card"><h3>Flathub on Android</h3><p>2,800+ Flathub apps from a phone-style store, without root, bubblewrap or user namespaces, and still on the GPU.</p></div>
+  <div class="card"><h3>One Linux app, one Android app</h3><p>Every Linux app and window gets its own Recents card, and you can pin it to your home screen.</p></div>
+  <div class="card"><h3>Desktop-class GPU</h3><p>OpenGL 4.6 and Vulkan on Adreno through Tessera's own Mesa Turnip and Zink build.</p></div>
+  <div class="card"><h3>Material You for Linux</h3><p>GTK, libadwaita, Qt, LibreOffice and Firefox follow your wallpaper's colors and dark mode, live.</p></div>
+  <div class="card"><h3>A full desktop mode</h3><p>One tap for a Linux desktop: movable, snapping windows, a dock, a Start menu, desktop icons and drag and drop.</p></div>
+  <div class="card"><h3>A sandbox per app</h3><p>Folders, network, sound, USB and root are granted one by one, like Android permissions. PRoot or chroot.</p></div>
+</div>
+
+<h2>Get started</h2>
+<ol>
+  <li>Download the APK from <a href="https://github.com/daryan044/tessera-linux/releases/latest">GitHub releases</a>, or add the repo to <a href="https://github.com/ImranR98/Obtainium">Obtainium</a> for updates.</li>
+  <li>Open Tessera and let it set up Debian (a one-time download).</li>
+  <li>Install apps from the store, or tap Desktop for a whole Linux desktop.</li>
+</ol>
+<p>Tessera needs Android 7 or newer on an arm64 phone and a few GB of free storage. GPU acceleration needs an Adreno GPU. It's an alpha: <a href="https://github.com/daryan044/tessera-linux/issues">report bugs on GitHub</a>.</p>
+
+<footer>Tessera is free software under the GPLv3. Built on Termux:X11, PRoot, Mesa and Debian.</footer>
+</main>
+</body>
+</html>
