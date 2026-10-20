@@ -1,0 +1,6 @@
+0.2.0 (alpha)
+- A Linux desktop: movable windows in your phone's colors, a dock and Start menu, icons and files on the desktop, full screen. Flathub apps open in it too.
+- Search is a pill in the Apps bar, with full-screen results.
+- Flathub works on a fresh system (CA certificates).
+- Android 10 and older: sound and USB fixes.
+- Chroot mode no longer leaves background processes running.

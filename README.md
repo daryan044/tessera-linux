@@ -17,8 +17,10 @@ phone's own colors. No terminal setup, no VNC, no guides to follow.
 ![Flathub](https://img.shields.io/badge/Flathub-2%2C800%2B%20apps-4A86CF?logo=flathub&logoColor=white)
 ![GPU](https://img.shields.io/badge/GPU-OpenGL%204.6%20%2B%20Vulkan-E2231A)
 
-**[⬇ Download Tessera 0.1.0 (alpha)](https://github.com/daryan044/tessera-linux/releases/download/v0.1.0/tessera-v0.1.0.apk)**
+**[⬇ Download Tessera 0.2.0 (alpha)](https://github.com/daryan044/tessera-linux/releases/download/v0.2.0/tessera-v0.2.0.apk)**
 · [All releases](https://github.com/daryan044/tessera-linux/releases)
+
+[<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="54">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/daryan044/tessera-linux)
 
 </div>
 
@@ -106,6 +108,18 @@ A file manager across Android and Linux, and a task manager with live CPU and me
 <td align="center" width="25%"><img src="docs/screenshots/tasks.png" width="200" alt="Task manager and Sessions"><br><sub>Task manager and Sessions</sub></td>
 <td align="center" width="25%"><img src="docs/screenshots/files.png" width="200" alt="Files: Android and Linux"><br><sub>Files: Android and Linux</sub></td>
 <td align="center" width="25%"><img src="docs/screenshots/setup.png" width="200" alt="Setup: PRoot or chroot"><br><sub>Setup: PRoot or chroot</sub></td>
+</tr>
+</table>
+
+**The desktop** *(new in 0.2)*: windows in your phone's colors, a dock and Start menu, icons on the
+desktop, Flathub apps too.
+
+<table>
+<tr>
+<td align="center" width="25%"><img src="docs/screenshots/desktop.png" width="200" alt="Windows side by side: a game and mpv from Flathub"><br><sub>Windows side by side (mpv from Flathub)</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/desktop-start.png" width="200" alt="The Start menu"><br><sub>The Start menu</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/desktop-files.png" width="200" alt="A file manager, maximized to fit the phone"><br><sub>Too big for the phone? Maximized</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/desktop-sheet.png" width="200" alt="The desktop's sheet, like any app's"><br><sub>Opens like any app</sub></td>
 </tr>
 </table>
 
@@ -258,9 +272,10 @@ on each app's card.
 untested), a few GB of free storage. GPU acceleration needs a Snapdragon (Adreno) GPU. Root is
 optional.
 
-1. Download the APK: [tessera-v0.1.0.apk](https://github.com/daryan044/tessera-linux/releases/download/v0.1.0/tessera-v0.1.0.apk)
+1. Download the APK: [tessera-v0.2.0.apk](https://github.com/daryan044/tessera-linux/releases/download/v0.2.0/tessera-v0.2.0.apk)
    (alpha; see the [releases](https://github.com/daryan044/tessera-linux/releases) for notes and
-   newer versions), or build it yourself (below).
+   newer versions), or build it yourself (below). With [Obtainium](https://github.com/ImranR98/Obtainium),
+   add this repository's URL and it keeps Tessera up to date from its releases.
 2. Open Tessera, go to **Setup** and install Debian. Allow it to lift the background process
    limit when asked, so Android doesn't stop your apps.
 3. Open the **Store**, install an app, and tap it.
