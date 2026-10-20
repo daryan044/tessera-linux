@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tessera: run Linux desktop apps on Android</title>
-<meta name="description" content="Tessera runs Linux desktop apps on Android as real Android apps: Debian and 2,800+ Flathub apps, GPU acceleration (OpenGL 4.6, Vulkan), a full desktop mode, Material You theming, PRoot or chroot. Free and open source.">
-<meta name="keywords" content="Linux on Android, run Linux apps on Android, Flathub on Android, Debian on Android, Termux X11, PRoot, chroot, Linux desktop Android, Turnip, Zink">
+<meta name="description" content="Tessera runs Linux desktop apps on Android as real Android apps: Debian and 2,800+ Flathub apps without root, GPU acceleration (OpenGL 4.6, Vulkan), Material You theming, a Recents card per window, live scaling and a full desktop mode. Free and open source.">
+<meta name="keywords" content="Linux on Android, run Linux apps on Android, Flathub on Android, Flatpak without bubblewrap, Debian on Android, Termux X11, PRoot, chroot, Linux desktop on Android, Turnip, Zink, Material You GTK">
 <link rel="canonical" href="https://daryandev.me/tessera-linux/">
 <link rel="icon" href="tessera-icon.png">
 <meta property="og:type" content="website">
@@ -28,88 +28,322 @@
   "softwareVersion": "0.2.0",
   "license": "https://www.gnu.org/licenses/gpl-3.0.html",
   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+  "author": {"@type": "Person", "name": "Daryan Kamaran Karim", "url": "https://daryandev.me/"},
   "codeRepository": "https://github.com/daryan044/tessera-linux"
 }
 </script>
 <style>
 :root {
   --bg: #f7f9f6; --surface: #ffffff; --text: #191c1a; --muted: #4f5a53;
-  --accent: #1f6b4a; --accent-text: #ffffff; --line: #dce5de;
+  --accent: #1f6b4a; --accent-text: #ffffff; --accent-soft: #e2efe7; --line: #dce5de;
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #101412; --surface: #1a201c; --text: #e1e4df; --muted: #a8b3ab;
-          --accent: #8ed6ae; --accent-text: #003822; --line: #2c352f; }
+          --accent: #8ed6ae; --accent-text: #003822; --accent-soft: #1d2d24; --line: #2c352f; }
 }
 * { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 body { margin: 0; background: var(--bg); color: var(--text);
-       font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+       font: 17px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--accent); }
+nav { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--bg) 88%, transparent);
+      backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+nav div { max-width: 1040px; margin: 0 auto; padding: 12px 16px; display: flex; gap: 18px;
+          align-items: center; overflow-x: auto; white-space: nowrap; }
+nav strong { margin-right: auto; }
+nav a { color: var(--muted); text-decoration: none; font-size: 0.95rem; }
+nav a:hover { color: var(--text); }
 main { max-width: 1040px; margin: 0 auto; padding: 0 16px 64px; }
 header { text-align: center; padding: 56px 0 32px; }
 header img { width: 96px; height: 96px; }
 h1 { font-size: clamp(2rem, 6vw, 3rem); margin: 12px 0 8px; letter-spacing: -0.02em; }
-.lead { font-size: 1.2rem; color: var(--muted); max-width: 640px; margin: 0 auto 28px; }
+.lead { font-size: 1.2rem; color: var(--muted); max-width: 680px; margin: 0 auto 28px; }
 .buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 .btn { display: inline-block; padding: 12px 24px; border-radius: 999px; text-decoration: none;
        font-weight: 600; border: 1px solid var(--line); color: var(--text); background: var(--surface); }
 .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.small { color: var(--muted); font-size: 0.9rem; margin-top: 14px; }
 .shots { display: flex; gap: 16px; overflow-x: auto; padding: 8px 0 20px; scroll-snap-type: x mandatory; }
 .shots img { height: 420px; width: auto; border-radius: 20px; border: 1px solid var(--line);
              scroll-snap-align: center; flex: none; }
-h2 { font-size: 1.6rem; margin: 48px 0 16px; }
+h2 { font-size: 1.7rem; margin: 0 0 12px; letter-spacing: -0.015em; }
+.section-title { margin-top: 64px; }
+.feature { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center;
+           padding: 48px 0; border-top: 1px solid var(--line); }
+.feature:nth-of-type(even) .pics { order: -1; }
+.feature p { margin: 0 0 12px; }
+.feature ul { margin: 0 0 12px; padding-left: 1.2em; }
+.feature li { margin-bottom: 6px; }
+.tag { display: inline-block; background: var(--accent-soft); border-radius: 8px; padding: 1px 10px;
+       font-size: 0.82rem; font-weight: 600; margin-bottom: 10px; }
+.pics { display: flex; gap: 12px; justify-content: center; }
+.pics figure { margin: 0; text-align: center; flex: 0 1 220px; }
+.pics img { width: 100%; border-radius: 18px; border: 1px solid var(--line); }
+.pics figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 20px; }
-.card h3 { margin: 0 0 6px; font-size: 1.1rem; }
+.card h3 { margin: 0 0 6px; font-size: 1.08rem; }
 .card p { margin: 0; color: var(--muted); }
-ol { padding-left: 1.3em; }
-a { color: var(--accent); }
+.steps { counter-reset: s; list-style: none; padding: 0; display: grid; gap: 14px;
+         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.steps li { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 20px; }
+.steps li::before { counter-increment: s; content: counter(s); display: inline-grid; place-items: center;
+                    width: 32px; height: 32px; border-radius: 50%; background: var(--accent);
+                    color: var(--accent-text); font-weight: 700; margin-bottom: 8px; }
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+          padding: 14px 18px; margin-bottom: 10px; }
+summary { font-weight: 600; cursor: pointer; }
+details p { margin: 10px 0 0; color: var(--muted); }
 footer { text-align: center; color: var(--muted); font-size: 0.9rem; margin-top: 56px; }
-@media (max-width: 480px) { .shots img { height: 340px; } }
+@media (max-width: 760px) {
+  .feature { grid-template-columns: 1fr; padding: 36px 0; }
+  .feature:nth-of-type(even) .pics { order: 0; }
+  .shots img { height: 340px; }
+}
 </style>
 </head>
 <body>
+<nav><div>
+  <strong>Tessera</strong>
+  <a href="#features">Features</a>
+  <a href="#how">How it works</a>
+  <a href="#start">Get started</a>
+  <a href="#faq">FAQ</a>
+  <a href="https://github.com/daryan044/tessera-linux">GitHub</a>
+</div></nav>
+
 <main>
 <header>
   <img src="tessera-icon.png" alt="Tessera icon">
   <h1>Tessera</h1>
   <p class="lead">Run Linux desktop apps on Android. Firefox, GIMP, VS Code, LibreOffice, all of
   Debian and 2,800+ Flathub apps, each as its own Android app, on your phone's GPU and in your
-  phone's colors. No terminal, no VNC, root optional.</p>
+  phone's colors. No terminal setup, no VNC, root optional.</p>
   <div class="buttons">
     <a class="btn primary" href="https://github.com/daryan044/tessera-linux/releases/latest">Download the APK</a>
     <a class="btn" href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/daryan044/tessera-linux">Get it on Obtainium</a>
     <a class="btn" href="https://github.com/daryan044/tessera-linux">Source on GitHub</a>
   </div>
+  <p class="small">Version 0.2 (alpha) · Android 7+ · arm64 · free software under the GPLv3</p>
 </header>
 
 <section class="shots" aria-label="Screenshots">
-  <img src="screenshots/apps.png" alt="Tessera's app launcher with Linux apps" loading="lazy">
-  <img src="screenshots/desktop.png" alt="Tessera's Linux desktop mode with windows and a dock" loading="lazy">
+  <img src="screenshots/apps.png" alt="Tessera's launcher with Linux apps, search and the desktop button" loading="lazy">
+  <img src="screenshots/desktop.png" alt="Tessera's desktop mode with two windows side by side" loading="lazy">
+  <img src="screenshots/store-flathub.png" alt="The store, switched to Flathub" loading="lazy">
+  <img src="screenshots/panel.png" alt="The window panel over LibreOffice" loading="lazy">
   <img src="screenshots/desktop-start.png" alt="The desktop mode's Start menu" loading="lazy">
-  <img src="screenshots/store-flathub.png" alt="Installing Flathub apps on Android" loading="lazy">
-  <img src="screenshots/store-app.png" alt="An app page in Tessera's store" loading="lazy">
   <img src="screenshots/files.png" alt="Tessera's file manager" loading="lazy">
   <img src="screenshots/tasks.png" alt="Tessera's task manager" loading="lazy">
 </section>
 
-<h2>What it does</h2>
+<h2 class="section-title" id="features">What makes it different</h2>
+<p>Running Linux on a phone has meant a terminal app, commands from a forum post and a VNC viewer
+showing a whole desktop shrunk to a phone screen. Tessera turns that into an app launcher: install
+Debian with a tap, pick apps from a store, and tap an app to open it in its own window.</p>
+
+<section class="feature">
+  <div>
+    <span class="tag">Flathub</span>
+    <h2>Flathub on a phone, without root</h2>
+    <p>Flatpak normally needs bubblewrap, which needs user namespaces, which Android kernels
+    don't have, so <code>flatpak run</code> can't work on a phone. Tessera runs Flathub apps
+    anyway.</p>
+    <ul>
+      <li><strong>Flatpak installs, Tessera runs.</strong> Flatpak downloads apps and runtimes as
+      usual; Tessera builds each app's world itself: the runtime at <code>/usr</code>, the app at
+      <code>/app</code>, the GL drivers where the runtime expects them. In PRoot mode that takes
+      no root at all.</li>
+      <li><strong>Fully integrated.</strong> A Flathub app gets the same window, Recents cards,
+      keyboard, sound, clipboard, theme and permissions as any Debian app.</li>
+      <li><strong>On the GPU.</strong> Tessera's Turnip driver loads inside Flathub's runtimes:
+      OpenGL 4.6 on Adreno, confirmed with Flathub's mpv.</li>
+      <li><strong>One switch.</strong> The store flips between Debian's nearly 2,000 desktop
+      apps and Flathub's 2,800+ arm64 apps, with icons, screenshots, categories and search.</li>
+    </ul>
+  </div>
+  <div class="pics">
+    <figure><img src="screenshots/store-flathub.png" alt="The store showing Flathub apps" loading="lazy"><figcaption>Debian or Flathub</figcaption></figure>
+    <figure><img src="screenshots/store-app.png" alt="A Flathub app's page with an install button" loading="lazy"><figcaption>One tap to install</figcaption></figure>
+  </div>
+</section>
+
+<section class="feature">
+  <div>
+    <span class="tag">Theming</span>
+    <h2>Linux apps in your phone's colors</h2>
+    <p>Linux apps usually look like a 2010 desktop on a phone. Tessera themes them with your
+    phone's Material You colors, taken from your wallpaper, and follows dark mode live: switch
+    Android to dark and every open Linux app turns dark within seconds, without restarting.</p>
+    <ul>
+      <li><strong>GTK 3</strong> with a recolored adw-gtk3, <strong>GTK 4 and libadwaita</strong>
+      through a settings portal Tessera serves itself, <strong>Qt</strong> through its GTK theme,
+      <strong>LibreOffice</strong> on its GTK front end, and <strong>Firefox</strong> and Chromium
+      apps following light and dark.</li>
+      <li>A white, rounded pointer (Bibata) instead of X's sharp black arrow.</li>
+      <li>Per app: leave any app out from its <em>Look and graphics</em> menu.</li>
+    </ul>
+  </div>
+  <div class="pics">
+    <figure><img src="look/before/nemo-dark.png" alt="The Nemo file manager in dark mode without Tessera's theme" loading="lazy"><figcaption>Nemo, before</figcaption></figure>
+    <figure><img src="look/after/nemo-dark.png" alt="The Nemo file manager with Tessera's Material You theme" loading="lazy"><figcaption>Nemo, themed</figcaption></figure>
+  </div>
+</section>
+
+<section class="feature">
+  <div>
+    <span class="tag">Android integration</span>
+    <h2>Every Linux app is a real Android app</h2>
+    <ul>
+      <li><strong>Its own window and Recents card</strong>, named and with its icon. Swipe the
+      card away to close the app.</li>
+      <li><strong>A Recents card per window:</strong> a browser's second window or a settings
+      dialog gets its own card, so switching between them works like Android.</li>
+      <li><strong>Pin Linux apps to your home screen</strong> next to your Android apps.</li>
+      <li><strong>No tiny desktop to drive:</strong> the app fills the screen at a readable
+      size.</li>
+      <li><strong>Find any app</strong> with Android's search bar on top of your Linux apps.</li>
+    </ul>
+  </div>
+  <div class="pics">
+    <figure><img src="screenshots/apps.png" alt="The launcher listing Linux apps" loading="lazy"><figcaption>Your Linux apps</figcaption></figure>
+    <figure><img src="look/after/libreoffice-impress-dark.png" alt="LibreOffice Impress running full screen, themed" loading="lazy"><figcaption>An app, full screen</figcaption></figure>
+  </div>
+</section>
+
+<section class="feature">
+  <div>
+    <span class="tag">Scaling</span>
+    <h2>Live scaling, per app</h2>
+    <p>Swipe in the window panel and drag <strong>Scale</strong>: the app lays itself out again at
+    the new size while you drag, from small and dense to big and touchable, and Tessera remembers
+    the size for next time.</p>
+    <p>The same panel has what a phone lacks: right click, Esc, Tab, Ctrl+C, Alt+Tab and F11.</p>
+  </div>
+  <div class="pics">
+    <figure><img src="screenshots/scale.png" alt="Dragging the Scale slider" loading="lazy"><figcaption>Drag to rescale</figcaption></figure>
+    <figure><img src="screenshots/panel.png" alt="The window panel over LibreOffice" loading="lazy"><figcaption>The window panel</figcaption></figure>
+  </div>
+</section>
+
+<section class="feature">
+  <div>
+    <span class="tag">New in 0.2</span>
+    <h2>A whole desktop, when you want one</h2>
+    <p>The desktop button next to the search bar opens a Linux desktop, through the same sheet as
+    any app, with its install, permissions and graphics settings.</p>
+    <ul>
+      <li>Windows move, snap to half the screen and minimize, with title bars in your phone's
+      colors and buttons sized for fingers.</li>
+      <li>A floating Material dock, a rail on the left in landscape, with a Start menu and search,
+      a button per open window and the clock.</li>
+      <li>Shortcuts and files on the desktop, by drag and drop too; windows too large for the
+      phone open maximized.</li>
+      <li>Runs full screen, and Flathub apps open inside it too.</li>
+    </ul>
+  </div>
+  <div class="pics">
+    <figure><img src="screenshots/desktop.png" alt="Two windows side by side on the desktop" loading="lazy"><figcaption>Windows side by side</figcaption></figure>
+    <figure><img src="screenshots/desktop-start.png" alt="The Start menu" loading="lazy"><figcaption>The Start menu</figcaption></figure>
+  </div>
+</section>
+
+<section class="feature">
+  <div>
+    <span class="tag">GPU</span>
+    <h2>Real GPU acceleration on Snapdragon</h2>
+    <p>Tessera ships its own build of Mesa: <strong>Turnip</strong>, Vulkan for Adreno GPUs
+    through Android's own GPU driver interface, and <strong>Zink</strong>, OpenGL on top of it.
+    Apps get OpenGL 4.6 and Vulkan with no setup; on an Adreno 740, glxgears runs at about 240
+    fps.</p>
+    <p>If an app draws wrong, its <em>Look and graphics</em> menu has fixes named after what you
+    see, like "Fix black blocks" and "Fix flicker", or switches its GPU off.</p>
+  </div>
+  <div class="pics">
+    <figure><img src="look/after/gimp-dark.png" alt="GIMP running on the phone, themed" loading="lazy"><figcaption>GIMP</figcaption></figure>
+    <figure><img src="look/after/firefox-esr-dark.png" alt="Firefox running on the phone" loading="lazy"><figcaption>Firefox</figcaption></figure>
+  </div>
+</section>
+
+<section class="feature">
+  <div>
+    <span class="tag">Privacy</span>
+    <h2>Every app in its own sandbox</h2>
+    <p>Each app runs in a container that gets only what you grant it: specific folders, read-only
+    or not, network, sound, a display and devices, changed from the app's page like Android
+    permissions.</p>
+    <ul>
+      <li><strong>PRoot mode</strong> works on any phone, without root. Its limits are
+      best-effort.</li>
+      <li><strong>Chroot mode</strong>, with Magisk, KernelSU or APatch, enforces every permission
+      with kernel namespaces and an unprivileged user, and runs faster.</li>
+    </ul>
+    <p>The app tells you honestly which permissions each mode can enforce.</p>
+  </div>
+  <div class="pics">
+    <figure><img src="screenshots/setup.png" alt="Setup, choosing PRoot or chroot" loading="lazy"><figcaption>PRoot or chroot</figcaption></figure>
+    <figure><img src="screenshots/desktop-sheet.png" alt="An app's sheet with permissions" loading="lazy"><figcaption>Permissions per app</figcaption></figure>
+  </div>
+</section>
+
+<section class="feature">
+  <div>
+    <span class="tag">Tools</span>
+    <h2>Files and tasks</h2>
+    <ul>
+      <li><strong>Files</strong> browses phone storage and the whole Linux system side by side:
+      copy, move, compress, extract, edit text, change permissions, open files in Android or
+      Linux apps, install a .deb with a tap, or browse as root.</li>
+      <li><strong>Task manager</strong> lists every Linux process with live CPU and memory per
+      app, and ends a task with a two-tap confirmation on its card.</li>
+    </ul>
+  </div>
+  <div class="pics">
+    <figure><img src="screenshots/files.png" alt="The file manager" loading="lazy"><figcaption>Files</figcaption></figure>
+    <figure><img src="screenshots/tasks.png" alt="The task manager" loading="lazy"><figcaption>Task manager</figcaption></figure>
+  </div>
+</section>
+
+<h2 class="section-title">And everything around it</h2>
 <div class="grid">
-  <div class="card"><h3>Flathub on Android</h3><p>2,800+ Flathub apps from a phone-style store, without root, bubblewrap or user namespaces, and still on the GPU.</p></div>
-  <div class="card"><h3>One Linux app, one Android app</h3><p>Every Linux app and window gets its own Recents card, and you can pin it to your home screen.</p></div>
-  <div class="card"><h3>Desktop-class GPU</h3><p>OpenGL 4.6 and Vulkan on Adreno through Tessera's own Mesa Turnip and Zink build.</p></div>
-  <div class="card"><h3>Material You for Linux</h3><p>GTK, libadwaita, Qt, LibreOffice and Firefox follow your wallpaper's colors and dark mode, live.</p></div>
-  <div class="card"><h3>A full desktop mode</h3><p>One tap for a Linux desktop: movable, snapping windows, a dock, a Start menu, desktop icons and drag and drop.</p></div>
-  <div class="card"><h3>A sandbox per app</h3><p>Folders, network, sound, USB and root are granted one by one, like Android permissions. PRoot or chroot.</p></div>
+  <div class="card"><h3>Feels native</h3><p>The Android keyboard opens by itself in text fields, the clipboard works both ways, and sound plays through Android, per app.</p></div>
+  <div class="card"><h3>Touch is touch</h3><p>Scroll and pinch with your fingers, or switch an app to touchpad or mouse mode, where touch and hold right-clicks.</p></div>
+  <div class="card"><h3>Cast to a TV</h3><p>Send an app to a TV or monitor by cable or wireless display, and use the phone as a Material 3 trackpad for it.</p></div>
+  <div class="card"><h3>The phone as a PC trackpad</h3><p>Pair it with a computer over Bluetooth, or USB with root, and it's a trackpad and keyboard. No app needed on the computer.</p></div>
+  <div class="card"><h3>USB devices <em>(experimental)</em></h3><p>Give an app a USB device, even in PRoot mode, or the whole bus for fastboot, adb and other flashing tools in chroot mode.</p></div>
+  <div class="card"><h3>Terminal and shortcuts</h3><p>A terminal with extra keys, your own commands as icons, a config editor, and apps installed with apt or .deb listed too.</p></div>
+  <div class="card"><h3>Keeps running</h3><p>A foreground service holds sessions, and Setup lifts Android's background process limit in one tap with root, or shows the adb command.</p></div>
+  <div class="card"><h3>Help that knows Tessera</h3><p>When an app misbehaves, diagnostics with the output of the apps that just closed are one tap away, for Claude Code or any assistant.</p></div>
 </div>
 
-<h2>Get started</h2>
-<ol>
-  <li>Download the APK from <a href="https://github.com/daryan044/tessera-linux/releases/latest">GitHub releases</a>, or add the repo to <a href="https://github.com/ImranR98/Obtainium">Obtainium</a> for updates.</li>
-  <li>Open Tessera and let it set up Debian (a one-time download).</li>
-  <li>Install apps from the store, or tap Desktop for a whole Linux desktop.</li>
-</ol>
-<p>Tessera needs Android 7 or newer on an arm64 phone and a few GB of free storage. GPU acceleration needs an Adreno GPU. It's an alpha: <a href="https://github.com/daryan044/tessera-linux/issues">report bugs on GitHub</a>.</p>
+<h2 class="section-title" id="how">How it works</h2>
+<div class="grid">
+  <div class="card"><h3>Containers</h3><p>PRoot is built from source for Android and ships inside the APK. Chroot mode uses a private mount namespace, a network namespace when network isn't granted, a minimal /dev and an unprivileged user.</p></div>
+  <div class="card"><h3>Display</h3><p>Each app gets its own X server (a fork of Termux:X11), so apps can't see each other's windows. Tessera follows each X window to give it its own Android task.</p></div>
+  <div class="card"><h3>Flathub apps</h3><p>Debian's flatpak installs them; Tessera runs them in a root of their own beside the session's helpers, sharing its X socket, D-Bus and sound, without bubblewrap.</p></div>
+  <div class="card"><h3>Theming</h3><p>A per-session theme recolored from Android's Material colors, xsettingsd and a small settings portal, rewritten live when Android's colors change.</p></div>
+  <div class="card"><h3>Graphics</h3><p>Mesa's Turnip talks to Android's KGSL GPU interface; Zink's frames reach the X server as images, since Android offers no shared-buffer path for them.</p></div>
+  <div class="card"><h3>Permissions</h3><p>Each launcher entry is a manifest of what to run and what it may touch. The store writes them for you, with permissions that suit each app's category.</p></div>
+</div>
 
-<footer>Tessera is free software under the GPLv3. Built on Termux:X11, PRoot, Mesa and Debian.</footer>
+<h2 class="section-title" id="start">Get started</h2>
+<ol class="steps">
+  <li>Download the APK from <a href="https://github.com/daryan044/tessera-linux/releases/latest">GitHub releases</a>, or add the repository to <a href="https://github.com/ImranR98/Obtainium">Obtainium</a> to get updates.</li>
+  <li>Open Tessera, go to <strong>Setup</strong> and install Debian 13. Allow it to lift the background process limit when asked.</li>
+  <li>Open the <strong>Store</strong>, install an app, and tap it. Or tap the desktop button for a whole desktop.</li>
+</ol>
+<p class="small">Needs Android 7 or newer, an arm64 phone and a few GB of free storage. GPU acceleration needs a Snapdragon (Adreno) GPU. Root is optional. This is an alpha: <a href="https://github.com/daryan044/tessera-linux/issues">report bugs on GitHub</a>.</p>
+
+<h2 class="section-title" id="faq">FAQ</h2>
+<details><summary>Do I need root?</summary><p>No. Everything works in PRoot mode. Root adds chroot mode, which enforces permissions properly and runs faster.</p></details>
+<details><summary>Which apps work?</summary><p>Desktop apps from Debian's catalog, Flathub's arm64 apps, and anything you install with apt or as an arm64 .deb. Electron apps like VS Code work.</p></details>
+<details><summary>Flatpak needs bubblewrap. How does Flathub work here?</summary><p>Flatpak only installs; Tessera runs the apps itself, building each one's file system with PRoot or a mount namespace instead of bubblewrap. That also means no Flatpak sandbox: Tessera's own per-app permissions apply instead.</p></details>
+<details><summary>Why isn't it on Google Play?</summary><p>Play requires a newer target API level, and those forbid running programs from app storage, which is where Linux lives. Termux makes the same trade-off.</p></details>
+<details><summary>My apps stop in the background.</summary><p>Android 12 and newer limit background processes. Setup shows whether the limit is on, and lifts it in one tap with root, or gives you the adb command.</p></details>
+<details><summary>An app draws wrong with the GPU on.</summary><p>Hold its icon, open Look and graphics, and try the fix that matches what you see, or switch its GPU off.</p></details>
+
+<footer>Tessera is free software under the GPLv3, made by <a href="/">Daryan Kamaran Karim</a>.
+Built on Termux:X11, PRoot, Mesa, adw-gtk3, Bibata, Flatpak and Debian.</footer>
 </main>
 </body>
 </html>
