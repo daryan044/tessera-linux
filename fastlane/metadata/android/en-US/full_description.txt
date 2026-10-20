@@ -1,0 +1,22 @@
+<p>Tessera runs desktop Linux apps on your phone: Firefox, GIMP, VS Code, LibreOffice, all of Debian and Flathub, each with its own icon, its own window and its own card in Recents. No terminal setup, no VNC, no guides to follow.</p>
+
+<ol>
+<li><b>Open Tessera and tap Install.</b> It downloads Debian 13 and sets it up.</li>
+<li><b>Pick apps from the Store:</b> Debian's catalog of desktop apps, and with one tap Flathub's.</li>
+<li><b>Tap an app.</b> It opens in its own window, like any Android app.</li>
+</ol>
+
+<p><b>What it does</b></p>
+<ul>
+<li><b>Every Linux app is a real Android app:</b> its own window, a Recents card per window, pin it to your home screen.</li>
+<li><b>A whole desktop when you want one:</b> movable windows that snap to half the screen, a Material dock and Start menu, icons and files on the desktop, your wallpaper behind it all.</li>
+<li><b>Your phone's look:</b> GTK, libadwaita, Qt, LibreOffice and Firefox take your Material You colors and follow dark mode live.</li>
+<li><b>Feels native:</b> the keyboard opens for text fields, the clipboard works both ways, sound plays through Android, touch scrolls and pinches.</li>
+<li><b>GPU acceleration</b> on Snapdragon (Adreno) phones: OpenGL 4.6 and Vulkan through Tessera's own Turnip and Zink build.</li>
+<li><b>A sandbox per app:</b> folders, network, sound, USB and root, granted one by one; enforced by the kernel in chroot mode.</li>
+<li><b>Files, a task manager, a terminal, shortcuts,</b> casting to a TV, USB devices and flashing tools, and the phone as a PC trackpad.</li>
+</ul>
+
+<p>Root is optional: PRoot works on any phone; with root, chroot mode is faster and stricter. Requires an arm64 phone and a few GB of free storage.</p>
+
+<p>Tessera is alpha software: expect rough edges.</p>

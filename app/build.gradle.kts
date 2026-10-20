@@ -62,7 +62,11 @@ android {
             isMinifyEnabled = false
             // Without a release key, the debug key: it still installs over a debug build (same
             // signature, data kept), and isn't debuggable, which makes Compose much smoother.
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            // F-Droid signs what it builds itself: -Ptessera.unsigned leaves the APK unsigned.
+            signingConfig = when {
+                project.hasProperty("tessera.unsigned") -> null
+                else -> signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            }
         }
         // A release build with the debug key, for trying performance on a phone that has a debug
         // build installed: it installs over it (data kept) and isn't debuggable, like a release.
