@@ -24,7 +24,8 @@ Builds:
     submodules: true
     sudo:
       - apt-get update
-      - apt-get install -y debootstrap curl python3 xz-utils patch bzip2 make
+      - apt-get install -y bison bzip2 curl debootstrap gcc libc6-dev make patch python3
+        xz-utils
     gradle:
       - yes
     build:
