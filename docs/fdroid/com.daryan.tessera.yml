@@ -36,7 +36,7 @@ Builds:
       - sudo --preserve-env=PATH,ANDROID_NDK_HOME scripts/usb/build-usb.sh
       - sudo chown -R "$(id -u):$(id -g)" build/usb
       - scripts/theme/build-theme.sh
-    ndk: 28.2.13676358
+    ndk: 29.0.14206865
     gradleprops:
       - tessera.unsigned
 
