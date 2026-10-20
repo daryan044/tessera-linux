@@ -1,7 +1,10 @@
-# Draft metadata for F-Droid (fdroiddata: metadata/com.daryan.tessera.yml). See README.md here.
+AntiFeatures:
+  NonFreeAdd:
+    en-US: The Claude Code shortcut installs Anthropic's Claude Code, which isn't
+      free software.
 Categories:
-  - System
   - Development
+  - System
 License: GPL-3.0-or-later
 AuthorName: Daryan Kamaran Karim
 SourceCode: https://github.com/daryan044/tessera-linux
@@ -9,10 +12,6 @@ IssueTracker: https://github.com/daryan044/tessera-linux/issues
 Changelog: https://github.com/daryan044/tessera-linux/releases
 
 AutoName: Tessera
-
-AntiFeatures:
-  NonFreeAdd:
-    en-US: The Claude Code shortcut installs Anthropic's Claude Code, which isn't free software.
 
 RepoType: git
 Repo: https://github.com/daryan044/tessera-linux.git
@@ -28,14 +27,7 @@ Builds:
       - apt-get install -y debootstrap curl python3 xz-utils patch bzip2 make
     gradle:
       - yes
-    gradleprops:
-      - tessera.unsigned
-    ndk: 28.2.13676358
     build:
-      # The native parts the APK carries, built from source as CI builds them: PRoot, the X
-      # server (Termux:X11's), the GPU driver (Mesa's Turnip and Zink), the USB bridge
-      # (libusb) and the theme pack (adw-gtk3, Bibata). The GPU driver and USB bridge are
-      # cross-compiled in a Debian trixie chroot, for Debian's glibc inside the app.
       - cd ..
       - scripts/proot/build.sh
       - scripts/x11/build-native.sh
@@ -44,6 +36,9 @@ Builds:
       - sudo --preserve-env=PATH,ANDROID_NDK_HOME scripts/usb/build-usb.sh
       - sudo chown -R "$(id -u):$(id -g)" build/usb
       - scripts/theme/build-theme.sh
+    ndk: 28.2.13676358
+    gradleprops:
+      - tessera.unsigned
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+$
