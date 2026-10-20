@@ -27,3 +27,12 @@ include(":shell-loader:stub")
 project(":shell-loader:stub").projectDir = file("third_party/termux-x11/shell-loader/stub")
 // lorie only needs the stub; the real :shell-loader is an app module we don't build.
 project(":shell-loader").projectDir = file("third_party/gradle-empty")
+
+// The X server's native part needs a Linux host to build; scripts/x11/build-native.sh builds it
+// once (through this project, with -Ptessera.buildX11) into build/x11/jniLibs, and every other
+// build takes it from there.
+gradle.rootProject {
+    if (!providers.gradleProperty("tessera.buildX11").isPresent) {
+        extensions.extraProperties["lorie.prebuiltJniLibs"] = "build/x11/jniLibs"
+    }
+}
