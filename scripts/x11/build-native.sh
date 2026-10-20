@@ -31,7 +31,11 @@ git -C "$SRC" submodule update --init --depth 1 --jobs 8
 # Termux:X11's own Gradle wrapper; where it was taken out (F-Droid removes wrappers, as binaries,
 # and puts its own gradle on the PATH, which reads the wrapper's settings), plain gradle.
 if [ -x "$SRC/gradlew" ] && [ -f "$SRC/gradle/wrapper/gradle-wrapper.jar" ]; then GRADLE=./gradlew; else GRADLE=gradle; fi
-(cd "$SRC" && $GRADLE --console=plain :lorie:mergeReleaseNativeLibs)
+# Only the native libraries are wanted here, so name :lorie's host application id rather than
+# letting it evaluate its siblings to find it: :shell-loader doesn't survive F-Droid taking the
+# keysigning configs out, and evaluating it would fail this build with it.
+(cd "$SRC" && $GRADLE --console=plain -Plorie.hostApplicationId=com.termux.x11 \
+    :lorie:mergeReleaseNativeLibs)
 
 LIBS="$SRC/lorie/build/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib"
 rm -rf "$OUT"
