@@ -26,7 +26,7 @@ JNILIBS="$ROOT/app/src/main/jniLibs"
 ABIS="${ABIS:-arm64-v8a armeabi-v7a x86_64}"
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 
-NDK="${ANDROID_NDK_HOME:-${ANDROID_HOME:-}/ndk/${NDK_VERSION:-28.2.13676358}}"
+NDK="${ANDROID_NDK_HOME:-${ANDROID_HOME:-}/ndk/${NDK_VERSION:-29.0.14206865}}"
 [ -d "$NDK" ] || { echo "NDK not found at '$NDK'; set ANDROID_NDK_HOME" >&2; exit 1; }
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*) HOST=windows-x86_64; EXE=.exe ;;

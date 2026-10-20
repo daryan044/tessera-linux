@@ -22,7 +22,7 @@ ABIS=arm64-v8a scripts/proot/build.sh   # one ABI
 ```
 
 Needs bash (Git Bash is fine on Windows), curl, tar and the NDK (`ANDROID_NDK_HOME`, or
-`ANDROID_HOME` with NDK 28.2.13676358 installed). Output goes to `jniLibs/`, intermediates to
+`ANDROID_HOME` with NDK 29.0.14206865 installed). Output goes to `jniLibs/`, intermediates to
 `build/proot/`.
 
 What it does, mirroring `termux/proot`'s `src/GNUmakefile` and Termux's package recipe:

@@ -34,7 +34,10 @@ git -C "$SRC" submodule update --init --depth 1 --jobs 8
 # The Gradle wrapper where there is one; F-Droid takes wrappers out and puts its gradle on PATH.
 gradle_in() { if [ -x "$1/gradlew" ] && [ -f "$1/gradle/wrapper/gradle-wrapper.jar" ]; then echo ./gradlew; else echo gradle; fi; }
 if [ -z "${X11_SRC:-}" ]; then
-  (cd "$ROOT" && $(gradle_in "$ROOT") --console=plain -Ptessera.buildX11 :lorie:mergeReleaseNativeLibs)
+  # No configuration cache: with it Gradle runs each ABI's CMake configure in parallel, and those
+  # patch the Xorg sources in place, guarded only by "unless already applied": two at once both
+  # patched, and the X server failed to compile (lorieRecheckGpuCopies defined twice).
+  (cd "$ROOT" && $(gradle_in "$ROOT") --console=plain --no-configuration-cache -Ptessera.buildX11 :lorie:mergeReleaseNativeLibs)
 else
   (cd "$SRC" && $(gradle_in "$SRC") --console=plain :lorie:mergeReleaseNativeLibs)
 fi

@@ -377,7 +377,7 @@ manager, and apps opened from its Start menu run inside it (see `apps/desktop.js
 
 ## Building
 
-JDK 17 and the Android SDK with NDK 28.2.13676358 and CMake 3.31.6.
+JDK 17 and the Android SDK with NDK 29.0.14206865 and CMake 3.31.6.
 
 ```
 git submodule update --init           # Termux:X11 fork (third_party/termux-x11)
