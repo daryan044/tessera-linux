@@ -19,23 +19,28 @@ Repo: https://github.com/daryan044/tessera-linux.git
 Builds:
   - versionName: 0.2.0
     versionCode: 2
-    commit: 1078ad485248185adf172d64c8880c882f6d1ae0
+    commit: 01177ffc923c4033176c617d436f662d553a1ef7
     subdir: app
     submodules: true
     sudo:
+      - dpkg --add-architecture arm64
       - apt-get update
-      - apt-get install -y bison bzip2 curl debootstrap gcc libc6-dev make patch python3
-        xz-utils
+      - apt-get install -y --no-install-recommends bison bzip2 crossbuild-essential-arm64
+        curl flex gcc glslang-tools libc6-dev make meson ninja-build patch pkgconf
+        pkgconf:arm64 python3 python3-mako python3-packaging python3-yaml xz-utils
+        libdrm-dev:arm64 libexpat1-dev:arm64 zlib1g-dev:arm64 libzstd-dev:arm64 libx11-dev:arm64
+        libxext-dev:arm64 libxfixes-dev:arm64 libxrandr-dev:arm64 libxxf86vm-dev:arm64
+        libxshmfence-dev:arm64 libx11-xcb-dev:arm64 libxcb1-dev:arm64 libxcb-glx0-dev:arm64
+        libxcb-shm0-dev:arm64 libxcb-dri3-dev:arm64 libxcb-present-dev:arm64 libxcb-randr0-dev:arm64
+        libxcb-sync-dev:arm64 libxcb-xfixes0-dev:arm64 libxcb-keysyms1-dev:arm64 libglvnd-dev:arm64
     gradle:
       - yes
     build:
       - cd ..
       - scripts/proot/build.sh
       - scripts/x11/build-native.sh
-      - sudo --preserve-env=PATH,ANDROID_NDK_HOME scripts/gpu/build-mesa.sh
-      - sudo chown -R "$(id -u):$(id -g)" build/gpu
-      - sudo --preserve-env=PATH,ANDROID_NDK_HOME scripts/usb/build-usb.sh
-      - sudo chown -R "$(id -u):$(id -g)" build/usb
+      - TESSERA_ON_HOST=1 scripts/gpu/build-mesa.sh
+      - TESSERA_ON_HOST=1 scripts/usb/build-usb.sh
       - scripts/theme/build-theme.sh
     ndk: 29.0.14206865
     gradleprops:
