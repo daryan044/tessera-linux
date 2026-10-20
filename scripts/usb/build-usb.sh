@@ -16,6 +16,9 @@
 #
 # Needs a Linux host (WSL is fine) and root, for the build root:
 #   sudo scripts/usb/build-usb.sh
+# Or, on a Debian trixie host with crossbuild-essential-arm64 installed (as F-Droid's build
+# server has, from its recipe), without a build root or root:
+#   TESSERA_ON_HOST=1 scripts/usb/build-usb.sh
 # Env: TRIXIE (the build root, default /opt/trixie).
 set -euo pipefail
 
@@ -25,44 +28,62 @@ TRIXIE=${TRIXIE:-/opt/trixie}
 PREFIX=/opt/tessera-usb
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT="$HERE/../../build/usb/assets/usb"
+ON_HOST=${TESSERA_ON_HOST:-}
+# Where the build works: in the build root, or a folder of our own on the host.
+if [ -n "$ON_HOST" ]; then
+  mkdir -p "$HERE/../../build/usb-work"
+  WORK=$(cd "$HERE/../../build/usb-work" && pwd)
+  SCRIPT="$WORK/build-usb.sh"
+else
+  WORK="$TRIXIE/work"
+  SCRIPT="$TRIXIE/build-usb.sh"
+fi
 
-if [ ! -x "$TRIXIE/usr/bin/apt-get" ]; then
+if [ -z "$ON_HOST" ] && [ ! -x "$TRIXIE/usr/bin/apt-get" ]; then
   apt-get install -y debootstrap
   debootstrap --variant=buildd --include=ca-certificates trixie "$TRIXIE" http://deb.debian.org/debian
 fi
 
-# Everything below runs inside the build root.
-cat > "$TRIXIE/build-usb.sh" <<EOF
+# Everything below runs inside the build root (working in /work), or on the host.
+cat > "$SCRIPT" <<EOF
 set -euo pipefail
+WORK=\$1
+if [ -z "$ON_HOST" ]; then
 export DEBIAN_FRONTEND=noninteractive
 dpkg --add-architecture arm64
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends crossbuild-essential-arm64 bzip2 curl patch >/dev/null
+fi
 
-mkdir -p /src && cd /src
+mkdir -p \$WORK/src && cd \$WORK/src
 rm -rf libusb-$LIBUSB_VERSION
 curl -fsSL -o libusb.tar.bz2 https://github.com/libusb/libusb/releases/download/v$LIBUSB_VERSION/libusb-$LIBUSB_VERSION.tar.bz2
 echo "$LIBUSB_SHA256  libusb.tar.bz2" | sha256sum -c -
 tar xjf libusb.tar.bz2
 cd libusb-$LIBUSB_VERSION
-for p in /usb/patches/*.patch; do patch -p1 < "\$p"; done
+for p in \$WORK/usb/patches/*.patch; do patch -p1 < "\$p"; done
 ./configure --host=aarch64-linux-gnu --prefix=$PREFIX --disable-udev --disable-static >/dev/null
 make -j"\$(nproc)" >/dev/null
-rm -rf /stage && make install DESTDIR=/stage >/dev/null
+rm -rf \$WORK/stage && make install DESTDIR=\$WORK/stage >/dev/null
 
-aarch64-linux-gnu-gcc -O2 -shared -fPIC -U_FORTIFY_SOURCE -o /stage$PREFIX/lib/tessera-usb.so /usb/tessera-usb.c -ldl
-aarch64-linux-gnu-strip --strip-unneeded /stage$PREFIX/lib/*.so*
+aarch64-linux-gnu-gcc -O2 -shared -fPIC -U_FORTIFY_SOURCE -o \$WORK/stage$PREFIX/lib/tessera-usb.so \$WORK/usb/tessera-usb.c -ldl
+aarch64-linux-gnu-strip --strip-unneeded \$WORK/stage$PREFIX/lib/*.so*
 EOF
-rm -rf "$TRIXIE/usb" && mkdir -p "$TRIXIE/usb" && cp -r "$HERE/patches" "$HERE/tessera-usb.c" "$TRIXIE/usb/"
-cp /etc/resolv.conf "$TRIXIE/etc/resolv.conf"
-mountpoint -q "$TRIXIE/proc" || mount -t proc proc "$TRIXIE/proc"
-trap 'umount "$TRIXIE/proc" 2>/dev/null || true' EXIT
-chroot "$TRIXIE" /bin/bash /build-usb.sh
+mkdir -p "$WORK"
+rm -rf "$WORK/usb" && mkdir -p "$WORK/usb" && cp -r "$HERE/patches" "$HERE/tessera-usb.c" "$WORK/usb/"
+if [ -n "$ON_HOST" ]; then
+  bash "$SCRIPT" "$WORK"
+else
+  cp /etc/resolv.conf "$TRIXIE/etc/resolv.conf"
+  mountpoint -q "$TRIXIE/proc" || mount -t proc proc "$TRIXIE/proc"
+  trap 'umount "$TRIXIE/proc" 2>/dev/null || true' EXIT
+  chroot "$TRIXIE" /bin/bash /build-usb.sh /work
+fi
 
 # Only the libraries go in; headers, pkg-config files and libtool archives are for building.
-rm -rf "$TRIXIE/stage$PREFIX/include" "$TRIXIE/stage$PREFIX/lib/pkgconfig" "$TRIXIE/stage$PREFIX"/lib/*.la
+rm -rf "$WORK/stage$PREFIX/include" "$WORK/stage$PREFIX/lib/pkgconfig" "$WORK/stage$PREFIX"/lib/*.la
 mkdir -p "$OUT"
-tar --format=ustar -C "$TRIXIE/stage" -czf "$OUT/usb-bridge.tgz" "${PREFIX#/}"
+tar --format=ustar -C "$WORK/stage" -czf "$OUT/usb-bridge.tgz" "${PREFIX#/}"
 # Bump the suffix when the shim or patches change, so phones unpack the new build.
 echo "$LIBUSB_VERSION-t1" > "$OUT/VERSION"
 ls -l "$OUT"
