@@ -96,19 +96,35 @@ summary { font-weight: 600; cursor: pointer; }
 details p { margin: 10px 0 0; color: var(--muted); }
 footer { text-align: center; color: var(--muted); font-size: 0.9rem; margin-top: 56px; }
 @media (max-width: 760px) {
-  .feature { grid-template-columns: 1fr; padding: 36px 0; }
+  body { font-size: 16px; line-height: 1.6; }
+  nav a.wide { display: none; }
+  header { padding: 32px 0 20px; }
+  header img { width: 76px; height: 76px; }
+  h1 { font-size: 2.1rem; }
+  .lead { font-size: 1.05rem; margin-bottom: 20px; }
+  .buttons { flex-direction: column; align-items: stretch; max-width: 320px; margin: 0 auto; gap: 10px; }
+  .btn { text-align: center; padding: 11px 20px; }
+  h2 { font-size: 1.4rem; }
+  .section-title { margin-top: 44px; }
+  .feature { gap: 20px; }
+  .feature ul { padding-left: 1.1em; }
+  .pics { gap: 10px; }
+  .grid, .steps { gap: 12px; }
+  .card, .steps li { padding: 18px; border-radius: 18px; }
+  .feature { grid-template-columns: 1fr; padding: 32px 0; }
   .feature:nth-of-type(even) .pics { order: 0; }
-  .shots img { height: 340px; }
+  .shots img { height: 300px; border-radius: 16px; }
+  .shots { gap: 12px; margin: 0 -16px; padding: 4px 16px 16px; }
 }
 </style>
 </head>
 <body>
 <nav><div>
   <strong>Tessera</strong>
-  <a href="#features">Features</a>
-  <a href="#how">How it works</a>
+  <a class="wide" href="#features">Features</a>
+  <a class="wide" href="#how">How it works</a>
   <a href="#start">Get started</a>
-  <a href="#faq">FAQ</a>
+  <a class="wide" href="#faq">FAQ</a>
   <a href="https://github.com/daryan044/tessera-linux">GitHub</a>
 </div></nav>
 
@@ -345,5 +361,6 @@ Debian with a tap, pick apps from a store, and tap an app to open it in its own 
 <footer>Tessera is free software under the GPLv3, made by <a href="/">Daryan Kamaran Karim</a>.
 Built on Termux:X11, PRoot, Mesa, adw-gtk3, Bibata, Flatpak and Debian.</footer>
 </main>
+<script data-goatcounter="https://daryandev.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </body>
 </html>
