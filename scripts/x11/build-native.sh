@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Builds Termux:X11's X server (libXlorie.so) for every ABI and copies it to
-# build/x11/jniLibs/<abi>/, which gradle.properties points lorie.prebuiltJniLibs at,
+# build/x11/jniLibs/<abi>/, which settings.gradle.kts points lorie.prebuiltJniLibs at,
 # and stages the xkb keyboard data into build/x11/assets/ for the app to bundle.
 #
 # Needs a Linux host (WSL is fine): the Xorg build compiles and runs helper tools
@@ -28,10 +28,16 @@ OUT="$ROOT/build/x11/jniLibs"
 git -C "$SRC" submodule update --init --depth 1 --jobs 8
 [ -f "$SRC/local.properties" ] || echo "sdk.dir=$ANDROID_HOME" > "$SRC/local.properties"
 
-# Termux:X11's own Gradle wrapper; where it was taken out (F-Droid removes wrappers, as binaries,
-# and puts its own gradle on the PATH, which reads the wrapper's settings), plain gradle.
-if [ -x "$SRC/gradlew" ] && [ -f "$SRC/gradle/wrapper/gradle-wrapper.jar" ]; then GRADLE=./gradlew; else GRADLE=gradle; fi
-(cd "$SRC" && $GRADLE --console=plain :lorie:mergeReleaseNativeLibs)
+# Through Tessera's own project, which leaves out Termux:X11's app modules (their signing setup
+# breaks once F-Droid strips signing configs), with -Ptessera.buildX11 so lorie builds its native
+# part rather than taking the prebuilt. A checkout elsewhere (X11_SRC) builds on its own.
+# The Gradle wrapper where there is one; F-Droid takes wrappers out and puts its gradle on PATH.
+gradle_in() { if [ -x "$1/gradlew" ] && [ -f "$1/gradle/wrapper/gradle-wrapper.jar" ]; then echo ./gradlew; else echo gradle; fi; }
+if [ -z "${X11_SRC:-}" ]; then
+  (cd "$ROOT" && $(gradle_in "$ROOT") --console=plain -Ptessera.buildX11 :lorie:mergeReleaseNativeLibs)
+else
+  (cd "$SRC" && $(gradle_in "$SRC") --console=plain :lorie:mergeReleaseNativeLibs)
+fi
 
 LIBS="$SRC/lorie/build/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib"
 rm -rf "$OUT"
