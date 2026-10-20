@@ -1,0 +1,3 @@
+0.2.1 (alpha)
+- Build fix for F-Droid: the X server's native libraries build with the gradle on the PATH where
+  the Gradle wrapper has been taken out of the sources.
