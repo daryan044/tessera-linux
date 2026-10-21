@@ -131,7 +131,8 @@ fun AppSheet(
             }
             if (needsInstall && blocker == null) {
                 Text(
-                    "Installs ${app.packages.joinToString()} with apt in the background; follow it under Installs.",
+                    if (app.flatpak != null) "Installs ${app.flatpak.app} from Flathub in this engine's Linux system, in the background; follow it under Installs."
+                    else "Installs ${app.packages.joinToString()} with apt in the background; follow it under Installs.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp),
