@@ -61,8 +61,15 @@ fi
 mkdir -p \$WORK/src && cd \$WORK/src
 [ -d mesa-$MESA_VERSION ] || curl -fsSL https://archive.mesa3d.org/mesa-$MESA_VERSION.tar.xz | tar xJ
 cd mesa-$MESA_VERSION
-# Our fixes (scripts/gpu/patches); -N skips ones a reused source tree already has.
-for p in \$WORK/patches/*.patch; do patch -p1 -N < "\$p" || true; done
+# Our fixes (scripts/gpu/patches). One a reused source tree already has is skipped; one that
+# doesn't apply stops the build, rather than shipping a driver without it.
+for p in \$WORK/patches/*.patch; do
+  if patch -p1 -R --dry-run -s -f < "\$p" >/dev/null 2>&1; then
+    echo "already applied: \$(basename "\$p")"
+  else
+    patch -p1 -N < "\$p"
+  fi
+done
 
 cat > \$WORK/src/arm64.cross <<CROSS
 [binaries]
