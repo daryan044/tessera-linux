@@ -4,6 +4,7 @@
 package com.daryan.tessera.container
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -52,7 +53,9 @@ class ProcessTreeTest {
     @Test fun `the root kill script finds a session's processes by their marker`() {
         val one = ProcessTree.rootKillScript("s3")
         assertTrue("grep -q '^LAUNCHER_SESSION=s3\$'" in one)
-        assertTrue("tr '\\0' '\\n' < \$e" in one)
+        // Never tr straight from /proc: it hangs on a process that has just exited.
+        assertTrue("cat \$e 2>/dev/null | tr '\\0' '\\n'" in one)
+        assertFalse("tr '\\0' '\\n' <" in one)
         assertTrue("grep -q '^LAUNCHER_SESSION='" in ProcessTree.rootKillScript(null))
     }
 }

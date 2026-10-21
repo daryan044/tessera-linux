@@ -11,22 +11,27 @@ object Pty {
         System.loadLibrary("launcher")
     }
 
-    /** Starts [spec] on a new pty. Returns the master fd; the pid is written to [pidOut][0]. */
+    /**
+     * Starts [spec] on a new pty. Returns the master fd; the pid is written to [pidOut][0]. The
+     * child inherits no descriptor of the app's but its tty and [keep] (USB devices handed to a
+     * session).
+     */
     @Throws(IOException::class)
-    fun spawn(spec: LaunchSpec, rows: Int, cols: Int, pidOut: IntArray): Int = spawn(
+    fun spawn(spec: LaunchSpec, rows: Int, cols: Int, pidOut: IntArray, keep: IntArray = IntArray(0)): Int = spawn(
         spec.executable,
         spec.argv.toTypedArray(),
-        spec.env.map { (k, v) -> "$k=$v" }.toTypedArray(),
+        spec.envp(),
         spec.cwd,
         rows,
         cols,
         pidOut,
+        keep,
     )
 
     @JvmStatic
     private external fun spawn(
         path: String, argv: Array<String>, env: Array<String>, cwd: String?,
-        rows: Int, cols: Int, pidOut: IntArray,
+        rows: Int, cols: Int, pidOut: IntArray, keep: IntArray,
     ): Int
 
     @JvmStatic external fun setWindowSize(fd: Int, rows: Int, cols: Int)

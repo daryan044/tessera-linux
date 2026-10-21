@@ -38,6 +38,8 @@ class LauncherApplication : LorieApp() {
         private set
 
     override fun onCreate() {
+        // Inherited by everything started with ProcessBuilder, su's root shells included.
+        runCatching { android.system.Os.setenv(com.daryan.tessera.container.HELPER_ENV, "1", true) }
         applyX11Defaults()
         super.onCreate()
         container = LauncherContainer(this)

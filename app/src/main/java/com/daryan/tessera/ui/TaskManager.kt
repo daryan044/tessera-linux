@@ -91,7 +91,7 @@ fun TaskSummary(processes: List<GuestProcess>?, running: Int, onCloseAll: () -> 
                         when {
                             load == null -> "Measuring…"
                             load.count == 0 -> "Nothing running in Linux"
-                            else -> "${load.count} Linux ${if (load.count == 1) "process" else "processes"}"
+                            else -> "${load.count} ${if (load.count == 1) "process" else "processes"}"
                         },
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -244,6 +244,7 @@ private fun stateLabel(s: Char) = when (s) {
 
 /** What a session id outside the launcher's sessions is: the Files tab's shells, apt's jobs. */
 fun backgroundLabel(session: String): String = when {
+    session == com.daryan.tessera.container.HELPERS -> "Tessera itself: X servers and helpers"
     session == "files" -> "Files tab"
     session.startsWith("files-op") -> "Files: copying or extracting"
     session.startsWith("q") && session.drop(1).all(Char::isDigit) -> "Installs (apt)"

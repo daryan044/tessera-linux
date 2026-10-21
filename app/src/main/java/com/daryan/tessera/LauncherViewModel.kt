@@ -203,6 +203,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     )
     val mode: StateFlow<BackendMode> = _mode
 
+    /** Whether su has worked here before (in chroot mode), so using it again asks nothing. */
+    var rootGranted = prefs.getBoolean(KEY_ROOT_GRANTED, false)
+        private set
+
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
 
@@ -415,6 +419,12 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             _status.value = s
+            // su answered (chroot mode found or didn't find its system): root was granted, so
+            // the task manager may use it in PRoot mode too, without a prompt nobody asked for.
+            if (s.chrootRootfs != null && !rootGranted) {
+                rootGranted = true
+                prefs.edit().putBoolean(KEY_ROOT_GRANTED, true).apply()
+            }
             if (s.su == null && _mode.value == BackendMode.CHROOT) _mode.value = BackendMode.PROOT
             // Chroot sessions an earlier run of the app left behind (an update, being killed):
             // once a run, before anything starts. Only root can see them.
@@ -823,6 +833,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val TAG = "Launcher"
         const val KEY_MODE = "backend_mode"
+        const val KEY_ROOT_GRANTED = "root_granted"
         const val KEY_STORE_SOURCE = "store_source"
         /** What stands for Flathub's setup and its apps in the install queue's package lists. */
         const val FLATHUB_SETUP = "flathub-setup"

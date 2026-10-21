@@ -77,8 +77,10 @@ object ProcessTree {
     /** The shell for [killSessionAsRoot]: every process whose environment has the session's marker. */
     internal fun rootKillScript(sessionId: String?): String {
         val marker = if (sessionId == null) "^$SESSION_ENV=" else "^$SESSION_ENV=$sessionId${'$'}"
+        // Through cat: toybox tr reading the environ of a process that has just exited (likely,
+        // while killing) never returns, and kept a core busy long after the app was gone.
         return "for e in /proc/[0-9]*/environ; do p=${'$'}{e%/environ}; p=${'$'}{p#/proc/}; " +
-            "tr '\\0' '\\n' < ${'$'}e 2>/dev/null | grep -q '$marker' && kill -9 ${'$'}p 2>/dev/null; done; true"
+            "cat ${'$'}e 2>/dev/null | tr '\\0' '\\n' | grep -q '$marker' && kill -9 ${'$'}p 2>/dev/null; done; true"
     }
 
     private fun ByteArray.split(sep: Byte): List<ByteArray> {
