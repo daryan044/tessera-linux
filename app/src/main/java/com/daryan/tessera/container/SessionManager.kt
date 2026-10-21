@@ -198,7 +198,7 @@ class SessionManager(
             spec.executable,
             spec.cwd,
             spec.argv.toTypedArray(),
-            spec.env.map { (k, v) -> "$k=$v" }.toTypedArray(),
+            spec.envp(),
             TRANSCRIPT_ROWS,
             Client(session.id),
         )
@@ -223,7 +223,7 @@ class SessionManager(
                 awaitWindow(session)
                 val pid = IntArray(1)
                 val fd = try {
-                    Pty.spawn(spec, rows = 24, cols = 80, pidOut = pid)
+                    Pty.spawn(spec, rows = 24, cols = 80, pidOut = pid, keep = session.usbFds.values.toIntArray())
                 } finally {
                     usbDevices[session.id]?.closeInherited()
                 }

@@ -30,6 +30,9 @@ data class LaunchSpec(
     val cwd: String,
 ) {
     val executable: String get() = argv.first()
+
+    /** [env] as KEY=value, with [HELPER_ENV]; what the process is started with. */
+    fun envp(): Array<String> = (env + (HELPER_ENV to "1")).map { (k, v) -> "$k=$v" }.toTypedArray()
 }
 
 /** Per-launch state that is not part of the app's manifest. */
@@ -94,6 +97,13 @@ data class ContainerPaths(
 
 /** Environment variable naming the session a guest process belongs to; see [ProcessTree.inSession]. */
 const val SESSION_ENV = "LAUNCHER_SESSION"
+
+/**
+ * Environment variable every process Tessera starts carries, guest or not: the task manager
+ * finds root helpers by it, even once nothing of the app is left above them (su hands the
+ * caller's environment to the root shell, whose parent is su's daemon, not the app).
+ */
+const val HELPER_ENV = "TESSERA_HELPER"
 
 /**
  * What lets a toolkit follow the theme ([ThemeFiles]), by a package that shows it's in use:

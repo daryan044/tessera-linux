@@ -68,6 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.blur.hazeBlur
@@ -205,13 +206,18 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     // Search belongs to the Apps tab; leaving it closes the search.
     LaunchedEffect(destination) { if (destination != Destination.Apps) appSearch.snapTo(0f) }
     val appResults = remember(apps, appQuery.text) { searchApps(apps, appQuery.text.toString()) }
-    // The task manager samples only while Sessions is on screen; chroot mode reads as root to
-    // see apps running as root too.
-    val monitorSu = if (mode == BackendMode.CHROOT) status?.su else null
-    val processes by androidx.compose.runtime.produceState<List<com.daryan.tessera.container.GuestProcess>?>(null, destination, monitorSu) {
+    // The task manager samples only while Sessions is on screen. It reads as root wherever root
+    // has been granted, to see what runs as root (chroot apps, and Tessera's own root helpers,
+    // which outlive a switch to PRoot mode).
+    val monitorSu = if (mode == BackendMode.CHROOT || vm.rootGranted) status?.su else null
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val processes by androidx.compose.runtime.produceState<List<com.daryan.tessera.container.GuestProcess>?>(null, destination, monitorSu, lifecycle) {
         value = null
         if (destination != Destination.Sessions) return@produceState
-        com.daryan.tessera.container.ProcessMonitor(monitorSu).watch().collect { value = it }
+        // Only while it's on screen: a launcher left in the background kept sampling, as root.
+        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            com.daryan.tessera.container.ProcessMonitor(monitorSu).watch().collect { value = it }
+        }
     }
     val messageScope = rememberCoroutineScope()
     val filesMessage: (String) -> Unit = { m -> messageScope.launch { snackbar.showSnackbar(m) } }

@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/resource.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
@@ -34,6 +36,35 @@ static void free_cstrings(char **v) {
     free(v);
 }
 
+static int compare_ints(const void *a, const void *b) {
+    return *(const int *)a - *(const int *)b;
+}
+
+// In the child: closes every descriptor above stderr but those in keep (sorted). Otherwise the
+// child holds whatever the app had open, pipes to other children included: a root shell the
+// task manager had finished with never saw its input end, and lived on as root.
+static void close_inherited(const int *keep, int n) {
+    unsigned int from = 3;
+    for (int i = 0; i <= n; i++) {
+        unsigned int to = i < n ? (unsigned int)keep[i] : ~0U;
+        if (to < from) continue;
+        if (to > from) {
+            unsigned int last = to - 1;
+#ifdef __NR_close_range
+            if (syscall(__NR_close_range, from, last, 0) == 0) { from = to + 1; continue; }
+#endif
+            // Kernels before 5.9: one by one, up to the descriptor limit.
+            struct rlimit rl;
+            unsigned int max = getrlimit(RLIMIT_NOFILE, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY
+                ? (unsigned int)rl.rlim_cur : 65536;
+            if (last >= max) last = max - 1;
+            for (unsigned int fd = from; fd <= last; fd++) close((int)fd);
+        }
+        from = to + 1;
+        if (to == ~0U) break;
+    }
+}
+
 static void throw_io(JNIEnv *env, const char *what) {
     char msg[256];
     snprintf(msg, sizeof msg, "%s: %s", what, strerror(errno));
@@ -44,7 +75,7 @@ JNIEXPORT jint JNICALL
 Java_com_daryan_tessera_container_Pty_spawn(JNIEnv *env, jclass clazz, jstring jpath,
                                                  jobjectArray jargv, jobjectArray jenvp,
                                                  jstring jcwd, jint rows, jint cols,
-                                                 jintArray jpid) {
+                                                 jintArray jpid, jintArray jkeep) {
     (void)clazz;
     int master = open("/dev/ptmx", O_RDWR | O_CLOEXEC);
     if (master < 0) { throw_io(env, "open /dev/ptmx"); return -1; }
@@ -69,6 +100,11 @@ Java_com_daryan_tessera_container_Pty_spawn(JNIEnv *env, jclass clazz, jstring j
     const char *cwd = jcwd ? (*env)->GetStringUTFChars(env, jcwd, NULL) : NULL;
     char **argv = to_cstrings(env, jargv);
     char **envp = to_cstrings(env, jenvp);
+    // Descriptors the child keeps (USB devices handed to it), sorted; read before forking.
+    int nkeep = jkeep ? (*env)->GetArrayLength(env, jkeep) : 0;
+    int *keep = calloc((size_t)nkeep + 1, sizeof(int));
+    if (nkeep) (*env)->GetIntArrayRegion(env, jkeep, 0, nkeep, keep);
+    qsort(keep, (size_t)nkeep, sizeof(int), compare_ints);
 
     pid_t pid = fork();
     if (pid == 0) {
@@ -85,6 +121,7 @@ Java_com_daryan_tessera_container_Pty_spawn(JNIEnv *env, jclass clazz, jstring j
         dup2(slave, 1);
         dup2(slave, 2);
         if (slave > 2) close(slave);
+        close_inherited(keep, nkeep);
         if (cwd && chdir(cwd) != 0) (void)chdir("/");
         execve(path, argv, envp);
         _exit(127);
@@ -95,6 +132,7 @@ Java_com_daryan_tessera_container_Pty_spawn(JNIEnv *env, jclass clazz, jstring j
     if (cwd) (*env)->ReleaseStringUTFChars(env, jcwd, cwd);
     free_cstrings(argv);
     free_cstrings(envp);
+    free(keep);
 
     if (pid < 0) {
         errno = saved_errno;
