@@ -1,0 +1,32 @@
+--- a/src/gallium/drivers/zink/zink_context.c
++++ b/src/gallium/drivers/zink/zink_context.c
+@@ -3473,6 +3473,16 @@
+             zink_resource_reference(&ctx->fb_resolve[i], NULL);
+             continue;
+          }
++         /* Tessera: a swapchain image is acquired before the batch uses it; using it first
++          * read the image at dt_idx UINT32_MAX (an MSAA window resolving into the swapchain
++          * crashed on its first frame, e.g. SFML apps asking for antialiasing).
++          */
++         if (zink_is_swapchain(res)) {
++            if (!zink_kopper_acquire(ctx, res, UINT64_MAX)) {
++               zink_resource_reference(&ctx->fb_resolve[i], NULL);
++               return 0;
++            }
++         }
+          zink_batch_resource_usage_set(ctx->bs, res, true, false);
+          bool is_depth = util_format_is_depth_or_stencil(res->base.b.format);
+          enum pipe_format format = res->base.b.format;
+@@ -3487,12 +3497,6 @@
+             .first_layer = ctx->dynamic_fb.tc_info.resolve_geometry.z,
+             .last_layer = ctx->dynamic_fb.tc_info.resolve_geometry.depth - 1,
+          };
+-         if (zink_is_swapchain(res)) {
+-            if (!zink_kopper_acquire(ctx, res, UINT64_MAX)) {
+-               zink_resource_reference(&ctx->fb_resolve[i], NULL);
+-               return 0;
+-            }
+-         }
+          VkImageViewCreateInfo ivci = create_ivci(screen, res, &tmpl, ctx->dynamic_fb.info.layerCount > 1 ? PIPE_TEXTURE_2D_ARRAY : PIPE_TEXTURE_2D);
+          struct zink_surface *surf = zink_get_surface(ctx, &tmpl, &ivci);
+          VkImageLayout layout = is_depth ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
