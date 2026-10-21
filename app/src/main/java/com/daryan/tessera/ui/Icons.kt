@@ -118,6 +118,21 @@ object LauncherIcons {
         moveTo(18f, 12.5f); lineTo(18.01f, 12.5f)
         moveTo(8f, 15f); lineTo(16f, 15f)
     }
+    val Gamepad = outline("Gamepad") {
+        moveTo(7f, 7f); lineTo(17f, 7f)
+        curveTo(19.8f, 7f, 21.5f, 9.5f, 21.5f, 13f)
+        lineTo(21.5f, 15.5f)
+        curveTo(21.5f, 17.5f, 19.5f, 18.5f, 18f, 17.2f)
+        lineTo(15.5f, 15f); lineTo(8.5f, 15f); lineTo(6f, 17.2f)
+        curveTo(4.5f, 18.5f, 2.5f, 17.5f, 2.5f, 15.5f)
+        lineTo(2.5f, 13f)
+        curveTo(2.5f, 9.5f, 4.2f, 7f, 7f, 7f)
+        close()
+        moveTo(8f, 9.5f); lineTo(8f, 12.5f)
+        moveTo(6.5f, 11f); lineTo(9.5f, 11f)
+        moveTo(15.5f, 10f); lineTo(15.51f, 10f)
+        moveTo(17.5f, 12f); lineTo(17.51f, 12f)
+    }
     val Mouse = outline("Mouse") {
         roundRect(6f, 3f, 18f, 21f, 6f)
         moveTo(12f, 3f); lineTo(12f, 10f)

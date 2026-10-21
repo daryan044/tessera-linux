@@ -126,6 +126,7 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
     // 0 = closed (off screen past the edge), 1 = fully open.
     val open = remember { Animatable(0f) }
     var page by remember { mutableStateOf(Page.MAIN) }
+    var controls by remember { mutableStateOf(actions.gameControls()) }
     // Where the handle sits: which edge, and how far down it (0 = top, 1 = bottom).
     var onLeft by remember { mutableStateOf(prefs.getBoolean(KEY_LEFT, false)) }
     var along by remember { mutableFloatStateOf(prefs.getFloat(KEY_ALONG, 0.4f)) }
@@ -172,6 +173,8 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
     BackHandler(enabled = open.value > 0f) { settle(false) }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
+        // Under the handle and the panel, so both stay in reach.
+        if (controls) GameControls(actions)
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
         val handleW = with(density) { HANDLE_WIDTH.toPx() }
@@ -275,7 +278,14 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
                     // Scrolls when it doesn't fit, as in landscape.
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
                         when (p) {
-                            Page.MAIN -> MainPage(session, actions, perRow = if (landscape) 6 else 3, onPage = { page = it }, run = ::run)
+                            Page.MAIN -> MainPage(
+                                session, actions, perRow = if (landscape) 6 else 3, onPage = { page = it }, run = ::run,
+                                controls = controls,
+                                onControls = { on ->
+                                    actions.setGameControls(on)
+                                    controls = on
+                                },
+                            )
                             Page.SCALE -> SubPage("Scale", onBack = { page = Page.MAIN }) { ScalePage(actions) }
                             Page.KEYS -> SubPage("Keys", onBack = { page = Page.MAIN }) { KeysPage(actions) }
                             Page.INPUT -> SubPage("Input mode", onBack = { page = Page.MAIN }) { InputPage(actions) }
@@ -290,7 +300,15 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
 }
 
 @Composable
-private fun MainPage(session: RunningSession?, actions: X11Actions, perRow: Int, onPage: (Page) -> Unit, run: (() -> Unit) -> Unit) {
+private fun MainPage(
+    session: RunningSession?,
+    actions: X11Actions,
+    perRow: Int,
+    onPage: (Page) -> Unit,
+    run: (() -> Unit) -> Unit,
+    controls: Boolean,
+    onControls: (Boolean) -> Unit,
+) {
     Text(session?.app?.name ?: "Linux app", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     Text("Linux · ${session?.backend ?: ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(20.dp))
@@ -304,6 +322,7 @@ private fun MainPage(session: RunningSession?, actions: X11Actions, perRow: Int,
         Tile(LauncherIcons.Mouse, "Right click") { run { actions.click(MouseButton.RIGHT) } }
         Tile(LauncherIcons.Mouse, "Middle click") { run { actions.click(MouseButton.MIDDLE) } }
         Tile(LauncherIcons.Keyboard, "Keys") { onPage(Page.KEYS) }
+        Tile(LauncherIcons.Gamepad, if (controls) "Hide game controls" else "Game controls") { run { onControls(!controls) } }
         Tile(LauncherIcons.Mouse, "Input mode") { onPage(Page.INPUT) }
         Tile(LauncherIcons.Scale, "Scale") { onPage(Page.SCALE) }
         Tile(LauncherIcons.Cast, "Cast") { onPage(Page.CAST) }

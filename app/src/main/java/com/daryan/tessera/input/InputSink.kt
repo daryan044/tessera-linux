@@ -33,6 +33,14 @@ interface InputSink {
     fun keys(vararg keyCodes: Int)
 
     /**
+     * Holds [keyCode] down, or lets it go: a game's movement keys. Sinks that can only send
+     * whole keystrokes send one on the way down.
+     */
+    fun key(keyCode: Int, down: Boolean) {
+        if (down) keys(keyCode)
+    }
+
+    /**
      * Zooms by [notches], positive to zoom in. Ctrl and the wheel on a PC; sinks that have no
      * notion of zooming ignore it, which is what an X11 session does today.
      */
