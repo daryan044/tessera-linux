@@ -187,6 +187,7 @@ class LauncherContainer(private val app: Application) {
             HostProbe.installChrootScript(app, paths)
             // Refreshed every start so btime and the CPU count stay current.
             FakeProc.write(paths.fakeProcDir)
+            runCatching { FakeProc.clearSveShaders(paths.prootRootfs) }
             // So the notes beside the logs are always this version's.
             diagnostics.install(app)
         }

@@ -237,10 +237,45 @@ object RootfsSetup {
  * uptime and friends fail. Bound over the real paths by [ProotBackend].
  */
 object FakeProc {
-    val NAMES = listOf("stat", "loadavg", "uptime", "version", "vmstat", "filesystems", "sys/kernel/cap_last_cap")
+    val NAMES = listOf("stat", "loadavg", "uptime", "version", "vmstat", "filesystems", "cpuinfo", "sys/kernel/cap_last_cap")
 
-    fun write(dir: File, cpus: Int = Runtime.getRuntime().availableProcessors(), kernel: String = System.getProperty("os.version") ?: "6.1.0") {
+    /** A core without SVE (Cortex-A78), for [withoutSve]. */
+    const val NO_SVE_PART = "0xd41"
+
+    /**
+     * [cpuinfo] with every core named a Cortex-A78, unless the kernel lists SVE. LLVM, and so
+     * llvmpipe's shader JIT, picks instructions by core model rather than by what the kernel
+     * enables: Cortex-X3 and A715 have SVE, Android kernels leave it off, and OpenGL apps
+     * drawing in software died of SIGILL. enter.sh and flatpak.sh do the same in chroot mode.
+     */
+    fun withoutSve(cpuinfo: String): String {
+        val sve = cpuinfo.lineSequence().any { it.startsWith("Features") && "sve" in it.substringAfter(':').split(' ', '\t') }
+        if (sve) return cpuinfo
+        return cpuinfo.replace(Regex("^(CPU part\\s*:\\s*).*$", RegexOption.MULTILINE)) { it.groupValues[1] + NO_SVE_PART }
+    }
+
+    /**
+     * Once: drops the shaders llvmpipe compiled in [rootfs] before [withoutSve], which Mesa's
+     * disk cache doesn't key by core. enter.sh does the same in chroot mode.
+     */
+    fun clearSveShaders(rootfs: File) {
+        for (cache in listOf(File(rootfs, "root/.cache"), File(rootfs, "home/user/.cache"))) {
+            val marker = File(cache, ".tessera-no-sve")
+            if (!cache.isDirectory || marker.exists()) continue
+            File(cache, "mesa_shader_cache").deleteRecursively()
+            File(cache, "mesa_shader_cache_db").deleteRecursively()
+            marker.createNewFile()
+        }
+    }
+
+    fun write(
+        dir: File,
+        cpus: Int = Runtime.getRuntime().availableProcessors(),
+        kernel: String = System.getProperty("os.version") ?: "6.1.0",
+        cpuinfo: String = runCatching { File("/proc/cpuinfo").readText() }.getOrDefault(""),
+    ) {
         fun put(name: String, text: String) = File(dir, name).apply { parentFile?.mkdirs() }.writeText(text)
+        put("cpuinfo", withoutSve(cpuinfo))
         put("stat", buildString {
             append("cpu  ${cpus * 1000} 0 ${cpus * 500} ${cpus * 90000} 0 0 0 0 0 0\n")
             repeat(cpus) { append("cpu$it 1000 0 500 90000 0 0 0 0 0 0\n") }
