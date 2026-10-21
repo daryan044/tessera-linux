@@ -114,6 +114,15 @@ class RootfsSetupTest {
         assertTrue(File(dir, "version").readText().startsWith("Linux version 6.1.99"))
     }
 
+    @Test fun `cpuinfo names a core without SVE unless the kernel has it`() {
+        val noSve = "processor\t: 0\nFeatures\t: fp asimd atomics sve2-less bf16\nCPU part\t: 0xd4e\n\nprocessor\t: 1\nCPU part\t: 0xd46\n"
+        val faked = FakeProc.withoutSve(noSve)
+        assertEquals(listOf("CPU part\t: 0xd41", "CPU part\t: 0xd41"), faked.lines().filter { it.startsWith("CPU part") })
+        assertTrue("Features\t: fp asimd atomics sve2-less bf16" in faked)
+        val sve = "Features\t: fp asimd sve sve2\nCPU part\t: 0xd4e\n"
+        assertEquals(sve, FakeProc.withoutSve(sve))
+    }
+
     @Test fun `proot binds fake proc over the real files`() {
         val paths = ContainerPaths(
             File("/app/lib"), File("/app/files"), File("/app/cache"),

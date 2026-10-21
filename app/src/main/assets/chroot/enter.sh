@@ -33,6 +33,19 @@ ln -sf /proc/self/fd "$R/dev/fd"
 
 mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs "$R/tmp"
 mount -t tmpfs -o mode=755,nosuid,nodev tmpfs "$R/run"
+# LLVM (llvmpipe's shader JIT) picks instructions by core model, not by what the kernel enables:
+# Cortex-X3 and A715 have SVE, Android kernels leave it off, and OpenGL apps drawing in software
+# died of SIGILL. Every core is named a Cortex-A78 (as FakeProc does for PRoot) unless SVE is on.
+if ! grep '^Features' /proc/cpuinfo | grep -qw sve; then
+  sed 's/^\(CPU part[[:space:]]*:[[:space:]]*\).*/\10xd41/' /proc/cpuinfo > "$R/run/.cpuinfo"
+  mount --bind "$R/run/.cpuinfo" "$R/proc/cpuinfo"
+  # Shaders compiled before that are in Mesa's disk cache, which doesn't key them by core.
+  for c in "$R/root/.cache" "$R/home/user/.cache"; do
+    if [ -d "$c" ] && [ ! -e "$c/.tessera-no-sve" ]; then
+      rm -rf "$c/mesa_shader_cache" "$c/mesa_shader_cache_db"; touch "$c/.tessera-no-sve"
+    fi
+  done
+fi
 
 printf '%s\n' "$DEVICES" | while IFS= read -r d; do
   [ -n "$d" ] && [ -e "$d" ] || continue
