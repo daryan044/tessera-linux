@@ -17,7 +17,7 @@ phone's own colors. No terminal setup, no VNC, no guides to follow.
 ![Flathub](https://img.shields.io/badge/Flathub-2%2C800%2B%20apps-4A86CF?logo=flathub&logoColor=white)
 ![GPU](https://img.shields.io/badge/GPU-OpenGL%204.6%20%2B%20Vulkan-E2231A)
 
-**[⬇ Download Tessera 0.2.0 (alpha)](https://github.com/daryan044/tessera-linux/releases/download/v0.2.0/tessera-v0.2.0.apk)**
+**[⬇ Download Tessera 0.3.0 (alpha)](https://github.com/daryan044/tessera-linux/releases/download/v0.3.0/tessera-v0.3.0.apk)**
 · [All releases](https://github.com/daryan044/tessera-linux/releases)
 
 [<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="54">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/daryan044/tessera-linux)
@@ -301,7 +301,7 @@ even ones left behind by an earlier run.
 untested), a few GB of free storage. GPU acceleration needs a Snapdragon (Adreno) GPU. Root is
 optional.
 
-1. Download the APK: [tessera-v0.2.0.apk](https://github.com/daryan044/tessera-linux/releases/download/v0.2.0/tessera-v0.2.0.apk)
+1. Download the APK: [tessera-v0.3.0.apk](https://github.com/daryan044/tessera-linux/releases/download/v0.3.0/tessera-v0.3.0.apk)
    (alpha; see the [releases](https://github.com/daryan044/tessera-linux/releases) for notes and
    newer versions), or build it yourself (below). With [Obtainium](https://github.com/ImranR98/Obtainium),
    add this repository's URL and it keeps Tessera up to date from its releases.

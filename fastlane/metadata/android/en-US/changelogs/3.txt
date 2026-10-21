@@ -1,0 +1,7 @@
+0.3.0 (alpha)
+- Game controls: a thumb stick, mouse-look and hold buttons for games that want a keyboard and mouse.
+- GPU: antialiased OpenGL windows no longer crash (Mesa fix).
+- Software OpenGL works on Snapdragon 8 Gen 2 and newer.
+- Sound no longer stutters in games.
+- Flathub apps missing from an engine's system offer Install.
+- The task manager sees everything Tessera runs; fixes for runaway helper processes.
