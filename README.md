@@ -151,6 +151,30 @@ That's it. Everything below happens on its own.
 
 ## What makes it different
 
+### 🐚 A full Linux shell, like Termux *(and AnLinux and Andronix in one)*
+Tessera isn't only for windowed apps. Its **Terminal** is a complete Linux shell on your phone,
+the way people use Termux: `apt install` anything from Debian's ~60,000 packages, `ssh` into
+servers, `git`, `python`, `node`, `gcc`, `rust`, `vim`, `tmux`, `htop`, run servers and scripts,
+compile code. **Root shell** gives you the same as root.
+
+AnLinux and Andronix give you a full distro by pasting scripts into Termux and then a VNC viewer
+for anything graphical. Tessera does all of it from one app:
+
+| | Termux | AnLinux / Andronix | Tessera |
+|---|---|---|---|
+| Terminal with a real shell | ✅ | via Termux | ✅ built in, extra keys, pinch to zoom |
+| Full Linux distro (Debian, glibc) | ❌ its own package set | ✅ by script, in PRoot | ✅ one tap, PRoot **or chroot** |
+| No root needed | ✅ | ✅ | ✅ |
+| Real chroot with root, kernel-enforced sandboxes | ❌ | partly | ✅ |
+| GUI apps | X11 add-on | a whole desktop over VNC | ✅ each app in its own Android window |
+| GPU acceleration | manual setup | ❌ | ✅ OpenGL 4.6 + Vulkan built in |
+| Flathub apps | ❌ | ❌ | ✅ |
+| App store, permissions per app | ❌ | ❌ | ✅ |
+
+Anything you'd do in a Termux session or an Andronix distro, you can do in Tessera's terminal,
+with the same Linux underneath. The one thing it doesn't copy is Termux's own add-ons, like
+Termux:API's phone sensors and SMS commands.
+
 ### 📦 Flathub, on a phone, without root *(new)*
 Flatpak normally needs **bubblewrap**, which needs **user namespaces**, which Android kernels don't
 have. So `flatpak run` simply can't work on a phone. Tessera runs Flathub apps anyway:
@@ -195,7 +219,8 @@ compress, extract, edit text, change permissions, open files in Android or Linux
 
 ### 📊 Task manager *(new)*
 Every Linux process, live CPU and memory per app, and **End task** with a two-tap "Sure?" right
-on each app's card.
+on each app's card. It sees everything Tessera runs, its own X servers and root helpers included,
+even ones left behind by an earlier run.
 
 ### 🪟 Every Linux app is a real Android app
 - Each app gets **its own window** and **its own card in Recents**, named and with its icon;
@@ -213,7 +238,10 @@ on each app's card.
 - **Touch is touch:** scroll and pinch in Firefox with your fingers, or switch an app to touchpad
   or mouse mode from its side menu, where **touch and hold right-clicks**.
 - A side menu on every window (swipe from the edge) has what a phone lacks: right click, Esc,
-  Tab, Ctrl+C, Alt+Tab, F11.
+  Enter, Tab, Ctrl+C, Alt+Tab, F11.
+- **Game controls** *(new)*: turn them on from a game's side menu for a thumb stick that holds
+  WASD, a look area for mouse-look, and buttons that hold Fire, Run, Jump and Reload, so
+  first-person games that expect a keyboard and mouse play by touch.
 
 ### 🚀 Real GPU acceleration on Snapdragon phones
 - Tessera ships its own build of Mesa: **Turnip** (Vulkan for Adreno GPUs, talking to Android's
@@ -251,7 +279,8 @@ on each app's card.
   a **trackpad and keyboard** for that PC. No app needed on the computer.
 
 ### 🧰 And everything around it
-- **Terminal** for command-line apps, with extra keys and pinch to zoom.
+- **Terminal** and **Root shell**: a full Linux shell, [like Termux](#-a-full-linux-shell-like-termux-and-anlinux-and-andronix-in-one),
+  with extra keys and pinch to zoom.
 - **Shortcuts:** your own commands as icons, in a terminal or a window, optionally as root.
   Comes with Claude Code, which installs itself on first run.
 - **Apps installed any way show up:** apt in a terminal, a downloaded .deb, all listed.
@@ -300,6 +329,7 @@ makes).
 | Material You theming, live dark mode (GTK, libadwaita, Qt, LibreOffice, Firefox) | ✅ Works |
 | Live per-app scaling, white pointer, window panel | ✅ Works |
 | Files tab, task manager | 🧪 New |
+| Game controls (stick, mouse-look, hold buttons) | 🧪 New; tested with AntWare from Flathub |
 | Casting to a TV with the phone as trackpad | 🧪 New |
 | The phone as a PC trackpad (USB, Bluetooth) | 🧪 New |
 | USB devices for PRoot apps, all-USB for flashing tools | 🧪 Experimental |
@@ -410,6 +440,11 @@ otherwise releases are signed and published by hand.
 
 **Do I need root?** No. Everything works in PRoot mode. Root adds chroot mode, which enforces
 permissions properly and runs faster.
+
+**Can it replace Termux, AnLinux or Andronix?** For a Linux shell and Linux apps, yes: the Terminal
+is a full Debian shell (apt, ssh, git, compilers, servers), PRoot needs no root like AnLinux and
+Andronix, and with root you get a real chroot as well. GUI apps open in their own windows instead
+of a VNC desktop. What it doesn't have is Termux's own add-ons such as Termux:API.
 
 **Which apps work?** Desktop apps from Debian's catalog, Flathub's arm64 apps, and anything you
 install with apt or as a .deb for arm64. Electron apps like VS Code work.
