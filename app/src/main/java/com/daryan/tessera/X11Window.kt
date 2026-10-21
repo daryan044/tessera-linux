@@ -66,6 +66,7 @@ import android.provider.OpenableColumns
 import com.daryan.tessera.container.RunningSession
 import com.daryan.tessera.ui.DesktopActions
 import com.daryan.tessera.ui.DesktopShell
+import com.daryan.tessera.ui.GameControlsPrefs
 import kotlinx.coroutines.launch
 import com.daryan.tessera.ui.X11Overlay
 import com.daryan.tessera.ui.theme.LauncherTheme
@@ -484,6 +485,16 @@ class X11Window : MainActivity.MainActivityTagged() {
             keyCodes.reversed().forEach { input.sendKeyEvent(0, it, false) }
         }
 
+        override fun key(keyCode: Int, down: Boolean) {
+            input.sendKeyEvent(0, keyCode, down)
+        }
+
+        override fun gameControls(): Boolean = appId?.let { GameControlsPrefs.on(this@X11Window, it) } ?: false
+
+        override fun setGameControls(on: Boolean) {
+            appId?.let { GameControlsPrefs.set(this@X11Window, it, on) }
+        }
+
         override val cast: StateFlow<CastState?> get() = castState
         override val castTargets: StateFlow<List<CastTarget>> get() = this@X11Window.castTargets
         override fun startCast(displayId: Int) = this@X11Window.startCast(displayId)
@@ -691,6 +702,9 @@ interface X11Actions : com.daryan.tessera.input.InputSink {
     fun touchMode(): TouchMode
     fun setLongPressRightClick(on: Boolean)
     fun longPressRightClick(): Boolean
+    /** Whether the app shows [com.daryan.tessera.ui.GameControls]; kept per app. */
+    fun gameControls(): Boolean
+    fun setGameControls(on: Boolean)
     /** The app's scale in percent ([X11Scale]), and the one it would have without its own. */
     fun scale(): Int
     fun defaultScale(): Int
@@ -709,6 +723,7 @@ interface X11Actions : com.daryan.tessera.input.InputSink {
         /** Key combinations the button offers, in Android key codes. */
         val SHORTCUTS = listOf(
             "Esc" to intArrayOf(KeyEvent.KEYCODE_ESCAPE),
+            "Enter" to intArrayOf(KeyEvent.KEYCODE_ENTER),
             "Tab" to intArrayOf(KeyEvent.KEYCODE_TAB),
             "Ctrl+C" to intArrayOf(KeyEvent.KEYCODE_CTRL_LEFT, KeyEvent.KEYCODE_C),
             "Ctrl+V" to intArrayOf(KeyEvent.KEYCODE_CTRL_LEFT, KeyEvent.KEYCODE_V),
