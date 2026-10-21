@@ -191,6 +191,10 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
         put("LAUNCHER_AUDIO", "1")
         put("PULSE_RUNTIME_PATH", pulse)
         put("PULSE_SERVER", "unix:$pulse/native")
+        // The pipe sink takes ~85 ms at a time; apps asking for less (OpenAL games, at ~60 ms)
+        // ran dry each time and played 21 ms of silence every 85: choppy sound. 110 was the
+        // least that left no gaps.
+        put("PULSE_LATENCY_MSEC", "120")
     }
     if (session.flatpak) put("TESSERA_FLATPAK", "1")
 }
