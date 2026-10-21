@@ -179,10 +179,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /** Whether Flathub is set up in the active container; null until checked. */
     val flathubReady: StateFlow<Boolean?> = _flathubReady
 
-    /** The Flathub apps installed from the store (they have launcher entries), by Flathub id. */
-    val flathubInstalled: StateFlow<Set<String>> = container.registry.userApps
-        .map { list -> list.mapNotNull { it.flatpak?.app }.toSet() }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+    /**
+     * The Flathub apps installed from the store (they have launcher entries) whose files are in
+     * the active container, by Flathub id.
+     */
+    val flathubInstalled: StateFlow<Set<String>> = combine(container.registry.userApps, container.registry.flatpaks) { list, present ->
+        list.mapNotNull { it.flatpak?.app }.filter { present == null || it in present }.toSet()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     fun setStoreSource(source: StoreSource) {
         _storeSource.value = source
@@ -492,6 +495,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      * rootfs isn't readable by the app, or the manifest names no packages.
      */
     fun installed(app: PermissionManifest, status: HostStatus?, mode: BackendMode): Boolean? = when {
+        // A Flathub app's entry is shared by both engines; its files may be in the other's system.
+        app.flatpak != null -> container.registry.flatpaks.value?.let { app.flatpak.app in it }
         // A shortcut's command is bash; what it needs is its packages.
         Shortcut.isShortcut(app) ->
             if (app.packages.isEmpty()) null
@@ -667,6 +672,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun install(app: PermissionManifest): Boolean {
         val backend = backend() ?: return false
         val store = configStore(_status.value, _mode.value)
+        app.flatpak?.let { ref ->
+            if (!Flatpak.validId(ref.app) || store == null) return false
+            container.queue.enqueue(
+                app.name, listOf(flatpakJob(ref.app)), QueueAction.INSTALL, app.iconFile, backend,
+                script = Flatpak.installScript(ref.app),
+            ) { container.registry.reresolveFlatpak(app, store) }
+            return true
+        }
         val packages = app.packages + if (app.gui) GUI_HELPER_PACKAGES else emptyList()
         container.queue.enqueue(app.name, packages, QueueAction.INSTALL, app.iconFile, backend) {
             container.registry.refreshInstalled(store)

@@ -76,6 +76,12 @@ class ProotBackend(
         val ref = requireNotNull(app.flatpak) { "${app.id} isn't a Flathub app" }
         val p = app.permissions
         val rootfs = paths.prootRootfs.invariantSeparatorsPath
+        // Launcher entries are shared by both engines, but each has its own system: an app
+        // installed in chroot mode isn't here, and PRoot would only say /usr/bin/env is missing.
+        check(exists("$rootfs${ref.appDir}") && exists("$rootfs${ref.runtimeDir}")) {
+            "it isn't installed in PRoot's Linux system (each engine has its own). " +
+                "Install it from Flathub again here, or switch to the Chroot engine."
+        }
         val skeleton = FlatpakSkeleton.ensure(paths.flatpakSkeleton)
         val argv = buildList {
             add(paths.proot.invariantSeparatorsPath)

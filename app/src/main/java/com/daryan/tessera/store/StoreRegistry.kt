@@ -28,7 +28,19 @@ class StoreRegistry(private val appsDir: File, private val catalog: StoreCatalog
     /** Installed package names in the active container; null until read. */
     val installed: StateFlow<Set<String>?> = _installed
 
+    private val _flatpaks = MutableStateFlow<Set<String>?>(null)
+    /**
+     * The launcher's Flathub apps whose files are in the active container, by Flathub id; null
+     * until read. Launcher entries are shared by both engines, but each has its own system.
+     */
+    val flatpaks: StateFlow<Set<String>?> = _flatpaks
+
     suspend fun refreshInstalled(store: ConfigStore?) {
+        _flatpaks.value = store?.let { s ->
+            flatpakApps().filterTo(mutableSetOf()) { id ->
+                runCatching { s.read(com.daryan.tessera.container.Flatpak.appMetadata(id)) }.getOrNull() != null
+            }
+        }
         _installed.value = store?.let { s ->
             runCatching { s.read("/var/lib/dpkg/status")?.let(::installedPackages) }.getOrNull()
         }
@@ -70,7 +82,24 @@ class StoreRegistry(private val appsDir: File, private val catalog: StoreCatalog
         File(appsDir, "${manifest.id}.json").apply { parentFile?.mkdirs() }
             .writeText(json.encodeToString(PermissionManifest.serializer(), manifest))
         _userApps.update { list -> list.filterNot { it.id == manifest.id } + manifest }
+        refreshInstalled(store)
         true
+    }
+
+    /**
+     * Updates a Flathub launcher entry after its app was installed again (in the other engine's
+     * system, whose runtime may differ). False when its files aren't there.
+     */
+    suspend fun reresolveFlatpak(entry: PermissionManifest, store: ConfigStore): Boolean = withContext(Dispatchers.IO) {
+        val old = entry.flatpak ?: return@withContext false
+        val ref = com.daryan.tessera.container.Flatpak.resolve(old.app) { runCatching { store.read(it) }.getOrNull() }
+        if (ref != null && ref != old) {
+            val manifest = entry.copy(flatpak = ref)
+            File(appsDir, "${manifest.id}.json").writeText(json.encodeToString(PermissionManifest.serializer(), manifest))
+            _userApps.update { list -> list.map { if (it.id == manifest.id) manifest else it } }
+        }
+        refreshInstalled(store)
+        ref != null
     }
 
     /** The Flathub apps the launcher has entries for, by Flathub id. */
