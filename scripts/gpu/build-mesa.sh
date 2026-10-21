@@ -106,5 +106,5 @@ rm -rf "$WORK/stage$PREFIX/include" "$WORK/stage$PREFIX/lib/pkgconfig"
 mkdir -p "$OUT"
 tar --format=ustar -C "$WORK/stage" -czf "$OUT/mesa-turnip.tgz" "${PREFIX#/}"
 # Bump the suffix when the patches change, so phones unpack the new build.
-echo "$MESA_VERSION-t1" > "$OUT/VERSION"
+echo "$MESA_VERSION-t2" > "$OUT/VERSION"
 ls -l "$OUT"
