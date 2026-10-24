@@ -3,6 +3,7 @@
 
 package com.daryan.tessera.ui.theme
 
+import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +17,7 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.expressiveLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import com.daryan.tessera.LauncherApplication
@@ -24,7 +26,9 @@ import com.daryan.tessera.container.LinuxTheme
 import com.daryan.tessera.container.Palette
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 
 // Fallback for Android < 12, where there is no wallpaper-derived palette.
 private val FallbackDark = darkColorScheme(
@@ -52,7 +56,11 @@ private val LauncherShapes = Shapes(
 )
 
 @Composable
-fun LauncherTheme(content: @Composable () -> Unit) {
+fun LauncherTheme(
+    /** Whether the bars' icons follow the theme: the launcher's, not a terminal's or a Linux window's own dark ground. */
+    systemBars: Boolean = false,
+    content: @Composable () -> Unit,
+) {
     val context = LocalContext.current
     // An imported Linux theme, when one is chosen, colors and shapes Tessera too.
     val container = (context.applicationContext as? LauncherApplication)?.container
@@ -64,7 +72,19 @@ fun LauncherTheme(content: @Composable () -> Unit) {
             container.linuxThemes.pick(family, Palette.isDark(context, appearance.colorMode))
         }
     }
-    val dark = imported?.dark ?: systemDark
+    // System, Light or Dark from Settings, as Linux apps take it; the phone's own mode when
+    // theming is off. Following only the phone ignored Light and Dark here.
+    val dark = imported?.dark ?: appearance?.takeIf { it.enabled }?.let { Palette.isDark(context, it.colorMode) } ?: systemDark
+    // enableEdgeToEdge picks the bars' icons from the phone's mode: Light on a dark phone left
+    // light icons on a light screen.
+    val view = LocalView.current
+    if (systemBars && !view.isInEditMode) SideEffect {
+        val window = (view.context as? Activity)?.window ?: return@SideEffect
+        WindowCompat.getInsetsController(window, view).apply {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
+        }
+    }
     val colors = when {
         imported != null -> schemeFrom(imported)
         Build.VERSION.SDK_INT >= 31 ->
