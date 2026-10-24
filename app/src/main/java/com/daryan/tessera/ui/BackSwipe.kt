@@ -7,6 +7,11 @@ import android.os.Build
 import android.view.RoundedCorner
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.EnterExitState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -70,10 +75,21 @@ fun rememberBackSwipe(enabled: Boolean = true, closes: Boolean = true, slideOff:
         val corner = if (Build.VERSION.SDK_INT >= 31) view.rootWindowInsets?.getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)?.radius else null
         BackSwipe(corner?.toFloat()?.takeIf { it > 0f } ?: fallback)
     }
+    // A page brought back while it's still leaving keeps its composition, and with it the
+    // slid-off, invisible state of the swipe that closed it: an invisible editor then covered
+    // Settings and took every tap. Shown again, it starts over.
+    val shown = LocalPageShown.current
+    LaunchedEffect(shown) {
+        if (shown) {
+            swipe.exit.snapTo(0f)
+            swipe.progress.snapTo(0f)
+        }
+    }
     val scope = rememberCoroutineScope()
     val back by rememberUpdatedState(onBack)
     val stays by rememberUpdatedState(!closes)
-    PredictiveBackHandler(enabled) { events ->
+    // Leaving, it no longer takes back: the page under it does.
+    PredictiveBackHandler(enabled && shown) { events ->
         var startY = Float.NaN
         try {
             events.collect { e ->
@@ -97,6 +113,14 @@ fun rememberBackSwipe(enabled: Boolean = true, closes: Boolean = true, slideOff:
     }
     return swipe
 }
+
+/** Whether the page around is shown or on its way in; false while it leaves. See [PageShown]. */
+val LocalPageShown = compositionLocalOf { true }
+
+/** Tells the page in an AnimatedVisibility whether it's shown, for [rememberBackSwipe]. */
+@Composable
+fun AnimatedVisibilityScope.PageShown(content: @Composable () -> Unit) =
+    CompositionLocalProvider(LocalPageShown provides (transition.targetState == EnterExitState.Visible), content = content)
 
 /**
  * A full-screen page following [swipe] as Google's pages do (Material's full-screen back, the
