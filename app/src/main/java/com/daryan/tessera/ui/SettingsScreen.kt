@@ -9,7 +9,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.os.Build
 import android.text.format.DateUtils
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.draw.clip
@@ -90,8 +89,9 @@ fun SettingsScreen(
     onAbout: () -> Unit,
     onClose: () -> Unit,
 ) {
-    BackHandler(onBack = onClose)
+    val back = rememberBackSwipe(onBack = onClose)
     Scaffold(
+        modifier = Modifier.backSwipePage(back),
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(

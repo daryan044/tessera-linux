@@ -17,7 +17,6 @@ import androidx.compose.ui.draw.clip
 import android.content.pm.PackageManager
 import android.os.Build
 import android.view.KeyEvent
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -126,13 +125,13 @@ fun PcTrackpadScreen(su: String?, onClose: () -> Unit) {
     LaunchedEffect(sink, settings.autoKeyboard) {
         if (sink != null && settings.autoKeyboard) runCatching { typing.requestFocus() }
     }
-    BackHandler { onClose() }
+    val back = rememberBackSwipe(onBack = onClose)
     // Leaving the screen gives Android its USB gadget back; nothing is left half-configured.
     DisposableEffect(Unit) { onDispose { pc.stop() } }
     // And opening it takes off what a run that died left on.
     LaunchedEffect(Unit) { pc.cleanUp(scope) }
 
-    Surface(color = colors.surfaceContainerLowest, modifier = Modifier.fillMaxSize()) {
+    Surface(color = colors.surfaceContainerLowest, modifier = Modifier.fillMaxSize().backSwipePage(back)) {
         Column(
             Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
                 .padding(horizontal = 12.dp, vertical = 8.dp),

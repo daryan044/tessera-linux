@@ -7,7 +7,6 @@ package com.daryan.tessera.ui
 
 import android.content.Intent
 import android.net.Uri
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -73,9 +72,10 @@ fun AboutScreen(onClose: () -> Unit) {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
     }
     fun open(url: String) = context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    BackHandler(onBack = onClose)
+    val back = rememberBackSwipe(onBack = onClose)
 
     Scaffold(
+        modifier = Modifier.backSwipePage(back),
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(

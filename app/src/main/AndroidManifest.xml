@@ -29,9 +29,14 @@
         android:theme="@style/Theme.Tessera"
         tools:replace="android:name,android:allowBackup">
 
+        <!-- Predictive back (the window shrinking as you swipe) for the launcher only, Android 14+.
+             Not for X11Window or TerminalActivity: opting in stops back reaching them as a key,
+             and Linux apps take it as one (Termux:X11's back action, a mouse's right click). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:enableOnBackInvokedCallback="true"
+            tools:targetApi="34"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density">

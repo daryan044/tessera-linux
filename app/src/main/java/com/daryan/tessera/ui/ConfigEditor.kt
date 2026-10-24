@@ -5,7 +5,6 @@
 
 package com.daryan.tessera.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -83,9 +82,11 @@ fun ConfigEditor(
     }
 
     val close = { if (dirty) confirmDiscard = true else onClose() }
-    BackHandler(onBack = close)
+    // Unsaved changes: back asks first, and the page stays.
+    val back = rememberBackSwipe(closes = !dirty, onBack = close)
 
     Scaffold(
+        modifier = Modifier.backSwipePage(back),
         containerColor = MaterialTheme.colorScheme.surface,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
