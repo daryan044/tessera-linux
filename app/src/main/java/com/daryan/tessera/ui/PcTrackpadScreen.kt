@@ -428,9 +428,12 @@ private const val DISCOVERABLE_SECONDS = 300
 /** Android 12's name for "be a Bluetooth device"; a runtime permission, so it must be asked for. */
 private const val NEARBY = "android.permission.BLUETOOTH_CONNECT"
 
-/** Enter, Backspace and Space first: the ones a trackpad user reaches for most. */
-private val PC_KEYS: List<Pair<String, IntArray>> = listOf(
+/**
+ * Enter, Backspace and Space first: the ones a trackpad user reaches for most. Once each: the
+ * shortcuts have their own Enter, and the key row is keyed by label, so a second one crashed it.
+ */
+private val PC_KEYS: List<Pair<String, IntArray>> = (listOf(
     "Enter" to intArrayOf(KeyEvent.KEYCODE_ENTER),
     "\u232B" to intArrayOf(KeyEvent.KEYCODE_DEL),
     "Space" to intArrayOf(KeyEvent.KEYCODE_SPACE),
-) + X11Actions.SHORTCUTS
+) + X11Actions.SHORTCUTS).distinctBy { it.first }
