@@ -165,6 +165,8 @@ class LauncherContainer(private val app: Application) {
     /** Whether this run already looked for GUI helper packages missing from the container. */
     /** The modes (each has its own system) already checked for missing GUI helpers this run. */
     val guiHelpersChecked: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
+    /** The modes already checked for missing base libraries ([BASE_LIBRARIES]) this run. */
+    val baseLibrariesChecked: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
 
     /** Whether this run already ended what earlier runs left running in chroot mode. */
     @Volatile var chrootSwept = false

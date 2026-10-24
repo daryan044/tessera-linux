@@ -197,4 +197,5 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
         put("PULSE_LATENCY_MSEC", "120")
     }
     if (session.flatpak) put("TESSERA_FLATPAK", "1")
+    session.adb?.let { put(PhoneAdb.ENV, it) }
 }

@@ -81,6 +81,12 @@ data class Permissions(
      * those plugged in when the app starts.
      */
     val usb: Boolean = false,
+    /**
+     * adb on this phone itself: adb inside reaches the phone's adbd, as `adb shell` from a PC
+     * would ([PhoneAdb]). Needs root to turn adbd's port on, and [network] in chroot mode,
+     * where the app otherwise has a network of its own without the phone in it.
+     */
+    val adb: Boolean = false,
 )
 
 /** Exposes an Android path inside the container. */

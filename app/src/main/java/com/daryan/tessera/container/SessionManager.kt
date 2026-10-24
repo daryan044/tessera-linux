@@ -138,9 +138,12 @@ class SessionManager(
     /** USB devices open for running sessions, closed when they end. */
     private val usbDevices = ConcurrentHashMap<String, UsbBridge.Opened>()
 
-    /** [usb]: the app's USB devices, opened for it when it runs in PRoot ([UsbBridge]). */
+    /**
+     * [usb]: the app's USB devices, opened for it when it runs in PRoot ([UsbBridge]). [adb]:
+     * where it reaches this phone's adbd ([PhoneAdb]).
+     */
     @Throws(IOException::class)
-    fun launch(app: PermissionManifest, backend: ContainerBackend, usb: UsbBridge.Opened? = null): RunningSession {
+    fun launch(app: PermissionManifest, backend: ContainerBackend, usb: UsbBridge.Opened? = null, adb: String? = null): RunningSession {
         // An id whose leftovers can be cleared: a chroot session's files are root's, which the app
         // can't delete, and a PRoot session reusing its directory found the window watcher's
         // command pipe there unusable (PermissionError, and no Android task per window).
@@ -161,6 +164,7 @@ class SessionManager(
             usbFds = if (backend is ProotBackend) usb?.fds.orEmpty() else emptyMap(),
             theme = app.gui && appearance?.forApp(app.id) != null,
             flatpak = app.gui && app.flatpak != null,
+            adb = adb,
         )
         // Ids restart with the process, so a previous run's s1 may have left a dead X socket here.
         paths.sessionTmp(session).apply {
