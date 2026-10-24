@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Tessera</string>
+    <!-- What Recents calls a Linux window or terminal where the launcher shows the activity's
+         label rather than the task's own "<app> (Linux)" (the Pixel Launcher). -->
+    <string name="linux_window_label">Linux app</string>
+    <string name="linux_terminal_label">Linux terminal</string>
 </resources>

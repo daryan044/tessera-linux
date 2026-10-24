@@ -50,6 +50,7 @@
              settings as Termux:X11's own, so each app is a separate card in Recents. -->
         <activity
             android:name=".X11Window"
+            android:label="@string/linux_window_label"
             android:exported="false"
             android:taskAffinity=""
             android:theme="@style/LorieAppTheme"
@@ -60,9 +61,11 @@
             android:windowSoftInputMode="stateHidden|adjustNothing"
             android:configChanges="fontScale|orientation|screenSize|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|screenLayout|touchscreen|uiMode|smallestScreenSize|density" />
 
-        <!-- One task per terminal session, so each gets its own card in Recents. -->
+        <!-- One task per terminal session, so each gets its own card in Recents. Both name their
+             task "<app> (Linux)" (brandForRecents); the label is for launchers that ignore that. -->
         <activity
             android:name=".TerminalActivity"
+            android:label="@string/linux_terminal_label"
             android:exported="false"
             android:taskAffinity=""
             android:documentLaunchMode="intoExisting"
