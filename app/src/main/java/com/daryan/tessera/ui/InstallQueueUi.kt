@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,10 +26,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Warning
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -88,7 +88,15 @@ fun QueueStrip(jobs: List<QueueJob>, onOpenQueue: () -> Unit) {
                 JobProgress(current)
             }
             Spacer(Modifier.width(8.dp))
-            BadgedBox(badge = { if (active > 1) Badge { Text("+${active - 1}") } }) {
+            // The count inside the button: as a badge it stood out past the button's corner, and
+            // the strip's rounded end cut it off.
+            if (active > 1) {
+                FilledTonalButton(onClick = onOpenQueue, contentPadding = PaddingValues(start = 12.dp, end = 14.dp)) {
+                    Icon(LauncherIcons.Store, "Install queue", Modifier.size(20.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("+${active - 1}", maxLines = 1)
+                }
+            } else {
                 FilledTonalIconButton(onClick = onOpenQueue) { Icon(LauncherIcons.Store, "Install queue") }
             }
         }
