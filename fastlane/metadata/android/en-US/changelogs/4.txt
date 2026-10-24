@@ -1,0 +1,8 @@
+0.4.0 (alpha)
+- Linux apps can run adb on this phone and on USB devices (opt-in per app).
+- Shared folders are writable and bring what's mounted inside them.
+- Predictive back: the window and its pages shrink as you swipe.
+- Graphics and common app libraries (libGL, Mesa, GTK, NSS) come with Linux.
+- Recents names each Linux window on every launcher.
+- Flathub apps uninstall from the home screen.
+- Fixes: PC trackpad crash, Light/Dark switch, system files reopening.
