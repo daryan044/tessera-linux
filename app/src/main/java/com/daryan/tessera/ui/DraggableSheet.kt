@@ -3,7 +3,6 @@
 
 package com.daryan.tessera.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -149,7 +148,8 @@ fun DraggableSheet(
         rest = peek()
         offset.animateTo(peek(), motion.defaultSpatialSpec())
     }
-    BackHandler { close() }
+    // A sheet closes downwards, as it does when dragged.
+    val back = rememberBackSwipe(slideOff = false, onBack = { close() })
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val top = WindowInsets.statusBars.getTop(density)
@@ -175,6 +175,7 @@ fun DraggableSheet(
                 .fillMaxWidth()
                 .heightIn(max = maxHeight)
                 .onSizeChanged { sheetHeight = it.height.toFloat() }
+                .backSwipeSheet(back)
                 .graphicsLayer { translationY = if (offset.value == Float.MAX_VALUE) sheetHeight.coerceAtLeast(10_000f) else offset.value }
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)

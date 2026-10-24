@@ -6,7 +6,6 @@
 package com.daryan.tessera.ui
 
 import android.text.format.DateUtils
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -73,13 +72,14 @@ fun InstallsScreen(
     onClearFinished: () -> Unit,
     onClose: () -> Unit,
 ) {
-    BackHandler(onBack = onClose)
+    val back = rememberBackSwipe(onBack = onClose)
     var logFor by remember { mutableStateOf<Int?>(null) }
     val running = jobs.filter { it.state is JobState.Running }
     val waiting = jobs.filter { it.state == JobState.Queued }
     val finished = jobs.filter { !it.active }.sortedByDescending { it.finishedAt ?: it.queuedAt }
 
     Scaffold(
+        modifier = Modifier.backSwipePage(back),
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
