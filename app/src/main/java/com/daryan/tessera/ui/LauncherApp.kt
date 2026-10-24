@@ -453,7 +453,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                                 val undo = snackbar.showSnackbar("Deleted ${app.name}", actionLabel = "Undo", duration = SnackbarDuration.Short)
                                 if (undo == SnackbarResult.ActionPerformed) vm.saveShortcut(shortcut)
                             }
-                        } else if (app.packages.isEmpty() && !SystemApps.isSystemApp(app)) {
+                        // Flathub apps have no Debian packages, and were turned away here as part of the system.
+                        } else if (app.packages.isEmpty() && app.flatpak == null && !SystemApps.isSystemApp(app)) {
                             scope.launch { snackbar.showSnackbar("${app.name} is part of the Linux system and can't be uninstalled") }
                         } else {
                             uninstallApp = app
@@ -531,7 +532,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         visible = showSettings,
         enter = slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()),
         exit = slideOutVertically(motion.fastSpatialSpec()) { it } + fadeOut(motion.fastEffectsSpec()),
-    ) {
+    ) { PageShown {
         SettingsScreen(
             filesUnavailable = when {
                 store != null -> null
@@ -559,7 +560,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onAbout = { showAbout = true },
             onClose = { showSettings = false },
         )
-    }
+    } }
 
     openStoreApp?.let { app ->
         // The launcher entry for this package (or Flathub app), once it's been installed from here or bundled.
@@ -632,7 +633,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             title = { Text("Uninstall ${app.name}?") },
             text = {
                 Text(
-                    "Removes ${app.packages.joinToString()} from Linux. " +
+                    "Removes ${app.flatpak?.let { "${it.app} and the runtimes only it used" } ?: app.packages.joinToString()} from Linux. " +
                         "Its settings in your home folder stay, in case you install it again.",
                 )
             },
@@ -663,7 +664,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         visible = showQueue,
         enter = slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()),
         exit = slideOutVertically(motion.fastSpatialSpec()) { it } + fadeOut(motion.fastEffectsSpec()),
-    ) {
+    ) { PageShown {
         InstallsScreen(
             jobs = queue,
             onCancel = vm::cancelJob,
@@ -671,15 +672,15 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onClearFinished = vm::clearFinishedJobs,
             onClose = { showQueue = false },
         )
-    }
+    } }
 
     AnimatedVisibility(
         visible = showAbout,
         enter = slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()),
         exit = slideOutVertically(motion.fastSpatialSpec()) { it } + fadeOut(motion.fastEffectsSpec()),
-    ) {
+    ) { PageShown {
         AboutScreen(onClose = { showAbout = false })
-    }
+    } }
 
     // Config editor slides up over the launcher, like a full-screen sheet.
     val editing = openConfig
@@ -687,14 +688,14 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         visible = editing != null && store != null,
         enter = slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()),
         exit = slideOutVertically(motion.fastSpatialSpec()) { it } + fadeOut(motion.fastEffectsSpec()),
-    ) {
+    ) { PageShown {
         val shown = remember { mutableStateOf(editing) }
         if (editing != null) shown.value = editing
         val file = shown.value
         if (file != null && store != null) {
             ConfigEditor(file, store, engine = mode.label, onClose = { openConfig = null })
         }
-    }
+    } }
 
     FilesDialogs(vm.files, filesUi, onMessage = filesMessage)
 
@@ -724,7 +725,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         visible = editingFile != null,
         enter = slideInVertically(motion.defaultSpatialSpec()) { it } + fadeIn(motion.defaultEffectsSpec()),
         exit = slideOutVertically(motion.fastSpatialSpec()) { it } + fadeOut(motion.fastEffectsSpec()),
-    ) {
+    ) { PageShown {
         val shown = remember { mutableStateOf(editingFile) }
         if (editingFile != null) shown.value = editingFile
         shown.value?.let { e ->
@@ -735,7 +736,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 savedMessage = "Saved",
             )
         }
-    }
+    } }
 
     // Looked up by id so the sheet follows permission changes made in it.
     // Keyed by app: opening another app while one sheet is still sliding away gets a sheet of
