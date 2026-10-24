@@ -26,8 +26,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import com.daryan.tessera.container.ChrootBackend
 import com.daryan.tessera.container.ContainerBackend
 import com.daryan.tessera.container.DirectConfigStore
+import com.daryan.tessera.container.BASE_LIBRARIES
 import com.daryan.tessera.container.GUI_HELPER_PACKAGES
 import com.daryan.tessera.container.THEME_COMPANIONS
 import com.daryan.tessera.container.ThemePack
@@ -42,6 +44,7 @@ import com.daryan.tessera.container.ProcessTree
 import com.daryan.tessera.container.PhantomLimit
 import com.daryan.tessera.container.GpuDriver
 import com.daryan.tessera.container.GpuFix
+import com.daryan.tessera.container.PhoneAdb
 import com.daryan.tessera.container.ProotBackend
 import com.daryan.tessera.container.UsbBridge
 import com.daryan.tessera.container.Permissions
@@ -448,9 +451,29 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (_mode.value == BackendMode.CHROOT && s.su != null && s.chrootRootfs == true && ThemePack.bundle.available(getApplication())) {
                 withContext(Dispatchers.IO) { ThemePack.bundle.installAsRoot(getApplication(), paths.chrootRootfs, s.su) }
             }
+            addBaseLibraries()
             addMissingGuiHelpers()
             configStore(_status.value, _mode.value)?.let { container.registry.refreshInstalled(it) }
             scanSystemApps(force = true)
+        }
+    }
+
+    /**
+     * Queues the libraries apps expect ([BASE_LIBRARIES]) that the container lacks: right
+     * after Linux is installed, and once for systems installed before them.
+     */
+    private suspend fun addBaseLibraries() {
+        if (_mode.value.name in container.baseLibrariesChecked) return
+        val store = configStore(_status.value, _mode.value) ?: return
+        val backend = backend() ?: return
+        container.registry.refreshInstalled(store)
+        // Unread (no Linux yet, or dpkg's status unreadable): check again next time.
+        val installed = container.registry.installed.value ?: return
+        container.baseLibrariesChecked += _mode.value.name
+        val missing = BASE_LIBRARIES.filterNot { it in installed }
+        if (missing.isEmpty()) return
+        container.queue.enqueue("Graphics and app libraries", missing, QueueAction.INSTALL, null, backend) {
+            container.registry.refreshInstalled(store)
         }
     }
 
@@ -789,6 +812,46 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         return app.copy(permissions = app.permissions.copy(devices = (app.permissions.devices + plugged).distinct()))
     }
 
+    /**
+     * Turns on adb to this phone for [app] ([PhoneAdb]); where it listens, or null, said why,
+     * when it can't be. The app opens either way.
+     */
+    private suspend fun phoneAdb(app: PermissionManifest, backend: ContainerBackend): String? {
+        val su = _status.value?.su
+        val problem = when {
+            su == null -> "needs root"
+            // A chroot app without network has a network of its own, and the phone isn't in it.
+            backend is ChrootBackend && !app.permissions.network -> "needs the Network permission too"
+            else -> null
+        }
+        if (problem != null || su == null) {
+            _messages.send("${app.name} can't control this phone: $problem")
+            return null
+        }
+        val chroot = backend is ChrootBackend
+        val result = withContext(Dispatchers.IO) {
+            PhoneAdb.enable(su, if (chroot) paths.chrootRootfs else paths.prootRootfs, asRoot = chroot)
+        }
+        return when (result) {
+            is PhoneAdb.Result.Ready -> result.address
+            is PhoneAdb.Result.Failed -> null.also { _messages.send("${app.name} can't control this phone: ${result.reason}") }
+        }
+    }
+
+    /** Queues adb and fastboot when the container lacks them; apps that use them call this. */
+    private suspend fun addAdbPackages() {
+        val store = configStore(_status.value, _mode.value) ?: return
+        val backend = backend() ?: return
+        if (container.registry.installed.value == null) container.registry.refreshInstalled(store)
+        val installed = container.registry.installed.value ?: return
+        val missing = PhoneAdb.PACKAGES.filterNot { it in installed }
+        if (missing.isEmpty() || container.queue.jobs.value.any { it.active && it.packages == missing }) return
+        container.queue.enqueue("adb and fastboot", missing, QueueAction.INSTALL, null, backend) {
+            container.registry.refreshInstalled(store)
+        }
+        _messages.send("Installing adb and fastboot; follow it under Installs")
+    }
+
     fun launch(app: PermissionManifest, onLaunched: (RunningSession) -> Unit) {
         val requested = app
         viewModelScope.launch {
@@ -808,8 +871,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             } else null
+            if (app.permissions.adb || app.permissions.usb) addAdbPackages()
+            val adb = if (app.permissions.adb) phoneAdb(app, backend) else null
             // Main thread: TerminalSession binds to the caller's Looper. Spawning is a quick fork.
-            runCatching { sessions.launch(app, backend, usb) }
+            runCatching { sessions.launch(app, backend, usb, adb) }
                 .onSuccess(onLaunched)
                 .onFailure {
                     usb?.close()

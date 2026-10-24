@@ -91,6 +91,14 @@ class BackendTest {
         assertTrue("export USB_ALL='';" in chroot.buildLaunch(offline, session).argv[2])
     }
 
+    @Test fun `only sessions given adb to this phone are told where it is`() {
+        val proot = ProotBackend(paths, exists = { true })
+        assertTrue("${PhoneAdb.ENV}=127.0.0.1:5555" in proot.buildLaunch(offline, session.copy(adb = "127.0.0.1:5555")).argv)
+        assertFalse(proot.buildLaunch(offline, session).argv.any { it.startsWith("${PhoneAdb.ENV}=") })
+        val chroot = ChrootBackend(paths, su = "su", appUid = 10484).buildLaunch(offline, session.copy(adb = "127.0.0.1:5555"))
+        assertTrue("${PhoneAdb.ENV}=127.0.0.1:5555" in chroot.argv.last())
+    }
+
     @Test fun `chroot enforcement drops to advisory for root apps`() {
         val chroot = ChrootBackend(paths, "su", appUid = 10123)
         val rootApp = offline.copy(permissions = Permissions(root = true))

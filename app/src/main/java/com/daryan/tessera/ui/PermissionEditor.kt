@@ -109,6 +109,16 @@ fun PermissionEditor(
             ) { change(p.copy(usb = it)) }
             Divider()
             SwitchRow(
+                "Control this phone (adb)",
+                when {
+                    !p.adb -> "adb inside reaches only devices plugged into this phone"
+                    backend.name == "Chroot" && !p.network -> "Needs Network too: without it the app is on a network of its own"
+                    else -> "adb inside reaches this phone too, as adb from a PC would: apps, settings, files. Needs root; the phone asks to allow it once"
+                },
+                p.adb, null,
+            ) { change(if (it) p.copy(adb = true, network = true) else p.copy(adb = false)) }
+            Divider()
+            SwitchRow(
                 "Run as root",
                 if (p.root) "Root inside the container. In chroot mode this weakens every other limit." else "Runs as a normal user",
                 p.root, null,

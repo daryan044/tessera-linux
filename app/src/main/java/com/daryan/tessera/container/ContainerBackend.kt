@@ -54,6 +54,8 @@ data class Session(
      * [FLATPAK_HOLD] instead of the app, and the app runs beside them in a root of its own.
      */
     val flatpak: Boolean = false,
+    /** Where adb inside reaches this phone ([PhoneAdb]), when the app may and it's on. */
+    val adb: String? = null,
 )
 
 /** Host-side locations a backend needs. Built from a Context in the app, by hand in tests. */
@@ -114,6 +116,19 @@ val THEME_COMPANIONS = mapOf(
     "libqt6widgets6" to "qt6-gtk-platformtheme",
     "libqt5widgets5t64" to "qt5-gtk-platformtheme",
     "libreoffice-core" to "libreoffice-gtk3",
+)
+
+/**
+ * What Linux apps expect of a desktop system and the minimal image lacks, queued once a
+ * container is missing any: OpenGL, EGL and GLES (glvnd, with Mesa's software drivers for when
+ * the GPU driver is off; apps failed on a missing libGL.so.1), GLU, Vulkan's loader, glxinfo,
+ * and what AppImages (FUSE 2) and Electron apps load.
+ */
+val BASE_LIBRARIES = listOf(
+    "libgl1", "libegl1", "libgles2", "libglx-mesa0", "libegl-mesa0", "libgl1-mesa-dri", "libgbm1",
+    "libglu1-mesa", "libvulkan1", "mesa-utils",
+    "libfuse2t64", "libnss3", "libxkbcommon0", "libasound2t64", "libxss1", "libxtst6", "libsecret-1-0", "libgtk-3-0t64",
+    "ca-certificates", "fonts-dejavu-core",
 )
 
 /** Packages every GUI app gets with it; see [guestCommand]. */

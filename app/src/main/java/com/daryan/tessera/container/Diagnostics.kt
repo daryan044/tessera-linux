@@ -128,6 +128,7 @@ class Diagnostics(
             if (p.display) add("display")
             if (p.audio) add("audio")
             if (p.root) add("root")
+            if (p.adb) add("adb")
             if (p.devices.isNotEmpty()) add("devices=${p.devices.joinToString(",")}")
             p.filesystem.forEach { add("${it.path}->${it.mountAt}${if (it.readOnly) ":ro" else ""}") }
         }.joinToString(", ").ifEmpty { "none" }
