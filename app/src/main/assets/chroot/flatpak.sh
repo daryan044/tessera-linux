@@ -17,6 +17,19 @@ for bb in /data/adb/magisk/busybox /data/adb/ksu/bin/busybox /data/adb/ap/bin/bu
 done
 [ -x "$bb" ] || { echo "busybox from Magisk/KernelSU/APatch not found" >&2; exit 1; }
 mount() { "$bb" mount "$@"; }
+# Shares host path $1 at $2 with what's mounted inside it (rbind: the phone's / alone is
+# Android's read-only root, its /data and /storage empty), read-only when $3 is ro.
+share() {
+  mount -o rbind "$1" "$2"
+  [ "$3" = ro ] || return 0
+  # Read-only all the way down in one go: ro=recursive (mount_setattr, Linux 5.12+), from the
+  # container's util-linux. Not one remount per mount: busybox crashes on stacked mounts, and
+  # toybox's reaches the filesystem itself, turning Android's own copy read-only too.
+  # Without it, the folder alone, read-only, as before.
+  if ! chroot "$R" /usr/bin/mount -o remount,bind,ro=recursive "${2#"$R"}" 2>/dev/null; then
+    "$bb" umount -l "$2"; mount --bind "$1" "$2"; mount -o remount,bind,ro "$2"
+  fi
+}
 mount --make-rprivate /
 
 [ -d "$R$FP_RUNTIME" ] || { echo "runtime not found: $FP_RUNTIME" >&2; exit 1; }
@@ -99,8 +112,7 @@ done
 printf '%s\n' "$BINDS" | while IFS=: read -r src dst mode; do
   [ -n "$src" ] && [ -e "$src" ] || continue
   if [ -d "$src" ]; then mkdir -p "$F$dst"; else mkdir -p "$F$(dirname "$dst")"; touch "$F$dst"; fi
-  mount --bind "$src" "$F$dst"
-  if [ "$mode" = ro ]; then mount -o remount,bind,ro "$F$dst"; fi
+  share "$src" "$F$dst" "$mode"
 done
 
 set --
