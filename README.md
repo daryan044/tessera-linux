@@ -18,6 +18,7 @@ phone's own colors. No terminal setup, no VNC, no guides to follow.
 ![GPU](https://img.shields.io/badge/GPU-OpenGL%204.6%20%2B%20Vulkan-E2231A)
 
 **[⬇ Download Tessera 0.4.0 (alpha)](https://github.com/daryan044/tessera-linux/releases/download/v0.4.0/tessera-v0.4.0.apk)**
+· [▶ 1-minute demo video](https://github.com/daryan044/tessera-linux/releases/download/v0.4.0/tessera-demo.mp4)
 · [All releases](https://github.com/daryan044/tessera-linux/releases)
 
 [<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="54">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/daryan044/tessera-linux)
