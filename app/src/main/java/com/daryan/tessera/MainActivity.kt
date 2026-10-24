@@ -18,7 +18,7 @@ class MainActivity : ComponentActivity() {
         // Not again when the activity is recreated with the intent that already started the app.
         if (savedInstanceState == null) handleLaunch(intent)
         setContent {
-            LauncherTheme {
+            LauncherTheme(systemBars = true) {
                 LauncherApp()
             }
         }
