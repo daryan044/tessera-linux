@@ -64,12 +64,7 @@ class ProotBackend(
             addAll((env + usb).map { (k, v) -> "$k=$v" })
             addAll(guestCommand(app))
         }
-        val hostEnv = buildMap {
-            put("PROOT_TMP_DIR", paths.cacheDir.invariantSeparatorsPath)
-            put("PROOT_LOADER", paths.prootLoader.invariantSeparatorsPath)
-            put("PROOT_LOADER_32", paths.prootLoader32.invariantSeparatorsPath)
-        }
-        return LaunchSpec(argv, hostEnv, paths.filesDir.invariantSeparatorsPath)
+        return LaunchSpec(argv, paths.prootEnv(), paths.filesDir.invariantSeparatorsPath)
     }
 
     override fun buildFlatpakLaunch(app: PermissionManifest, session: Session, env: Map<String, String>): LaunchSpec {
@@ -117,12 +112,7 @@ class ProotBackend(
             addAll((env + SANDBOX_OFF).map { (k, v) -> "$k=$v" })
             addAll(app.exec)
         }
-        val hostEnv = mapOf(
-            "PROOT_TMP_DIR" to paths.cacheDir.invariantSeparatorsPath,
-            "PROOT_LOADER" to paths.prootLoader.invariantSeparatorsPath,
-            "PROOT_LOADER_32" to paths.prootLoader32.invariantSeparatorsPath,
-        )
-        return LaunchSpec(argv, hostEnv, paths.filesDir.invariantSeparatorsPath)
+        return LaunchSpec(argv, paths.prootEnv(), paths.filesDir.invariantSeparatorsPath)
     }
 
     private fun MutableList<String>.bind(host: String, guest: String = host) {

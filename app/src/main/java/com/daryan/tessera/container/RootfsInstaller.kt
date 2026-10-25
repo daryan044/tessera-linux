@@ -103,9 +103,10 @@ class RootfsInstaller(
         // moved afterwards. The marker file written last is what makes it count as installed.
         _state.value = InstallState.Extracting
         val root = paths.prootRootfs
-        root.deleteRecursively()
-        root.mkdirs()
-        runProot("--link2symlink", "-0", "/system/bin/tar", "-xzf", tarball.path, "-C", root.path)
+        runProot("--link2symlink", "-0", "/system/bin/tar", "-xzf", tarball.path, "-C", root.path) {
+            root.deleteRecursively()
+            root.mkdirs()
+        }
 
         _state.value = InstallState.Configuring
         RootfsSetup.configure(root, uid, gid)
@@ -114,26 +115,36 @@ class RootfsInstaller(
         tarball.delete()
     }
 
-    private suspend fun runProot(vararg args: String) = runInterruptible {
+    /** Runs PRoot, after [prepare]; once more without seccomp if the kernel has PRoot's bug. */
+    private suspend fun runProot(vararg args: String, prepare: () -> Unit) {
+        prepare()
+        var (code, output) = exec(args)
+        // The marker makes every later run, the apps' included, go without seccomp too.
+        if (code != 0 && seccompBug(output) && paths.prootNoSeccompMarker.createNewFile()) {
+            prepare()
+            exec(args).let { code = it.first; output = it.second }
+        }
+        if (code != 0) {
+            throw IOException("extract failed ($code): " + output.takeLast(3).joinToString(" / "))
+        }
+    }
+
+    private suspend fun exec(args: Array<out String>) = runInterruptible {
         val proc = ProcessBuilder(listOf(paths.proot.path) + args)
             .redirectErrorStream(true)
-            .apply {
-                environment()["PROOT_LOADER"] = paths.prootLoader.path
-                environment()["PROOT_LOADER_32"] = paths.prootLoader32.path
-                environment()["PROOT_TMP_DIR"] = paths.cacheDir.path
-            }
+            .apply { environment().putAll(paths.prootEnv()) }
             .start()
         try {
             val output = proc.inputStream.bufferedReader().readLines()
-            val code = proc.waitFor()
-            if (code != 0) {
-                throw IOException("extract failed ($code): " + output.takeLast(3).joinToString(" / "))
-            }
+            proc.waitFor() to output
         } finally {
             proc.destroy()
         }
     }
 }
+
+/** PRoot refusing to run because of the kernel's seccomp bug; it names this workaround. */
+internal fun seccompBug(output: List<String>) = output.any { "PROOT_NO_SECCOMP" in it }
 
 /**
  * The root-side install for chroot mode, as one shell script: what [RootfsSetup] does for

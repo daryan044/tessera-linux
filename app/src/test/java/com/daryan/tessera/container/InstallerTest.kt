@@ -133,4 +133,27 @@ class RootfsSetupTest {
         assertTrue("--bind=/app/files/proc/stat:/proc/stat" in argv)
         assertTrue(argv.indexOf("--bind=/proc") < argv.indexOf("--bind=/app/files/proc/stat:/proc/stat"))
     }
+
+    @Test fun `recognises PRoot's seccomp kernel bug`() {
+        // As reported from a Galaxy S24 Ultra on Android 16.
+        val output = listOf(
+            "proot info: It seems your kernel contains this bug: https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1202161",
+            "To workaround it, set the env. variable PROOT_NO_SECCOMP to 1.",
+            "fatal error: see `libproot.so --help`.",
+        )
+        assertTrue(seccompBug(output))
+        assertFalse(seccompBug(listOf("tar: Error is not recoverable: exiting now")))
+    }
+
+    @Test fun `proot goes without seccomp once the marker is there, for apps too`() {
+        val files = tmp.newFolder("files")
+        val paths = ContainerPaths(
+            File("/app/lib"), files, File("/app/cache"), File(files, "rootfs/debian"), File("/data/local/linux/debian"),
+        )
+        val app = PermissionManifest(id = "htop", name = "htop", exec = listOf("/usr/bin/htop"))
+        assertFalse("PROOT_NO_SECCOMP" in paths.prootEnv())
+        paths.prootNoSeccompMarker.createNewFile()
+        assertEquals("1", paths.prootEnv()["PROOT_NO_SECCOMP"])
+        assertEquals("1", ProotBackend(paths, exists = { true }).buildLaunch(app, Session("s1")).env["PROOT_NO_SECCOMP"])
+    }
 }

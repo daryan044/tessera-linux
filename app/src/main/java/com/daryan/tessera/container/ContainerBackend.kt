@@ -88,6 +88,20 @@ data class ContainerPaths(
     fun sessionUsb(session: Session) = File(cacheDir, "sessions/${session.id}/usb")
     /** Stand-ins for /proc files Android hides from apps; see [FakeProc]. */
     val fakeProcDir get() = File(filesDir, "proc")
+    /** Left by [RootfsInstaller] when PRoot can't use seccomp on this kernel; see [prootEnv]. */
+    val prootNoSeccompMarker get() = File(filesDir, "proot-no-seccomp")
+
+    /**
+     * The host environment of every PRoot run. Some kernels (Samsung's on Android 16) have a bug
+     * PRoot's seccomp mode refuses to run on; once the installer has met it, PRoot goes without
+     * seccomp here too, tracing every syscall: slower, but it runs.
+     */
+    fun prootEnv() = buildMap {
+        put("PROOT_TMP_DIR", cacheDir.invariantSeparatorsPath)
+        put("PROOT_LOADER", prootLoader.invariantSeparatorsPath)
+        put("PROOT_LOADER_32", prootLoader32.invariantSeparatorsPath)
+        if (prootNoSeccompMarker.exists()) put("PROOT_NO_SECCOMP", "1")
+    }
 
     companion object {
         // Debian's default PATH, including the games directories.
