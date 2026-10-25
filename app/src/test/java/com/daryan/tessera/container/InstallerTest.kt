@@ -145,6 +145,20 @@ class RootfsSetupTest {
         assertFalse(seccompBug(listOf("tar: Error is not recoverable: exiting now")))
     }
 
+    @Test fun `install errors keep PRoot's own error lines, not just its advice`() {
+        // As reported from a Galaxy S25 Ultra on Android 16, with seccomp off.
+        val output = listOf(
+            "proot error: execve(\"/system/bin/tar\"): Permission denied",
+            "proot info: possible causes:",
+            "  * the program is a script but its interpreter (eg. /bin/sh) was not found;",
+            "  * qemu does not work correctly (if specified);",
+            "  * the loader was not found or doesn't work.",
+            "fatal error: see `libproot.so --help`.",
+        )
+        assertEquals("proot error: execve(\"/system/bin/tar\"): Permission denied", prootErrors(output))
+        assertEquals("a / b / c", prootErrors(listOf("x", "a", "b", "c")))
+    }
+
     @Test fun `proot goes without seccomp once the marker is there, for apps too`() {
         val files = tmp.newFolder("files")
         val paths = ContainerPaths(

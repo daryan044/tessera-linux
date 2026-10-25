@@ -119,13 +119,16 @@ class RootfsInstaller(
     private suspend fun runProot(vararg args: String, prepare: () -> Unit) {
         prepare()
         var (code, output) = exec(args)
+        var first: List<String>? = null
         // The marker makes every later run, the apps' included, go without seccomp too.
         if (code != 0 && seccompBug(output) && paths.prootNoSeccompMarker.createNewFile()) {
+            first = output
             prepare()
             exec(args).let { code = it.first; output = it.second }
         }
         if (code != 0) {
-            throw IOException("extract failed ($code): " + output.takeLast(3).joinToString(" / "))
+            val withSeccomp = first?.let { " (with seccomp: ${prootErrors(it)})" }.orEmpty()
+            throw IOException("extract failed ($code): ${prootErrors(output)}$withSeccomp")
         }
     }
 
@@ -143,8 +146,20 @@ class RootfsInstaller(
     }
 }
 
-/** PRoot refusing to run because of the kernel's seccomp bug; it names this workaround. */
+/**
+ * PRoot's answer to the first execve failing with EPERM, before seccomp was turned off. It blames
+ * an old kernel bug, but that is a guess: it says this for any EPERM.
+ */
 internal fun seccompBug(output: List<String>) = output.any { "PROOT_NO_SECCOMP" in it }
+
+/**
+ * What PRoot said went wrong, for an error message: its "error:" and "warning:" lines name the
+ * cause (the failing call and the system's reason); the advice after them is the same every time.
+ */
+internal fun prootErrors(output: List<String>): String {
+    val errors = output.filter { (" error: " in it || " warning: " in it) && !it.startsWith("fatal error") }.distinct()
+    return (errors.ifEmpty { output.takeLast(3) }).joinToString(" / ")
+}
 
 /**
  * The root-side install for chroot mode, as one shell script: what [RootfsSetup] does for
