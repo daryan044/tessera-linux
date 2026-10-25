@@ -4,6 +4,9 @@
 package com.daryan.tessera.container
 
 import android.os.Build
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -128,8 +131,29 @@ class RootfsInstaller(
         }
         if (code != 0) {
             val withSeccomp = first?.let { " (with seccomp: ${prootErrors(it)})" }.orEmpty()
-            throw IOException("extract failed ($code): ${prootErrors(output)}$withSeccomp")
+            throw IOException("extract failed ($code): ${prootErrors(output)}$withSeccomp; ${fileChecks()}")
         }
+    }
+
+    /**
+     * How the files PRoot touches on its first exec look from this app's own process, which runs
+     * under the same rules as PRoot's. PRoot reports EPERM both when the kernel refuses the exec
+     * and when its own lstat() of the program or its ELF interpreter fails, whatever the reason.
+     */
+    private fun fileChecks() = listOf(
+        "/system/bin/tar", "/system/bin/linker64", paths.prootLoader.path,
+    ).joinToString(", ", "checks: ") { path ->
+        val real = runCatching { File(path).canonicalPath }.getOrDefault(path)
+        val lstat = errno { Os.lstat(real) }
+        val exec = errno { Os.access(real, OsConstants.X_OK) }
+        "$real lstat $lstat exec $exec"
+    }
+
+    private fun errno(call: () -> Unit) = try {
+        call()
+        "ok"
+    } catch (e: ErrnoException) {
+        OsConstants.errnoName(e.errno) ?: "errno ${e.errno}"
     }
 
     private suspend fun exec(args: Array<out String>) = runInterruptible {
