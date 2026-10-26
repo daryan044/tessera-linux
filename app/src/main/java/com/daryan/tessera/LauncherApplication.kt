@@ -209,7 +209,7 @@ class LauncherContainer(private val app: Application) {
     private fun recordFailures() {
         diagnostics.catchCrashes()
         scope.launch {
-            installer.state.collect { if (it is InstallState.Failed) diagnostics.recordFailure("Installing Linux", it.message) }
+            installer.state.collect { if (it is InstallState.Failed) diagnostics.recordFailure("Installing Linux", it.message, it.output) }
         }
         scope.launch {
             val recorded = mutableSetOf<Int>()

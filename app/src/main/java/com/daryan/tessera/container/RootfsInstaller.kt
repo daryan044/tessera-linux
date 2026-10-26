@@ -27,7 +27,8 @@ sealed interface InstallState {
     data object Extracting : InstallState { override val running = true }
     data object Configuring : InstallState { override val running = true }
     data object Done : InstallState
-    data class Failed(val message: String) : InstallState
+    /** [output] is everything the failing step printed, for diagnostics; [message] is what the user sees. */
+    data class Failed(val message: String, val output: String = "") : InstallState
 }
 
 /**
@@ -55,7 +56,7 @@ class RootfsInstaller(
             } catch (e: CancellationException) {
                 InstallState.Idle
             } catch (e: Exception) {
-                InstallState.Failed(e.message ?: e.javaClass.simpleName)
+                InstallState.Failed(e.message ?: e.javaClass.simpleName, (e as? InstallFailure)?.output.orEmpty())
             }
         }
     }
@@ -90,7 +91,7 @@ class RootfsInstaller(
             val proc = ProcessBuilder(su, "-c", "/system/bin/sh ${script.path}").redirectErrorStream(true).start()
             try {
                 val output = proc.inputStream.bufferedReader().readLines()
-                if (proc.waitFor() != 0) throw IOException(output.lastOrNull { it.isNotBlank() } ?: "chroot install failed")
+                if (proc.waitFor() != 0) throw InstallFailure(output.lastOrNull { it.isNotBlank() } ?: "chroot install failed", output.joinToString("\n"))
             } finally {
                 proc.destroy()
             }
@@ -131,7 +132,8 @@ class RootfsInstaller(
         }
         if (code != 0) {
             val withSeccomp = first?.let { " (with seccomp: ${prootErrors(it)})" }.orEmpty()
-            throw IOException("extract failed ($code): ${prootErrors(output)}$withSeccomp; ${fileChecks()}")
+            val full = first?.joinToString("\n", postfix = "\n--- again, without seccomp ---\n").orEmpty() + output.joinToString("\n")
+            throw InstallFailure("extract failed ($code): ${prootErrors(output)}$withSeccomp; ${fileChecks()}", full)
         }
     }
 
@@ -169,6 +171,9 @@ class RootfsInstaller(
         }
     }
 }
+
+/** A failed install step, with all it printed: the message keeps only the lines that matter. */
+class InstallFailure(message: String, val output: String) : IOException(message)
 
 /**
  * PRoot's answer to the first execve failing with EPERM, before seccomp was turned off. It blames
