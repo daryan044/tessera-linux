@@ -207,6 +207,8 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         fun ended(signal: Int, byUser: Boolean): String = when {
             byUser -> "Stopped"
             signal == 9 -> "Killed (signal 9), most likely by Android's background process limit; see Setup"
+            // SIGSYS: a system call Android's filter for apps doesn't allow.
+            signal == 31 -> "Stopped by Android's system call filter (signal 31); please report it with Copy diagnostics"
             else -> "Ended by signal $signal"
         }
 
