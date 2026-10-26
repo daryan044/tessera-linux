@@ -498,3 +498,7 @@ implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 | AndroidX, Jetpack Compose, Material 3 | Apache-2.0 | UI |
 | kotlinx.serialization | Apache-2.0 | manifests |
 | [XZ for Java](https://tukaani.org/xz/java.html) | 0BSD | reading .tar.xz theme archives |
+
+---
+
+Claude Opus 5.5 was used in the process of creating this app.
