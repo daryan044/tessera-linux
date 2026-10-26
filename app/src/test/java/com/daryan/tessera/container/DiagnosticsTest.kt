@@ -71,6 +71,59 @@ class DiagnosticsTest {
         assertTrue(report, "how Tessera works" in report)
     }
 
+    @Test fun `a failed install is in the report, with its error and output`() {
+        val diagnostics = Diagnostics(dir())
+        diagnostics.recordFailure("Installing Desktop: xfwm4 xterm", "Killed (signal 9)", "")
+        diagnostics.recordFailure("Installing Linux", "extract failed (1): proot error: execve(\"/system/bin/tar\"): Operation not permitted")
+
+        val report = diagnostics.report("- Engine: PRoot")
+        assertTrue(report, "Installing Desktop: xfwm4 xterm" in report)
+        assertTrue(report, "Killed (signal 9)" in report)
+        assertTrue(report, "Operation not permitted" in report)
+        // Oldest first, like the sessions.
+        assertTrue(report.indexOf("Installing Desktop") < report.indexOf("Installing Linux"))
+    }
+
+    @Test fun `failures and sessions share one timeline`() {
+        val diagnostics = Diagnostics(dir())
+        diagnostics.recordSession(code, session, "PRoot", 1, "session output")
+        diagnostics.recordFailure("Loading the Store catalog", "timeout")
+        val report = diagnostics.report("")
+        assertTrue(report, "session output" in report && "timeout" in report)
+    }
+
+    @Test fun `a crash is recorded with its stack trace`() {
+        val diagnostics = Diagnostics(dir())
+        val error = IllegalStateException("boom")
+        diagnostics.recordFailure("Tessera crashed (thread main)", error.toString(), error.stackTraceToString())
+        val report = diagnostics.report("")
+        assertTrue(report, "IllegalStateException: boom" in report)
+        assertTrue(report, "DiagnosticsTest" in report)
+    }
+
+    @Test fun `the report fits a GitHub issue however much was logged, dropping the oldest logs`() {
+        val diagnostics = Diagnostics(dir())
+        repeat(30) { i ->
+            diagnostics.recordFailure("failure $i", "error $i", "x".repeat(50_000))
+            diagnostics.recordSession(code, Session(id = "s$i"), "PRoot", 1, "y".repeat(50_000))
+        }
+        dir().mkdirs()
+        diagnostics.contextFile.writeText("notes ".repeat(2_000))
+        val state = "- app\n".repeat(20_000)
+
+        val report = diagnostics.report(state)
+        assertTrue("${report.length}", report.length <= 60_000)
+        assertTrue(report, "failure 29" in report) // the newest stays
+        assertFalse(report, "failure 0\n" in report) // the oldest gives way
+        assertTrue(report, "notes notes" in report)
+        assertTrue(report, "left out to keep this short" in report)
+    }
+
+    @Test fun `failures aren't written while diagnostics are off`() {
+        Diagnostics(dir(), enabled = { false }).recordFailure("Installing Linux", "boom")
+        assertFalse(File(dir(), "failures").exists())
+    }
+
     @Test fun `a report with no sessions yet says what to do`() {
         val report = Diagnostics(dir()).report("- Engine: PRoot")
         assertTrue(report, "None recorded yet" in report)

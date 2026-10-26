@@ -37,4 +37,12 @@ class InstallQueueTest {
         val remove = InstallQueue.script(job.copy(action = QueueAction.REMOVE, packages = listOf("vlc")))
         assertTrue("apt-get update" !in remove && "apt-get remove -y" in remove)
     }
+
+    @Test fun `a job killed by a signal says which, and only the user's stop reads Stopped`() {
+        // As reported from a Blackview Tab 13 on Android 12: SIGKILL, no output.
+        assertTrue("signal 9" in InstallQueue.ended(9, byUser = false))
+        assertTrue("background process limit" in InstallQueue.ended(9, byUser = false))
+        assertEquals("Ended by signal 11", InstallQueue.ended(11, byUser = false))
+        assertEquals("Stopped", InstallQueue.ended(9, byUser = true))
+    }
 }

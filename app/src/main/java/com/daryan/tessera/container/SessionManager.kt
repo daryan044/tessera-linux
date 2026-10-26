@@ -243,6 +243,7 @@ class SessionManager(
             } catch (e: Exception) {
                 Log.w(TAG, "GUI session ${session.id} failed", e)
                 update(session.id) { it.copy(output = "Couldn't start: ${e.message}", exitCode = -1) }
+                diagnostics?.recordSession(app, session, backend.name, -1, "Couldn't start: ${e.stackTraceToString()}")
             } finally {
                 windowReports.remove(session.id)?.stopWatching()
                 desktopBackends.remove(session.id)

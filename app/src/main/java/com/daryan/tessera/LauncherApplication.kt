@@ -20,7 +20,11 @@ import com.daryan.tessera.container.EndReason
 import com.daryan.tessera.container.RunningSession
 import com.daryan.tessera.container.SessionManager
 import com.daryan.tessera.container.X11Server
+import com.daryan.tessera.container.InstallState
+import com.daryan.tessera.store.CatalogState
 import com.daryan.tessera.store.InstallQueue
+import com.daryan.tessera.store.JobState
+import com.daryan.tessera.store.QueueAction
 import com.daryan.tessera.store.StoreCatalog
 import com.daryan.tessera.store.StoreRegistry
 import kotlinx.coroutines.CoroutineScope
@@ -197,6 +201,29 @@ class LauncherContainer(private val app: Application) {
         }
         scope.launch {
             busy.collect { if (it) ContainerService.start(app) }
+        }
+        recordFailures()
+    }
+
+    /** Every failure the user is shown goes into [diagnostics] too, so a report has no blind spots. */
+    private fun recordFailures() {
+        diagnostics.catchCrashes()
+        scope.launch {
+            installer.state.collect { if (it is InstallState.Failed) diagnostics.recordFailure("Installing Linux", it.message) }
+        }
+        scope.launch {
+            val recorded = mutableSetOf<Int>()
+            queue.jobs.collect { jobs ->
+                jobs.forEach { job ->
+                    val failed = job.state as? JobState.Failed ?: return@forEach
+                    if (!recorded.add(job.id)) return@forEach
+                    val what = "${if (job.action == QueueAction.INSTALL) "Installing" else "Removing"} ${job.title}: ${job.packages.joinToString(" ")}"
+                    diagnostics.recordFailure(what, failed.message, job.log)
+                }
+            }
+        }
+        for ((name, state) in listOf("Store catalog" to catalog.state, "Flathub catalog" to flathub.state)) {
+            scope.launch { state.collect { if (it is CatalogState.Failed) diagnostics.recordFailure("Loading the $name", it.message) } }
         }
     }
 

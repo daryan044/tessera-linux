@@ -347,7 +347,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 val families = imported.map { it.family }.distinct()
                 setAppearance(container.appearance.global.value.copy(enabled = true, linuxTheme = families.first()))
                 _messages.send("Imported ${families.joinToString()}" + if (imported.size > families.size) " (light and dark)" else "")
-            }.onFailure { _messages.send("Couldn't import: ${it.message}") }
+            }.onFailure { failed("Couldn't import: ${it.message}") }
         }
     }
 
@@ -375,7 +375,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val su = _status.value?.su ?: return
         viewModelScope.launch {
             val ok = withContext(Dispatchers.IO) { PhantomLimit.lift(su) }
-            if (!ok) _messages.send("Couldn't change it; was root access refused?")
+            if (!ok) failed("Couldn't change it; was root access refused?")
             refresh()
         }
     }
@@ -767,11 +767,11 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             val backend = backend()
             val problem = blocker(_status.value, _mode.value)
             if (backend == null || problem != null) {
-                _messages.send(problem ?: "Linux isn't ready")
+                failed(problem ?: "Linux isn't ready")
                 return@launch
             }
             val staged = runCatching { files.stageDeb(entry, info) }.getOrElse {
-                _messages.send(it.message ?: "Couldn't get ${entry.name} ready")
+                failed(it.message ?: "Couldn't get ${entry.name} ready")
                 return@launch
             }
             val store = configStore(_status.value, _mode.value)
@@ -825,7 +825,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             else -> null
         }
         if (problem != null || su == null) {
-            _messages.send("${app.name} can't control this phone: $problem")
+            failed("${app.name} can't control this phone: $problem")
             return null
         }
         val chroot = backend is ChrootBackend
@@ -834,7 +834,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
         return when (result) {
             is PhoneAdb.Result.Ready -> result.address
-            is PhoneAdb.Result.Failed -> null.also { _messages.send("${app.name} can't control this phone: ${result.reason}") }
+            is PhoneAdb.Result.Failed -> null.also { failed("${app.name} can't control this phone: ${result.reason}") }
         }
     }
 
@@ -858,7 +858,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             val backend = backend()
             val problem = blocker(_status.value, _mode.value)
             if (backend == null || problem != null) {
-                _messages.send(problem ?: "Backend unavailable")
+                failed(problem ?: "Backend unavailable")
                 return@launch
             }
             val app = withDrives(requested).let { if (backend is ProotBackend) withPluggedInUsb(it) else it }
@@ -867,7 +867,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             val usb = if (backend is ProotBackend && app.permissions.devices.any { it.startsWith(UsbBridge.USB_PATH) }) {
                 UsbBridge.open(getApplication(), app.permissions.devices).also { opened ->
                     if (opened.missing.isNotEmpty()) {
-                        _messages.send("${app.name}: couldn't open ${opened.missing.joinToString()} (unplugged, or permission refused)")
+                        failed("${app.name}: couldn't open ${opened.missing.joinToString()} (unplugged, or permission refused)")
                     }
                 }
             } else null
@@ -878,9 +878,15 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 .onSuccess(onLaunched)
                 .onFailure {
                     usb?.close()
-                    _messages.send("Couldn't start ${app.name}: ${it.message}")
+                    failed("Couldn't start ${app.name}: ${it.message}")
                 }
         }
+    }
+
+    /** Tells the user [message] and records it for diagnostics, so no failure shown is missing from a report. */
+    private suspend fun failed(message: String) {
+        withContext(Dispatchers.IO) { container.diagnostics.recordFailure("Shown to the user", message) }
+        _messages.send(message)
     }
 
     private fun loadApps(app: Application): List<PermissionManifest> {

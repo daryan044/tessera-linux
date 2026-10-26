@@ -59,6 +59,8 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
     val jobs: StateFlow<List<QueueJob>> = _jobs
     private val runner = Mutex()
     @Volatile private var runningPid = 0
+    /** Set when the user stops the running job, so its end reads "Stopped" rather than a signal. */
+    @Volatile private var stopRequested = false
     /** How to run each job again: what [retry] needs that the job itself doesn't hold. */
     private val reruns = java.util.concurrent.ConcurrentHashMap<Int, Pair<ContainerBackend, suspend () -> Unit>>()
 
@@ -94,7 +96,10 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         val job = _jobs.value.firstOrNull { it.id == id } ?: return
         when (job.state) {
             JobState.Queued -> _jobs.update { list -> list.filterNot { it.id == id } }
-            is JobState.Running -> runningPid.takeIf { it > 0 }?.let { com.daryan.tessera.container.ProcessTree.killTree(it) }
+            is JobState.Running -> runningPid.takeIf { it > 0 }?.let {
+                stopRequested = true
+                com.daryan.tessera.container.ProcessTree.killTree(it)
+            }
             else -> {}
         }
     }
@@ -127,6 +132,7 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
             val pid = IntArray(1)
             // A pty, not a pipe: the chroot entry script needs a terminal for setsid -c.
             val fd = Pty.spawn(spec, rows = 24, cols = 200, pidOut = pid)
+            stopRequested = false
             runningPid = pid[0]
             val parser = AptProgress()
             val tail = ArrayDeque<String>()
@@ -162,7 +168,11 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
             if (code == 0) {
                 set(job.id, JobState.Done, log); true
             } else {
-                set(job.id, JobState.Failed(if (code < 0) "Stopped" else tail.lastOrNull { it.startsWith("E:") } ?: tail.lastOrNull() ?: "apt failed ($code)"), log)
+                val why = when {
+                    code < 0 -> ended(-code, stopRequested)
+                    else -> tail.lastOrNull { it.startsWith("E:") } ?: tail.lastOrNull() ?: "apt failed ($code)"
+                }
+                set(job.id, JobState.Failed(why), log)
                 false
             }
         } catch (e: Exception) {
@@ -189,6 +199,16 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         /** Terminal color and cursor codes (ESC [ ... letter). */
         private val ANSI = Regex("\u001B\\[[0-9;?]*[A-Za-z]")
         private const val LOG_PUBLISH_MS = 250L
+
+        /**
+         * Why a job killed by [signal] ended. Android's background process limit (Android 12 and
+         * later) kills with SIGKILL and leaves no output, so a bare "Stopped" told no one anything.
+         */
+        fun ended(signal: Int, byUser: Boolean): String = when {
+            byUser -> "Stopped"
+            signal == 9 -> "Killed (signal 9), most likely by Android's background process limit; see Setup"
+            else -> "Ended by signal $signal"
+        }
 
         /** apt in two phases with machine-readable progress; markers tell [AptProgress] which. */
         fun script(job: QueueJob): String {
