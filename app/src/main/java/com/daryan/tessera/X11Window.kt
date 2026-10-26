@@ -318,12 +318,26 @@ class X11Window : MainActivity.MainActivityTagged() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
+    /**
+     * Split screen and floating windows keep several windows resumed, so turning to another of
+     * them resumes nothing; it still has to show its X window, as [onResume] does.
+     */
+    override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
+        super.onTopResumedActivityChanged(isTopResumedActivity)
+        if (isTopResumedActivity) showOwnXWindow()
+    }
+
+    /** In front now: show our X window on the shared screen, at the app's scale. */
+    private fun showOwnXWindow() {
         val session = sessionTag?.let { container.sessions.forWindowTag(it) } ?: return
-        // In front now: show our X window on the shared screen.
         container.sessions.windowFor(session.session.id, windowId)?.let { container.sessions.activateWindow(session.session.id, it) }
         applyScale()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        sessionTag?.let { container.sessions.forWindowTag(it) } ?: return
+        showOwnXWindow()
         // Termux:X11 focuses its own view on resume; while casting, typing goes to the cast.
         if (cast != null) keyboardProxy.requestFocus()
         usbDevices.value = currentUsb()
