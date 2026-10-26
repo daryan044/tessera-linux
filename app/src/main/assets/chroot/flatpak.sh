@@ -7,7 +7,7 @@
 # runtime at /usr, the app at /app, the runtime's GL extension, the session's X11 directory (its
 # bus and sound live there too), the user's home, then runs the app there as APP_UID.
 #
-# Inputs (env): R, FP_RUNTIME, FP_APP, FP_GL, FP_GL_MOUNT, BINDS, GPU_DEVICE, X11_DIR, APP_UID,
+# Inputs (env): R, FP_RUNTIME, FP_APP, FP_GL, FP_GL_MOUNT, BINDS, GPU_DEVICE, X11_DIR, APP_UID, DNS,
 #   NET_GROUPS, GUEST_ENV, CMD (paths are the container's, without $R)
 # Mounts made here vanish with the namespace; never mount in the global namespace.
 set -e
@@ -63,7 +63,22 @@ U=${APP_UID:?APP_UID not set}
 printf 'root:x:0:0:root:/root:/bin/sh\nuser:x:%s:%s:Tessera user:/home/user:/bin/sh\n' "$U" "$U" > etc/passwd
 printf 'root:x:0:\nuser:x:%s:\n' "$U" > etc/group
 printf '127.0.0.1 localhost\n::1 localhost\n' > etc/hosts
-printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > etc/resolv.conf
+# The container's DNS servers: Android's while its resolv.conf is automatic (as in enter.sh),
+# or the user's own.
+resolv="$R/etc/resolv.conf"
+if [ -n "$DNS" ]; then
+  first=$(head -n 1 "$resolv" 2>/dev/null || true)
+  if [ -L "$resolv" ] || [ ! -e "$resolv" ] || [ "${first#\# Kept to Android}" != "$first" ] \
+    || [ "$(cat "$resolv")" = "$(printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8')" ]; then
+    rm -f "$resolv"; printf '%s' "$DNS" > "$resolv"; chmod 644 "$resolv"
+  fi
+fi
+if [ -f "$resolv" ] && [ ! -L "$resolv" ]; then
+  cat "$R/etc/resolv.conf" > etc/resolv.conf
+else
+  printf '%s' "${DNS:-nameserver 1.1.1.1
+}" > etc/resolv.conf
+fi
 
 mount -t proc proc proc
 # LLVM (llvmpipe's shader JIT) picks instructions by core model, not by what the kernel enables:

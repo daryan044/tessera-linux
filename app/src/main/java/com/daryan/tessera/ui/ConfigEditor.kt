@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daryan.tessera.container.ConfigFile
 import com.daryan.tessera.container.ConfigKind
+import com.daryan.tessera.container.HostDns
 import com.daryan.tessera.container.ConfigStore
 import kotlinx.coroutines.launch
 
@@ -112,9 +113,12 @@ fun ConfigEditor(
                             }
                             saving = true
                             scope.launch {
-                                runCatching { store.write(file.path, text) }
+                                // Saved DNS servers are the user's from now on; see HostDns.
+                                val saved = if (file.kind == ConfigKind.RESOLV) HostDns.userOwned(text) else text
+                                runCatching { store.write(file.path, saved) }
                                     .onSuccess {
-                                        original = text
+                                        text = saved
+                                        original = saved
                                         snackbar.showSnackbar(savedMessage)
                                     }
                                     .onFailure { snackbar.showSnackbar("Couldn't save: ${it.message}") }

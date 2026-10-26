@@ -3,7 +3,7 @@
 # Runs as root inside a fresh mount namespace (and network namespace when network is denied),
 # started by ChrootBackend via:  su -c 'export ...; exec unshare -m [-n] sh enter.sh'
 #
-# Inputs (env): R, BINDS, DEVICES, USB_ALL, GPU_DEVICE, X11_DIR, RUN_AS_ROOT, APP_UID, NET_GROUPS, GUEST_ENV, CMD
+# Inputs (env): R, BINDS, DEVICES, USB_ALL, GPU_DEVICE, X11_DIR, RUN_AS_ROOT, APP_UID, NET_GROUPS, GUEST_ENV, CMD, DNS
 # Derived from termux-linux-layer/linux. Mounts made here vanish with the namespace; never
 # mount or unmount in the global namespace, Android's mounts are shared and changes propagate.
 set -e
@@ -92,8 +92,17 @@ if [ -n "$X11_DIR" ]; then
   mkdir -p "$R/tmp/.X11-unix"; mount --bind "$X11_DIR" "$R/tmp/.X11-unix"
 fi
 
-printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > "$R/run/resolv.conf"
-[ -e "$R/etc/resolv.conf" ] || ln -s /run/resolv.conf "$R/etc/resolv.conf"
+# Android's DNS servers ($DNS, from HostDns), while resolv.conf is automatic: its first line is
+# HostDns's marker, it's what earlier versions always wrote, or it's missing or a symlink.
+# Saved from the config editor, it's the user's and stays as it is.
+resolv="$R/etc/resolv.conf"
+if [ -n "$DNS" ]; then
+  first=$(head -n 1 "$resolv" 2>/dev/null || true)
+  if [ -L "$resolv" ] || [ ! -e "$resolv" ] || [ "${first#\# Kept to Android}" != "$first" ] \
+    || [ "$(cat "$resolv")" = "$(printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8')" ]; then
+    rm -f "$resolv"; printf '%s' "$DNS" > "$resolv"; chmod 644 "$resolv"
+  fi
+fi
 
 # GUEST_ENV is one KEY=VALUE per line; turn it into positional args for env -i.
 set --
