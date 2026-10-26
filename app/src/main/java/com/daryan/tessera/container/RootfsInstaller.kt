@@ -4,9 +4,6 @@
 package com.daryan.tessera.container
 
 import android.os.Build
-import android.system.ErrnoException
-import android.system.Os
-import android.system.OsConstants
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -107,9 +104,15 @@ class RootfsInstaller(
         // moved afterwards. The marker file written last is what makes it count as installed.
         _state.value = InstallState.Extracting
         val root = paths.prootRootfs
-        runProot("--link2symlink", "-0", "/system/bin/tar", "-xzf", tarball.path, "-C", root.path) {
-            root.deleteRecursively()
-            root.mkdirs()
+        root.deleteRecursively()
+        root.mkdirs()
+        val tar = hostTar()
+        try {
+            // Unzipped here, not with tar's -z: toybox runs /system/bin/zcat for that, which
+            // PRoot is refused like tar itself.
+            runProot("--link2symlink", "-0", *tar.argv.toTypedArray(), "-xf", "-", "-C", root.path, stdin = tarball)
+        } finally {
+            tar.file.delete()
         }
 
         _state.value = InstallState.Configuring
@@ -119,67 +122,53 @@ class RootfsInstaller(
         tarball.delete()
     }
 
-    /** Runs PRoot, after [prepare]; once more without seccomp if the kernel has PRoot's bug. */
-    private suspend fun runProot(vararg args: String, prepare: () -> Unit) {
-        prepare()
-        var (code, output) = exec(args)
-        var first: List<String>? = null
-        // The marker makes every later run, the apps' included, go without seccomp too.
-        if (code != 0 && seccompBug(output) && paths.prootNoSeccompMarker.createNewFile()) {
-            first = output
-            prepare()
-            exec(args).let { code = it.first; output = it.second }
-        }
-        if (code != 0) {
-            val withSeccomp = first?.let { " (with seccomp: ${prootErrors(it)})" }.orEmpty()
-            val full = first?.joinToString("\n", postfix = "\n--- again, without seccomp ---\n").orEmpty() + output.joinToString("\n")
-            throw InstallFailure("extract failed ($code): ${prootErrors(output)}$withSeccomp; ${fileChecks()}", full)
-        }
-    }
+    /** A program copied out of /system, and the arguments that run it as tar. */
+    private class HostTar(val file: File, val argv: List<String>)
 
     /**
-     * How the files PRoot touches on its first exec look from this app's own process, which runs
-     * under the same rules as PRoot's. PRoot reports EPERM both when the kernel refuses the exec
-     * and when its own lstat() of the program or its ELF interpreter fails, whatever the reason.
+     * Android's tar, copied into app storage. PRoot opens every program it runs, to read its
+     * headers, and Samsung's Android 16 refuses PRoot opening anything under /system/bin
+     * (Galaxy S24 to S26, #1) while the app itself may. A copy in app storage runs anywhere.
+     * Named tar: /system/bin/tar is usually a link to toybox (or busybox), which picks its
+     * command from the name it was run by and refuses names it doesn't know.
      */
-    private fun fileChecks() = listOf(
-        "/system/bin/tar", "/system/bin/linker64", paths.prootLoader.path,
-    ).joinToString(", ", "checks: ") { path ->
-        val real = runCatching { File(path).canonicalPath }.getOrDefault(path)
-        val lstat = errno { Os.lstat(real) }
-        val exec = errno { Os.access(real, OsConstants.X_OK) }
-        "$real lstat $lstat exec $exec"
+    private fun hostTar(): HostTar {
+        val copy = File(paths.cacheDir, "host-tools/tar")
+        copy.parentFile?.mkdirs()
+        File("/system/bin/tar").inputStream().use { input -> copy.outputStream().use { input.copyTo(it) } }
+        check(copy.setExecutable(true)) { "couldn't make ${copy.name} executable" }
+        return HostTar(copy, listOf(copy.path))
     }
 
-    private fun errno(call: () -> Unit) = try {
-        call()
-        "ok"
-    } catch (e: ErrnoException) {
-        OsConstants.errnoName(e.errno) ?: "errno ${e.errno}"
-    }
-
-    private suspend fun exec(args: Array<out String>) = runInterruptible {
-        val proc = ProcessBuilder(listOf(paths.proot.path) + args)
-            .redirectErrorStream(true)
-            .apply { environment().putAll(paths.prootEnv()) }
-            .start()
-        try {
-            val output = proc.inputStream.bufferedReader().readLines()
-            proc.waitFor() to output
-        } finally {
-            proc.destroy()
+    /** Runs PRoot with [args], feeding it [stdin] gunzipped. */
+    private suspend fun runProot(vararg args: String, stdin: File) {
+        val (code, output) = runInterruptible {
+            val proc = ProcessBuilder(listOf(paths.proot.path) + args)
+                .redirectErrorStream(true)
+                .apply { environment().putAll(paths.prootEnv()) }
+                .start()
+            // Fed from its own thread: tar's output must keep draining meanwhile.
+            val feeder = Thread {
+                runCatching {
+                    java.util.zip.GZIPInputStream(stdin.inputStream().buffered()).use { input ->
+                        proc.outputStream.use { input.copyTo(it) }
+                    }
+                }
+            }.apply { start() }
+            try {
+                val output = proc.inputStream.bufferedReader().readLines()
+                proc.waitFor() to output
+            } finally {
+                proc.destroy()
+                feeder.join()
+            }
         }
+        if (code != 0) throw InstallFailure("extract failed ($code): ${prootErrors(output)}", output.joinToString("\n"))
     }
 }
 
 /** A failed install step, with all it printed: the message keeps only the lines that matter. */
 class InstallFailure(message: String, val output: String) : IOException(message)
-
-/**
- * PRoot's answer to the first execve failing with EPERM, before seccomp was turned off. It blames
- * an old kernel bug, but that is a guess: it says this for any EPERM.
- */
-internal fun seccompBug(output: List<String>) = output.any { "PROOT_NO_SECCOMP" in it }
 
 /**
  * What PRoot said went wrong, for an error message: its "error:" and "warning:" lines name the
