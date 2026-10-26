@@ -147,14 +147,24 @@ fun SetupScreen(
                 body = when {
                     installed && chroot -> "${distro.label} is in place at /data/local/linux/debian."
                     installed -> "${distro.label} is installed."
-                    chroot && status.chrootRootfs == null -> "Couldn't check /data/local/linux/debian; was root access refused?"
+                    // A reinstalled Tessera is a new app to Magisk, and a frozen Magisk app (HyperOS
+                    // freezes it in the background) shows no prompt: the request just times out.
+                    chroot && status.chrootRootfs == null ->
+                        "Root access wasn't granted, so /data/local/linux/debian couldn't be checked. " +
+                            "Allow Tessera when your root app asks. No prompt? Open Magisk (or KernelSU, APatch) first, then ask again."
                     install is InstallState.Failed -> "Install failed: ${install.message}"
                     install.running -> "Installing ${distro.label}. You can leave the app; it keeps going."
                     chroot -> "Chroot mode has no ${distro.label} yet. It's installed as root at /data/local/linux/debian, about ${distro.downloadMb} MB to download."
                     else -> "${distro.label} isn't installed yet. About ${distro.downloadMb} MB to download."
                 },
             ) {
-                if (!installed && !(chroot && status.chrootRootfs == null)) {
+                if (chroot && status.chrootRootfs == null) {
+                    FilledTonalButton(onClick = onRefresh, modifier = Modifier.padding(top = 8.dp)) {
+                        Icon(Icons.Rounded.Refresh, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Ask for root again")
+                    }
+                } else if (!installed) {
                     InstallControls(install, if (chroot) status.su != null else status.prootBinary, onInstall, onCancelInstall)
                 }
             }
