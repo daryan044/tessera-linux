@@ -1,0 +1,3 @@
+0.4.3 (alpha)
+- Android 12 and older: installs and Linux app windows start again (they stopped with signal 31).
+- The container uses your network's own DNS servers, so networks that block public DNS (eduroam) work.
