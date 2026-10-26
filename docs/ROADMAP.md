@@ -2,7 +2,7 @@
 
 Status as of 2026-10-15. ✅ done and verified on a device · 🟡 partly done or built but untested · ⬜ not started.
 
-Test device: Xiaomi 13 Ultra, Android 16, Magisk root.
+Test devices: Xiaomi 13 Ultra (Android 16, Magisk root) and Samsung Galaxy S26 Ultra (Android 16, no root, PRoot).
 
 ## Phase 1: Container engine
 

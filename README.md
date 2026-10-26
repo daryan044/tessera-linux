@@ -300,7 +300,7 @@ even ones left behind by an earlier run.
 
 **Requirements:** Android 7 or newer, an arm64 phone (32-bit ARM and x86_64 builds exist but are
 untested), a few GB of free storage. GPU acceleration needs a Snapdragon (Adreno) GPU. Root is
-optional.
+optional. Tested on a Xiaomi 13 Ultra and a Samsung Galaxy S26 Ultra, both on Android 16.
 
 1. Download the APK: [tessera-v0.4.2.apk](https://github.com/daryan044/tessera-linux/releases/download/v0.4.2/tessera-v0.4.2.apk)
    (alpha; see the [releases](https://github.com/daryan044/tessera-linux/releases) for notes and
