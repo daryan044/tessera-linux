@@ -17,6 +17,8 @@ class ProotBackend(
     private val exists: (String) -> Boolean = { File(it).exists() },
     /** The app's uid/gid. Non-root sessions run as it, with PRoot emulating set*id calls. */
     private val appId: Pair<Int, Int>? = null,
+    /** Android's DNS servers now; see [HostDns]. */
+    private val dns: () -> List<String> = { emptyList() },
 ) : ContainerBackend {
     override val name = "PRoot"
 
@@ -29,6 +31,7 @@ class ProotBackend(
     override fun buildLaunch(app: PermissionManifest, session: Session): LaunchSpec {
         val p = app.permissions
         val tmp = paths.sessionTmp(session)
+        HostDns.refresh(File(paths.prootRootfs, "etc/resolv.conf"), dns())
         val argv = buildList {
             add(paths.proot.invariantSeparatorsPath)
             add("--kill-on-exit")
@@ -71,6 +74,7 @@ class ProotBackend(
         val ref = requireNotNull(app.flatpak) { "${app.id} isn't a Flathub app" }
         val p = app.permissions
         val rootfs = paths.prootRootfs.invariantSeparatorsPath
+        HostDns.refresh(File(paths.prootRootfs, "etc/resolv.conf"), dns())
         // Launcher entries are shared by both engines, but each has its own system: an app
         // installed in chroot mode isn't here, and PRoot would only say /usr/bin/env is missing.
         check(exists("$rootfs${ref.appDir}") && exists("$rootfs${ref.runtimeDir}")) {

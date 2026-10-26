@@ -195,7 +195,7 @@ object ChrootSetup {
         rm -rf "${'$'}T"; mkdir -p "${'$'}T"
         /system/bin/tar -xzf '$tarball' -C "${'$'}T"
         rm -f "${'$'}T/etc/resolv.conf" "${'$'}T/etc/hosts"
-        printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > "${'$'}T/etc/resolv.conf"
+        printf '%s' ${shellQuote(HostDns.resolvConf(emptyList()))} > "${'$'}T/etc/resolv.conf"
         printf '127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n' > "${'$'}T/etc/hosts"
         # apt downloads as _apt, which isn't in Android's network groups.
         [ -d "${'$'}T/etc/apt/apt.conf.d" ] && echo 'APT::Sandbox::User "root";' > "${'$'}T/etc/apt/apt.conf.d/99launcher"
@@ -218,8 +218,9 @@ object RootfsSetup {
     fun configure(root: File, uid: Int, gid: Int) {
         val etc = File(root, "etc").apply { mkdirs() }
 
-        // Android has no /etc/resolv.conf, and image ones may be symlinks into /run.
-        replace(File(etc, "resolv.conf"), "nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
+        // Android has no /etc/resolv.conf, and image ones may be symlinks into /run. Automatic:
+        // Android's own servers replace these as sessions start (HostDns).
+        replace(File(etc, "resolv.conf"), HostDns.resolvConf(emptyList()))
         replace(File(etc, "hosts"), "127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n")
 
         // apt drops privileges to _apt for downloads, which PRoot's fake root can't do.

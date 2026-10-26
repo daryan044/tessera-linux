@@ -14,6 +14,8 @@ class ChrootBackend(
     internal val su: String,
     /** The uid apps run as inside: the launcher's own (not 1000, which is Android's "system"). */
     private val appUid: Int = android.os.Process.myUid(),
+    /** Android's DNS servers now; enter.sh writes them while resolv.conf is automatic ([HostDns]). */
+    private val dns: () -> List<String> = { emptyList() },
 ) : ContainerBackend {
     override val name = NAME
 
@@ -44,6 +46,7 @@ class ChrootBackend(
             "NET_GROUPS" to if (p.network) "3003,3004" else "",
             "GUEST_ENV" to guestEnv(app, session).map { (k, v) -> "$k=$v" }.joinToString("\n"),
             "CMD" to guestCommand(app).joinToString(" ") { shellQuote(it) },
+            "DNS" to HostDns.resolvConf(dns()),
         )
         return suLaunch(su, vars, p.network, paths.chrootScript)
     }
@@ -64,6 +67,7 @@ class ChrootBackend(
             "NET_GROUPS" to if (p.network) "3003,3004" else "",
             "GUEST_ENV" to env.map { (k, v) -> "$k=$v" }.joinToString("\n"),
             "CMD" to app.exec.joinToString(" ") { shellQuote(it) },
+            "DNS" to HostDns.resolvConf(dns()),
         )
         return suLaunch(su, vars, p.network, paths.chrootFlatpakScript)
     }
