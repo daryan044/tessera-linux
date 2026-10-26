@@ -1,0 +1,7 @@
+0.4.2 (alpha)
+- Linux installs on Samsung phones with Android 16 (Galaxy S24, S25, S26).
+- Flathub apps install on phones with older kernels (Redmi Note 12 Pro).
+- Flathub Java apps start (2006Scape and others stopped on libjli.so).
+- An app's second window no longer freezes.
+- Diagnostics include every failure, and fit in a GitHub issue.
+- Installs killed by Android say so, instead of a bare "Stopped".
