@@ -81,6 +81,10 @@ class ProotBackend(
         val argv = buildList {
             add(paths.proot.invariantSeparatorsPath)
             add("--kill-on-exit")
+            // Flatpak's files are link2symlink's stand-ins for hard links; without it a program
+            // is known by its stand-in's name in the store, and $ORIGIN points there: java
+            // couldn't find libjli.so next to it.
+            add("--link2symlink")
             appId?.let { (uid, gid) -> add("--change-id=$uid:$gid") }
             add("--rootfs=${skeleton.invariantSeparatorsPath}")
             add("--cwd=/home/user")
