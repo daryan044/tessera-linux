@@ -72,6 +72,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -264,7 +266,8 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
                         val hidden = ((1f - open.value) * widthPx).roundToInt()
                         IntOffset(if (onLeft) -hidden else hidden, 0)
                     }
-                    .then(dragToOpen),
+                    .then(dragToOpen)
+                    .pointerHoverIcon(PointerIcon.Default),
             ) {
                 AnimatedContent(
                     targetState = page,

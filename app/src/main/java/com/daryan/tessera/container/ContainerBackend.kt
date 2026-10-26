@@ -160,7 +160,8 @@ const val AUDIO_RATE = 48000
  * - with the audio permission, PulseAudio playing into a FIFO the app reads (AudioPipe);
  * - [WINDOW_WATCHER], which reports the app's windows so each can have its own Android task;
  * - in themed sessions, [THEME_DAEMON]: the settings portal and xsettingsd, with the phone's
- *   colors and light or dark.
+ *   colors and light or dark;
+ * - [NOTIFY_DAEMON], whose notifications the launcher shows as Android's.
  * The helpers are stopped when the app exits so the session (and its window) ends with it.
  * A desktop ([PermissionManifest.desktop]) gets the same helpers but no matchbox: its own
  * window manager runs in [DESKTOP_SESSION], next to [DESKTOP_HELPER].
@@ -173,10 +174,10 @@ internal fun guestCommand(app: PermissionManifest): List<String> = when {
 
 /** [GUI_WRAPPER] and its helpers; [wm] is "app" (matchbox keeps it fullscreen) or "desktop". */
 private fun guiWrapper(wm: String) =
-    listOf("/bin/sh", "-c", GUI_WRAPPER, "launch", FOCUS_WATCHER, FOCUS_FILE_GUEST, WINDOW_WATCHER, WINDOWS_FILE_GUEST, THEME_DAEMON, wm)
+    listOf("/bin/sh", "-c", GUI_WRAPPER, "launch", FOCUS_WATCHER, FOCUS_FILE_GUEST, WINDOW_WATCHER, WINDOWS_FILE_GUEST, THEME_DAEMON, wm, NOTIFY_DAEMON)
 
 private const val GUI_WRAPPER = """
-watcher=${'$'}1; out=${'$'}2; windows=${'$'}3; windows_out=${'$'}4; theme=${'$'}5; wm=${'$'}6; shift 6
+watcher=${'$'}1; out=${'$'}2; windows=${'$'}3; windows_out=${'$'}4; theme=${'$'}5; wm=${'$'}6; notify=${'$'}7; shift 7
 if { [ -n "${'$'}TESSERA_FLATPAK" ] || [ "${'$'}wm" = desktop ]; } && [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-daemon >/dev/null 2>&1; then
   # A Flathub app runs in a root of its own, which shares only the X11 directory with this
   # one: the bus lives there. So does a desktop's, which Flathub apps open in it share.
@@ -203,6 +204,9 @@ if [ -n "${'$'}TESSERA_THEME" ]; then
     fi
   fi
   [ -z "${'$'}SAL_USE_VCLPLUGIN" ] && [ -e /usr/lib/libreoffice/program/libvclplug_gtk3lo.so ] && export SAL_USE_VCLPLUGIN=gtk3
+fi
+if [ -n "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && [ -d /usr/lib/python3/dist-packages/gi ]; then
+  python3 -c "${'$'}notify" /tmp/.X11-unix & nd=${'$'}!
 fi
 if [ -n "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && [ -d /usr/lib/python3/dist-packages/pyatspi ]; then
   python3 -c "${'$'}watcher" "${'$'}out" & fw=${'$'}!
@@ -240,7 +244,7 @@ if [ "${'$'}wm" = app ] && [ "${'$'}status" = 0 ] && [ -n "${'$'}ww" ] && [ ${'$
   while [ ${'$'}i -lt 30 ] && ! grep -q '"id"' "${'$'}windows_out" 2>/dev/null; do sleep 0.5; i=${'$'}((i + 1)); done
   while grep -q '"id"' "${'$'}windows_out" 2>/dev/null; do sleep 1; done
 fi
-kill ${'$'}ww ${'$'}wm ${'$'}fw ${'$'}pa ${'$'}td ${'$'}bus 2>/dev/null
+kill ${'$'}ww ${'$'}wm ${'$'}fw ${'$'}pa ${'$'}td ${'$'}nd ${'$'}bus 2>/dev/null
 exit ${'$'}status
 """
 

@@ -22,7 +22,12 @@ data class XWindow(
     /** Minimized. */
     val hidden: Boolean = false,
     val maximized: Boolean = false,
-)
+    /** The workspace it's on; -1 on all of them. */
+    val desktop: Int = 0,
+) {
+    /** Shown on [workspace]. */
+    fun on(workspace: Int) = desktop == -1 || desktop == workspace
+}
 
 @Serializable
 data class XWindows(
@@ -30,6 +35,9 @@ data class XWindows(
     val windows: List<XWindow> = emptyList(),
     /** The X screen's size in its pixels, [width, height]; empty until reported. */
     val screen: List<Int> = emptyList(),
+    /** The workspace shown, of [workspaces]; a desktop's (an app has the one). */
+    val workspace: Int = 0,
+    val workspaces: Int = 1,
 ) {
     val main get() = windows.filter { it.main }
 }
@@ -48,16 +56,23 @@ class SessionFiles(
     private val onFocus: (Boolean) -> Unit,
     /** Taps and menus on a desktop's icons ([DesktopFiles.Events]); desktops only. */
     private val onDesktop: ((DesktopEvent) -> Unit)? = null,
+    /** What is on a desktop, each time its helper lists it again; desktops only. */
+    private val onDesktopItems: ((List<DesktopItem>) -> Unit)? = null,
+    /** The session's Linux notifications, as [NOTIFY_DAEMON] reports them. */
+    private val onNotify: ((LinuxNotification) -> Unit)? = null,
     private val onWindows: (XWindows) -> Unit,
 ) : FileObserver(dir.path, CREATE or MODIFY or MOVED_TO or CLOSE_WRITE) {
     private val focus = FocusReports(dir)
     private val desktop = DesktopFiles.Events(dir)
+    private val notifications = NotifyReports(dir)
 
     override fun onEvent(event: Int, path: String?) {
         when (path) {
             WINDOWS_FILE_NAME -> if (event and (MOVED_TO or CLOSE_WRITE) != 0) read()?.let(onWindows)
             FOCUS_FILE_NAME -> if (event and (CREATE or MODIFY) != 0) focus.poll()?.let(onFocus)
             DESKTOP_EVENTS_NAME -> if (event and (CREATE or MODIFY) != 0) onDesktop?.let { desktop.poll().forEach(it) }
+            DESKTOP_ITEMS_NAME -> if (event and MOVED_TO != 0) onDesktopItems?.invoke(DesktopFiles.readItems(dir))
+            NOTIFY_FILE_NAME -> if (event and (CREATE or MODIFY) != 0) onNotify?.let { notifications.poll().forEach(it) }
         }
     }
 
@@ -75,6 +90,12 @@ class SessionFiles(
 
     /** Puts [id] on the [left] or right half of the screen. */
     fun snap(id: Long, left: Boolean) = send("snap $id ${if (left) "left" else "right"}")
+
+    /** Shows workspace [n]. */
+    fun workspace(n: Int) = send("workspace $n")
+
+    /** Sends [id] to workspace [n]. */
+    fun moveTo(id: Long, n: Int) = send("move $id $n")
 
     private fun send(line: String) { sendLine(File(dir, WINDOW_COMMANDS_NAME), line) }
 

@@ -66,6 +66,8 @@ import android.provider.OpenableColumns
 import com.daryan.tessera.container.RunningSession
 import com.daryan.tessera.ui.DesktopActions
 import com.daryan.tessera.ui.DesktopShell
+import com.daryan.tessera.ui.DesktopShortcut
+import com.daryan.tessera.container.LinuxNotifier
 import com.daryan.tessera.ui.GameControlsPrefs
 import kotlinx.coroutines.launch
 import com.daryan.tessera.ui.X11Overlay
@@ -119,7 +121,7 @@ class X11Window : MainActivity.MainActivityTagged() {
         // Behind everything, a pixel wide: only there to take the keyboard while casting.
         addContentView(keyboardProxy, ViewGroup.LayoutParams(1, 1))
         addContentView(
-            ComposeView(this).apply {
+            ComposeView(this).also { shell = it }.apply {
                 setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                 setContent {
                     LauncherTheme {
@@ -141,6 +143,8 @@ class X11Window : MainActivity.MainActivityTagged() {
         followUsb()
         followDesktopIcons()
         desktopFullscreen()
+        takeNotificationAction(intent)
+        customWallpaper.value = wallpaperFile.isFile
     }
 
     /** A desktop's icon taps and menus, as its helper hears them on the desktop window. */
@@ -371,15 +375,22 @@ class X11Window : MainActivity.MainActivityTagged() {
             private val id get() = session.value?.session?.id
             private val desktop get() = id?.let { container.sessions.desktop(it) }
             private val prefs = getSharedPreferences(DESKTOP_PREFS, MODE_PRIVATE)
+            private fun list(key: String) = prefs.getString(key, null)?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()
+            private fun keep(key: String, ids: List<String>) = prefs.edit().putString(key, ids.joinToString("\n")).apply()
 
             // A new desktop's dock starts empty: apps join it as they open, and stay when pinned.
-            override val pins = MutableStateFlow(
-                prefs.getString(KEY_PINS, null)?.split('\n')?.filter { it.isNotEmpty() }.orEmpty(),
-            )
+            override val pins = MutableStateFlow(list(KEY_PINS))
 
             override fun setPinned(appId: String, pinned: Boolean) {
                 pins.value = if (pinned) (pins.value - appId) + appId else pins.value - appId
-                prefs.edit().putString(KEY_PINS, pins.value.joinToString("\n")).apply()
+                keep(KEY_PINS, pins.value)
+            }
+
+            override val recent = MutableStateFlow(list(KEY_RECENT))
+            override val lastOpen: List<String> = list(KEY_LAST_OPEN)
+
+            override fun rememberOpen(appIds: List<String>) {
+                if (appIds.isNotEmpty()) keep(KEY_LAST_OPEN, appIds)
             }
 
             /** Command-line apps get a terminal of their own in the desktop. */
@@ -388,9 +399,21 @@ class X11Window : MainActivity.MainActivityTagged() {
             override fun launch(app: PermissionManifest): Boolean = when {
                 app.flatpak != null -> id?.let { container.sessions.launchFlatpakInDesktop(it, app) } ?: false
                 else -> desktop?.launch(argv(app)) ?: false
+            }.also { ok ->
+                if (ok) {
+                    recent.value = (listOf(app.id) + (recent.value - app.id)).take(RECENT_COUNT)
+                    keep(KEY_RECENT, recent.value)
+                }
             }
 
-            override fun items(): List<DesktopItem> = desktop?.items().orEmpty()
+            override fun openTerminal(): Boolean = desktop?.launch(listOf("x-terminal-emulator")) ?: false
+
+            // The file manager the desktop has, at home; xdg-open finds it.
+            override fun openFiles(): Boolean = desktop?.launch(listOf("sh", "-c", "exec xdg-open \"\$HOME\"")) ?: false
+
+            override fun makeFolder(): Boolean = desktop?.makeFolder("New folder") ?: false
+
+            private fun items(): List<DesktopItem> = session.value?.desktopItems.orEmpty()
 
             override fun open(item: DesktopItem) { desktop?.open(item.path) }
 
@@ -420,43 +443,80 @@ class X11Window : MainActivity.MainActivityTagged() {
             override fun toggleMaximize(windowId: Long) { id?.let { container.sessions.toggleMaximizeWindow(it, windowId) } }
             override fun snap(windowId: Long, left: Boolean) { id?.let { container.sessions.snapWindow(it, windowId, left) } }
             override fun close(windowId: Long) { id?.let { container.sessions.closeWindow(it, windowId) } }
+            override fun showWorkspace(n: Int) { id?.let { container.sessions.showWorkspace(it, n) } }
+            override fun moveToWorkspace(windowId: Long, n: Int) { id?.let { container.sessions.moveToWorkspace(it, windowId, n) } }
             override fun reserve(left: Boolean, px: Int): Boolean = desktop?.reserve(left, px) ?: false
 
-            /** The phone's wallpaper, read once: it's redrawn with the icons whenever they change. */
-            private var phoneWallpaper: android.graphics.Bitmap? = null
+            override val customWallpaper: StateFlow<Boolean> get() = this@X11Window.customWallpaper
+            override val wallpaperVersion: StateFlow<Int> get() = this@X11Window.wallpaperVersion
+
+            override fun pickWallpaper() {
+                runCatching { pickWallpaper.launch("image/*") }
+            }
+
+            override fun usePhoneWallpaper() {
+                wallpaperFile.delete()
+                wallpaperChanged()
+            }
+
+            /** The background as last read (the user's picture or the phone's wallpaper), and why. */
+            private var background: Pair<String, Bitmap?>? = null
+            /** The background as the desktop's helper has it, for the icons to be laid over; and for which screen. */
+            private var sent: Pair<String, Bitmap>? = null
 
             override suspend fun wallpaper(
                 width: Int,
                 height: Int,
                 top: Int,
                 bottom: Int,
-                icons: android.graphics.Bitmap?,
-                places: Map<String, android.graphics.Rect>,
+                icons: Bitmap?,
+                places: Map<String, Rect>,
                 viewWidth: Int,
                 viewHeight: Int,
             ): Boolean = withContext(Dispatchers.IO) {
                 val desktop = desktop ?: return@withContext false
-                // Reading it takes the storage permission; without it, a gradient in the theme's colors.
-                val picture = phoneWallpaper ?: runCatching {
-                    @Suppress("MissingPermission")
-                    WallpaperManager.getInstance(this@X11Window).drawable?.toBitmap()
-                }.getOrNull()?.also { phoneWallpaper = it }
+                // The user's own picture, else the phone's wallpaper (reading it takes the storage
+                // permission), else a gradient in the theme's colors.
+                val key = "${id}:${wallpaperVersion.value}:${width}x$height:$top:$bottom"
+                val picture = background?.takeIf { it.first == key }?.second ?: run {
+                    val read = loadWallpaper(width, height) ?: runCatching {
+                        @Suppress("MissingPermission")
+                        WallpaperManager.getInstance(this@X11Window).drawable?.toBitmap()
+                    }.getOrNull()
+                    background = key to read
+                    read
+                }
+                // The whole screen only when the background changed; the icons are a strip of it.
+                val paper = sent?.takeIf { it.first == key }?.second
+                    ?: desktop.paper(picture ?: gradientWallpaper(top, bottom), width, height)?.also { fresh ->
+                        sent?.second?.recycle()
+                        sent = key to fresh
+                    }
+                    ?: return@withContext false
                 // A picture of the view may come as a hardware bitmap, which a canvas can't draw.
-                val overlay = icons?.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                val overlay = icons?.copy(Bitmap.Config.ARGB_8888, false)
                 val sx = width.toFloat() / viewWidth.coerceAtLeast(1)
                 val sy = height.toFloat() / viewHeight.coerceAtLeast(1)
                 val spots = places.mapValues { (_, r) ->
-                    android.graphics.Rect((r.left * sx).toInt(), (r.top * sy).toInt(), (r.right * sx).toInt(), (r.bottom * sy).toInt())
+                    Rect((r.left * sx).toInt(), (r.top * sy).toInt(), (r.right * sx).toInt(), (r.bottom * sy).toInt())
                 }
-                desktop.wallpaper(picture ?: gradientWallpaper(top, bottom), width, height, overlay, spots).also { overlay?.recycle() }
+                // Where the icons are, and a little more for their labels' shadows.
+                val area = spots.values.fold(null as Rect?) { acc, r -> acc?.apply { union(r) } ?: Rect(r) }
+                    ?.apply { inset(-(8 * sx).toInt(), -(8 * sy).toInt()) }
+                desktop.icons(paper, overlay, area, spots).also { overlay?.recycle() }
             }
 
             override val iconMenu = MutableStateFlow<DesktopEvent?>(null)
 
             override fun dismissIconMenu() { iconMenu.value = null }
 
-            /** A tap on a desktop icon (opened here, so Flathub apps get their root) or a menu request. */
+            /**
+             * A tap on a desktop icon (opened here, so Flathub apps get their root), a menu
+             * request, or a tap the X screen's own pointer made in the dock's room: the dock
+             * gets it as a touch where it was.
+             */
             fun onIconEvent(event: DesktopEvent) {
+                if (event.dock) return tapDock(event.x, event.y)
                 if (event.menu) {
                     iconMenu.value = event
                     return
@@ -466,13 +526,127 @@ class X11Window : MainActivity.MainActivityTagged() {
                 if (app != null) launch(app) else open(item)
             }
 
+            private fun tapDock(x: Int, y: Int) {
+                val view = shell ?: return
+                val screen = session.value?.windows?.screen?.takeIf { it.size == 2 && it[0] > 0 } ?: return
+                val ratio = view.width.toFloat() / screen[0]
+                val at = SystemClock.uptimeMillis()
+                for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                    val e = MotionEvent.obtain(at, SystemClock.uptimeMillis(), action, x * ratio, y * ratio, 0)
+                    e.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+                    view.dispatchTouchEvent(e)
+                    e.recycle()
+                }
+            }
+
+            override val shortcuts = kotlinx.coroutines.flow.MutableSharedFlow<DesktopShortcut>(extraBufferCapacity = 4)
+
             override fun toggleKeyboard() = actions.toggleKeyboard()
             override fun keepFullscreen() = desktopFullscreen()
             override fun returnFocus() {
                 if (cast == null) lorieView.requestFocus()
             }
+            override fun scale(): Int = actions.scale()
+            override fun setScale(percent: Int?) = actions.setScale(percent)
+            override fun openSettings() { appId?.let(actions::openPermissions) }
             override fun end() = actions.close(id)
         }
+    }
+
+    /** The user's own desktop picture, if they chose one ([DesktopActions.pickWallpaper]). */
+    private val wallpaperFile get() = java.io.File(filesDir, "desktop-wallpaper")
+    private val customWallpaper = MutableStateFlow(false)
+    /** Bumped when the background changes; the desktop's shell sends it again. */
+    private val wallpaperVersion = MutableStateFlow(0)
+
+    private fun wallpaperChanged() {
+        customWallpaper.value = wallpaperFile.isFile
+        wallpaperVersion.value++
+    }
+
+    private val pickWallpaper = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        uri ?: return@registerForActivityResult
+        lifecycleScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val tmp = java.io.File(filesDir, "desktop-wallpaper.tmp")
+                    contentResolver.openInputStream(uri)!!.use { input -> tmp.outputStream().use { input.copyTo(it) } }
+                    // Only a picture Android can read takes the old one's place.
+                    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    android.graphics.BitmapFactory.decodeFile(tmp.path, bounds)
+                    bounds.outWidth > 0 && tmp.renameTo(wallpaperFile)
+                }.getOrDefault(false)
+            }
+            if (ok) wallpaperChanged()
+            else Toast.makeText(this@X11Window, "Couldn't use that picture", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** The user's picture, read at about the size it's shown at; null when there's none. */
+    private fun loadWallpaper(width: Int, height: Int): Bitmap? {
+        val file = wallpaperFile.takeIf { it.isFile } ?: return null
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= width && bounds.outHeight / (sample * 2) >= height) sample *= 2
+        return runCatching {
+            android.graphics.BitmapFactory.decodeFile(file.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+        }.getOrNull()
+    }
+
+    /** The desktop's shell over the X view, for taps from the X screen's pointer to reach its dock. */
+    private var shell: android.view.View? = null
+
+    /**
+     * A hardware keyboard's Super key, as on a desktop: alone, the Start menu; with the arrows,
+     * snapping (left, right), maximizing (up) and minimizing (down) the focused window; with D,
+     * the desktop; with Tab, every window. It stays out of Linux's way otherwise.
+     */
+    private var superAlone = false
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (isDesktop && desktopKey(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun desktopKey(e: KeyEvent): Boolean {
+        if (e.keyCode == KeyEvent.KEYCODE_META_LEFT || e.keyCode == KeyEvent.KEYCODE_META_RIGHT) {
+            if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0) superAlone = true
+            else if (e.action == KeyEvent.ACTION_UP && superAlone) {
+                superAlone = false
+                desktopActions.shortcuts.tryEmit(DesktopShortcut.START)
+            }
+            return true
+        }
+        if (!e.isMetaPressed) return false
+        superAlone = false
+        if (e.action != KeyEvent.ACTION_DOWN) return true
+        val windows = desktopActions.session.value?.windows ?: return true
+        val active = windows.active.takeIf { a -> windows.main.any { it.id == a } }
+        when (e.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> active?.let { desktopActions.snap(it, left = true) }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> active?.let { desktopActions.snap(it, left = false) }
+            KeyEvent.KEYCODE_DPAD_UP -> active?.let(desktopActions::toggleMaximize)
+            KeyEvent.KEYCODE_DPAD_DOWN -> active?.let(desktopActions::minimize)
+            KeyEvent.KEYCODE_D -> desktopActions.shortcuts.tryEmit(DesktopShortcut.SHOW_DESKTOP)
+            KeyEvent.KEYCODE_TAB -> desktopActions.shortcuts.tryEmit(DesktopShortcut.OVERVIEW)
+            else -> return false
+        }
+        return true
+    }
+
+    /** A tap on a Linux notification, or one of its buttons: the app hears which. */
+    private fun takeNotificationAction(intent: Intent?) {
+        val action = intent?.getStringExtra(LinuxNotifier.ACTION_EXTRA) ?: return
+        val id = intent.getIntExtra(LinuxNotifier.ID_EXTRA, -1)
+        intent.removeExtra(LinuxNotifier.ACTION_EXTRA)
+        val session = sessionTag?.let { container.sessions.forWindowTag(it) } ?: return
+        if (id >= 0) container.sessions.notificationAction(session.session.id, id, action)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        takeNotificationAction(intent)
     }
 
     /** What the floating button can do to this window and its app. */
@@ -600,6 +774,9 @@ class X11Window : MainActivity.MainActivityTagged() {
 private const val TAP_WINDOW_MS = 1500L
 private const val DESKTOP_PREFS = "desktop"
 private const val KEY_PINS = "dock_pins"
+private const val KEY_RECENT = "recent_apps"
+private const val KEY_LAST_OPEN = "last_open"
+private const val RECENT_COUNT = 6
 
 /** A soft gradient for a desktop's background, where the phone's wallpaper can't be read. */
 private fun gradientWallpaper(top: Int, bottom: Int): Bitmap =
