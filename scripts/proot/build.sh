@@ -52,8 +52,15 @@ fetch() { # url sha256 dest-dir
   fi
 }
 
+# Unpacked afresh every time, so patches/ always applies to the release as published.
+rm -rf "$WORK/src/proot"
 fetch "https://github.com/termux/proot/archive/refs/tags/v$PROOT_VERSION.tar.gz" "$PROOT_SHA256" "$WORK/src/proot"
 fetch "https://www.samba.org/ftp/talloc/talloc-$TALLOC_VERSION.tar.gz" "$TALLOC_SHA256" "$WORK/src/talloc"
+# Our fixes to PRoot, in order; each says what it fixes.
+for p in "$HERE"/patches/*.patch; do
+  [ -e "$p" ] || continue
+  patch -p1 --quiet -d "$WORK/src/proot" < "$p"
+done
 P="$WORK/src/proot/src"
 T="$WORK/src/talloc"
 

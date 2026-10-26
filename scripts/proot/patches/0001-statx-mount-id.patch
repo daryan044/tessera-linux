@@ -1,0 +1,52 @@
+statx: report a mount id on kernels that have none (before 5.8)
+
+Flatpak (libglnx glnx_chase) refuses statx() results without
+STATX_MNT_ID: "statx didn't return all required fields". Fill it from
+the device number, which tells filesystems apart as well.
+
+--- a/src/tracee/statx.c	2026-10-26 12:09:29.160544000 +0300
++++ b/src/tracee/statx.c	2026-10-26 12:09:47.637054000 +0300
+@@ -4,6 +4,13 @@
+ #include "tracee/statx.h"
+ #include "tracee/mem.h"
+ 
++#ifndef STATX_MNT_ID
++#define STATX_MNT_ID 0x00001000U
++#endif
++#ifndef STATX_MNT_ID_UNIQUE
++#define STATX_MNT_ID_UNIQUE 0x00004000U
++#endif
++
+ int handle_statx_syscall(Tracee *tracee, bool from_sigsys) {
+ 	RegVersion regVersion = from_sigsys ? CURRENT : ORIGINAL;
+ 	struct statx_syscall_state state = {};
+@@ -113,6 +120,8 @@
+ 			state.statx_buf.stx_btime.tv_sec = stat_buf.st_ctim.tv_sec;
+ 			state.statx_buf.stx_btime.tv_nsec = stat_buf.st_ctim.tv_nsec;
+ 		}
++		state.statx_buf.stx_dev_major = major(stat_buf.st_dev);
++		state.statx_buf.stx_dev_minor = minor(stat_buf.st_dev);
+ 		state.statx_buf.stx_rdev_major = major(stat_buf.st_rdev);
+ 		state.statx_buf.stx_rdev_minor = minor(stat_buf.st_rdev);
+ 		state.updated_stats = true;
+@@ -123,6 +132,20 @@
+ 		}
+ 	}
+ 
++	/* Kernels before 5.8 report no mount id, and stat() above has none
++	 * to give.  Flatpak (libglnx's glnx_chase) refuses a statx() result
++	 * without one, "statx didn't return all required fields", so no
++	 * Flathub app installed on those phones.  It only compares mount
++	 * ids, to tell when a path crosses into another mount, and the
++	 * device number tells filesystems apart just as well.  */
++	if ((mask & (STATX_MNT_ID | STATX_MNT_ID_UNIQUE)) != 0
++	    && (state.statx_buf.stx_mask & (STATX_MNT_ID | STATX_MNT_ID_UNIQUE)) == 0) {
++		state.statx_buf.stx_mnt_id = ((uint64_t) state.statx_buf.stx_dev_major << 32)
++			| state.statx_buf.stx_dev_minor;
++		state.statx_buf.stx_mask |= STATX_MNT_ID;
++		state.updated_stats = true;
++	}
++
+ 	/* Notify extensions */
+ 	status = notify_extensions(tracee, STATX_SYSCALL, (intptr_t) &state, 0);
+ 	if (status < 0) {
