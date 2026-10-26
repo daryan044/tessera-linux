@@ -19,7 +19,7 @@ Repo: https://github.com/daryan044/tessera-linux.git
 Builds:
   - versionName: 0.2.0
     versionCode: 2
-    commit: 01177ffc923c4033176c617d436f662d553a1ef7
+    commit: 39df86211dfa09105aaf30326ed540f412e3afb2
     subdir: app
     submodules: true
     sudo:
