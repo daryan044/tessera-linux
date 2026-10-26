@@ -3,6 +3,7 @@
 
 // Spawns a process on a fresh pseudo-terminal. Used for terminal sessions and for every
 // container launch (proot or su/chroot), so the child always has a controlling tty.
+#include <android/api-level.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <jni.h>
@@ -43,7 +44,10 @@ static int compare_ints(const void *a, const void *b) {
 // In the child: closes every descriptor above stderr but those in keep (sorted). Otherwise the
 // child holds whatever the app had open, pipes to other children included: a root shell the
 // task manager had finished with never saw its input end, and lived on as root.
-static void close_inherited(const int *keep, int n) {
+// close_range only where Android's app seccomp filter allows it ([fast], Android 14 and later,
+// whose libc has it): on Android 12 the filter killed the child with SIGSYS before it ran
+// anything, and every install and windowed app failed with no output (issue #2).
+static void close_inherited(const int *keep, int n, int fast) {
     unsigned int from = 3;
     for (int i = 0; i <= n; i++) {
         unsigned int to = i < n ? (unsigned int)keep[i] : ~0U;
@@ -51,7 +55,7 @@ static void close_inherited(const int *keep, int n) {
         if (to > from) {
             unsigned int last = to - 1;
 #ifdef __NR_close_range
-            if (syscall(__NR_close_range, from, last, 0) == 0) { from = to + 1; continue; }
+            if (fast && syscall(__NR_close_range, from, last, 0) == 0) { from = to + 1; continue; }
 #endif
             // Kernels before 5.9: one by one, up to the descriptor limit.
             struct rlimit rl;
@@ -105,6 +109,7 @@ Java_com_daryan_tessera_container_Pty_spawn(JNIEnv *env, jclass clazz, jstring j
     int *keep = calloc((size_t)nkeep + 1, sizeof(int));
     if (nkeep) (*env)->GetIntArrayRegion(env, jkeep, 0, nkeep, keep);
     qsort(keep, (size_t)nkeep, sizeof(int), compare_ints);
+    int fast_close = android_get_device_api_level() >= 34;
 
     pid_t pid = fork();
     if (pid == 0) {
@@ -121,7 +126,7 @@ Java_com_daryan_tessera_container_Pty_spawn(JNIEnv *env, jclass clazz, jstring j
         dup2(slave, 1);
         dup2(slave, 2);
         if (slave > 2) close(slave);
-        close_inherited(keep, nkeep);
+        close_inherited(keep, nkeep, fast_close);
         if (cwd && chdir(cwd) != 0) (void)chdir("/");
         execve(path, argv, envp);
         _exit(127);
