@@ -133,6 +133,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var showQueue by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
     var logSession by remember { mutableStateOf<String?>(null) }
+    /** The Sessions title bar's Logs, opened on the newest session. */
+    var showLogs by remember { mutableStateOf(false) }
     var uninstallApp by remember { mutableStateOf<PermissionManifest?>(null) }
     var editingShortcut by remember { mutableStateOf<Shortcut?>(null) }
     var graphicsApp by remember { mutableStateOf<PermissionManifest?>(null) }
@@ -356,6 +358,10 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                         apps.firstOrNull { it.desktop }?.let { desktop ->
                             IconButton(onClick = { openApp = desktop }) { Icon(LauncherIcons.Desktop, desktop.name) }
                         }
+                    }
+                    // What sessions printed, moved off their cards.
+                    if (destination == Destination.Sessions) {
+                        IconButton(onClick = { showLogs = true }) { Icon(LauncherIcons.Terminal, "Logs") }
                     }
                     if (destination == Destination.Store) {
                         val active = queue.count { it.active }
@@ -656,8 +662,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         )
     }
 
-    sessions.firstOrNull { it.session.id == logSession }?.let { s ->
-        SessionLogSheet(s, onDismiss = { logSession = null })
+    if (showLogs || logSession != null) {
+        SessionLogSheet(sessions, initial = logSession, onDismiss = { logSession = null; showLogs = false })
     }
 
     AnimatedVisibility(

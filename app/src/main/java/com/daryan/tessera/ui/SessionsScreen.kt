@@ -7,6 +7,7 @@ package com.daryan.tessera.ui
 
 import com.daryan.tessera.container.GuestProcess
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,12 +35,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.daryan.tessera.container.RunningSession
+
+/** Lines a log shows before it is opened. */
+private const val PREVIEW_LINES = 8
 
 private val ANSI = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]|\u001B[()][0-9A-B]|\r")
 
@@ -150,33 +157,28 @@ private fun SessionCard(
                     }
                 }
             }
+            // What it uses; what it printed is under Logs in the title bar.
             if (s.running && !processes.isNullOrEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                SessionMeters(processes, gpu = s.session.gpu)
                 Spacer(Modifier.height(8.dp))
-                SessionLoad(processes, onEndProcess)
+                SessionLoad(processes, onEndProcess, totals = false)
             }
-            Spacer(Modifier.height(12.dp))
-            val text = s.preview().replace(ANSI, "").trimEnd()
-            Text(
-                text.ifEmpty { "Waiting for output" },
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(MaterialTheme.shapes.medium)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                    .padding(12.dp),
-            )
         }
     }
 }
 
-/** Everything a session printed, for apps that stopped: selectable, with Copy. */
+/**
+ * What sessions printed, from the title bar's Logs or an app that stopped: one at a time,
+ * picked from chips when there are several, selectable, with Copy. Opens on [initial], else
+ * the newest.
+ */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun SessionLogSheet(s: RunningSession, onDismiss: () -> Unit) {
+fun SessionLogSheet(sessions: List<RunningSession>, initial: String?, onDismiss: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val text = s.output.replace(ANSI, "").trim().ifEmpty { "${s.app.name} printed nothing." }
+    var picked by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(initial) }
+    val s = sessions.firstOrNull { it.session.id == picked } ?: sessions.lastOrNull()
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = androidx.compose.material3.rememberBottomSheetState(
@@ -184,7 +186,30 @@ fun SessionLogSheet(s: RunningSession, onDismiss: () -> Unit) {
             enabledValues = setOf(androidx.compose.material3.SheetValue.Hidden, androidx.compose.material3.SheetValue.Expanded),
         ),
     ) {
+        if (s == null) {
+            Text(
+                "Nothing has run yet. Apps' output shows here while they run and after they stop.",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp),
+            )
+            return@ModalBottomSheet
+        }
+        val text = s.log.replace(ANSI, "").trim().ifEmpty { "${s.app.name} printed nothing." }
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            if (sessions.size > 1) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(bottom = 12.dp),
+                ) {
+                    sessions.asReversed().forEach { o ->
+                        androidx.compose.material3.FilterChip(
+                            selected = o.session.id == s.session.id,
+                            onClick = { picked = o.session.id },
+                            label = { Text(o.app.name) },
+                        )
+                    }
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(s.app.name, style = MaterialTheme.typography.headlineSmall)
@@ -196,19 +221,37 @@ fun SessionLogSheet(s: RunningSession, onDismiss: () -> Unit) {
                 }) { Text("Copy") }
             }
             Spacer(Modifier.height(12.dp))
-            androidx.compose.foundation.text.selection.SelectionContainer {
+            // The last lines first; a tap opens all of it, selectable (Copy takes all either way).
+            val lines = text.lines()
+            var expanded by androidx.compose.runtime.saveable.rememberSaveable(s.session.id) { androidx.compose.runtime.mutableStateOf(false) }
+            val box = Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.medium)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            if (expanded || lines.size <= PREVIEW_LINES) {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(
+                        text,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = box
+                            .heightIn(max = 480.dp)
+                            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                            .padding(12.dp),
+                    )
+                }
+            } else {
                 Text(
-                    text,
+                    lines.takeLast(PREVIEW_LINES).joinToString("\n"),
                     fontFamily = FontFamily.Monospace,
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 480.dp)
-                        .clip(MaterialTheme.shapes.medium)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                        .verticalScroll(androidx.compose.foundation.rememberScrollState())
-                        .padding(12.dp),
+                    modifier = box.clickable { expanded = true }.padding(12.dp),
                 )
+            }
+            if (lines.size > PREVIEW_LINES) {
+                androidx.compose.material3.TextButton(onClick = { expanded = !expanded }) {
+                    Text(if (expanded) "Show less" else "Show all ${lines.size} lines")
+                }
             }
         }
     }

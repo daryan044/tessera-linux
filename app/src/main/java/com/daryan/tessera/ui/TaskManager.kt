@@ -65,8 +65,27 @@ data class Load(val cpu: Float, val memory: Long, val count: Int) {
 }
 
 /**
+ * How busy the phone's GPU is, 0 to 1, sampled every second; null where it can't be read.
+ * Adreno's driver reports busy and total time over its last window (gpubusy), and apps may
+ * read that, but not what each process used: this is the whole phone's GPU, Android included.
+ */
+@Composable
+fun gpuBusy(): Float? = androidx.compose.runtime.produceState<Float?>(null) {
+    val file = java.io.File("/sys/class/kgsl/kgsl-3d0/gpubusy")
+    while (true) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val (busy, total) = file.readText().trim().split(Regex("\\s+")).map { it.toLong() }
+                if (total > 0) (busy.toFloat() / total).coerceIn(0f, 1f) else 0f
+            }.getOrNull()
+        } ?: return@produceState
+        kotlinx.coroutines.delay(1000)
+    }
+}.value
+
+/**
  * The top of the Sessions page: what all of Linux is using right now, against the phone's
- * memory, and Close all.
+ * memory, how busy the GPU is, and Close all.
  */
 @Composable
 fun TaskSummary(processes: List<GuestProcess>?, running: Int, onCloseAll: () -> Unit, modifier: Modifier = Modifier) {
@@ -77,6 +96,7 @@ fun TaskSummary(processes: List<GuestProcess>?, running: Int, onCloseAll: () -> 
     }
     val cores = remember { Runtime.getRuntime().availableProcessors() }
     val load = processes?.let(Load::of)
+    val gpu = gpuBusy()
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -107,12 +127,17 @@ fun TaskSummary(processes: List<GuestProcess>?, running: Int, onCloseAll: () -> 
                 Spacer(Modifier.height(12.dp))
                 Meter("Memory", "${Formatter.formatShortFileSize(context, load.memory)} of ${Formatter.formatShortFileSize(context, total)}", memShare)
             }
+            if (gpu != null) {
+                Spacer(Modifier.height(12.dp))
+                val gpuShare by animateFloatAsState(gpu, motion.defaultEffectsSpec(), label = "gpu")
+                Meter("GPU", "${"%.0f".format(gpu * 100)}% busy · the whole phone", gpuShare)
+            }
         }
     }
 }
 
 @Composable
-private fun Meter(label: String, value: String, share: Float) {
+fun Meter(label: String, value: String, share: Float) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(72.dp))
         Text(value, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -122,11 +147,41 @@ private fun Meter(label: String, value: String, share: Float) {
 }
 
 /**
- * One session's share, under its card: a line of totals that opens into its processes, each
- * with End task. Heaviest first.
+ * One session's CPU against every core and memory against the phone's, as meters, at the top
+ * of its card. Its GPU use can't be told apart from the rest of the phone's (see [gpuBusy]), so
+ * [gpu] only says whether it draws with the GPU.
  */
 @Composable
-fun SessionLoad(processes: List<GuestProcess>, onEndProcess: (GuestProcess) -> Unit) {
+fun SessionMeters(processes: List<GuestProcess>, gpu: Boolean) {
+    val context = LocalContext.current
+    val motion = MaterialTheme.motionScheme
+    val total = remember {
+        ActivityManager.MemoryInfo().also { context.getSystemService(ActivityManager::class.java).getMemoryInfo(it) }.totalMem
+    }
+    val cores = remember { Runtime.getRuntime().availableProcessors() }
+    val load = Load.of(processes)
+    val cpuShare by animateFloatAsState((load.cpu / (cores * 100f)).coerceIn(0f, 1f), motion.defaultEffectsSpec(), label = "cpu")
+    val memShare by animateFloatAsState(if (total > 0) (load.memory.toFloat() / total).coerceIn(0f, 1f) else 0f, motion.defaultEffectsSpec(), label = "mem")
+    Meter("CPU", "${"%.0f".format(load.cpu)}% of one core · $cores cores", cpuShare)
+    Spacer(Modifier.height(12.dp))
+    Meter("RAM", "${Formatter.formatShortFileSize(context, load.memory)} of ${Formatter.formatShortFileSize(context, total)}", memShare)
+    if (gpu) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Draws with the GPU",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer).padding(horizontal = 8.dp, vertical = 2.dp),
+        )
+    }
+}
+
+/**
+ * One session's share: a line of totals that opens into its processes, each with End task.
+ * Heaviest first. Without [totals] (a card that shows [SessionMeters]) the line only counts them.
+ */
+@Composable
+fun SessionLoad(processes: List<GuestProcess>, onEndProcess: (GuestProcess) -> Unit, totals: Boolean = true) {
     val context = LocalContext.current
     val motion = MaterialTheme.motionScheme
     var open by rememberSaveable { mutableStateOf(false) }
@@ -142,9 +197,17 @@ fun SessionLoad(processes: List<GuestProcess>, onEndProcess: (GuestProcess) -> U
                 .clickable { open = !open }
                 .padding(vertical = 6.dp),
         ) {
-            Stat("CPU", "${"%.0f".format(load.cpu)}%")
-            Stat("Memory", Formatter.formatShortFileSize(context, load.memory))
-            Stat("Processes", "${load.count}")
+            if (totals) {
+                Stat("CPU", "${"%.0f".format(load.cpu)}%")
+                Stat("Memory", Formatter.formatShortFileSize(context, load.memory))
+                Stat("Processes", "${load.count}")
+            } else {
+                Text(
+                    "${load.count} ${if (load.count == 1) "process" else "processes"}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Spacer(Modifier.weight(1f))
             Icon(Icons.Rounded.KeyboardArrowDown, if (open) "Hide processes" else "Show processes", Modifier.rotate(turn))
         }

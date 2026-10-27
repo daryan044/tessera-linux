@@ -36,7 +36,7 @@ data class RunningSession(
     val exitCode: Int? = null,
     /** Why it ended, when the user ended it; null while running or when the app exited itself. */
     val endedBy: EndReason? = null,
-    /** Bumped on every screen change so card previews recompose. */
+    /** Bumped on every screen change so what shows a terminal's text (Logs) recomposes. */
     val revision: Int = 0,
     /** A GUI app's X windows, as its window watcher last reported them. */
     val windows: XWindows = XWindows(),
@@ -54,10 +54,8 @@ data class RunningSession(
             else -> "Exited ($exitCode)"
         }
 
-    /** Last lines currently on screen, for the session card. */
-    fun preview(lines: Int = 8): String = terminal?.emulator?.screen?.transcriptText
-        ?.lines()?.dropLastWhile { it.isBlank() }?.takeLast(lines)?.joinToString("\n")
-        ?: output
+    /** What it printed, for Logs: a terminal app's whole transcript, a GUI app's output tail. */
+    val log: String get() = terminal?.emulator?.screen?.transcriptText ?: output
 }
 
 enum class EndReason(val label: String) {
