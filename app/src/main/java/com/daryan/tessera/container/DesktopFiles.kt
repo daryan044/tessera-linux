@@ -381,6 +381,11 @@ helper=${'$'}1; shift
 # What a Flathub app opened in the desktop takes from it (its bus, its theme), as FLATPAK_HOLD
 # publishes it for an app's own session.
 env > /tmp/.X11-unix/$FLATPAK_ENV_FILE.tmp && mv /tmp/.X11-unix/$FLATPAK_ENV_FILE.tmp /tmp/.X11-unix/$FLATPAK_ENV_FILE
+# Folders open in Thunar unless the user chose otherwise: Firefox claims them too, and with no
+# choice made xdg-open (and every app's "open folder") picked it.
+if command -v thunar >/dev/null 2>&1 && ! grep -qs '^inode/directory=' "${'$'}HOME/.config/mimeapps.list"; then
+  xdg-mime default thunar.desktop inode/directory 2>/dev/null
+fi
 python3 -c "${'$'}helper" /tmp/.X11-unix & dh=${'$'}!
 "${'$'}@"; status=${'$'}?
 kill ${'$'}dh 2>/dev/null
@@ -900,6 +905,9 @@ def open_item(path):
             if e.get("Terminal", "false").lower() == "true":
                 argv = ["x-terminal-emulator", "-e"] + argv
             return launch(argv)
+    # The desktop's file manager, whatever else claims folders.
+    if os.path.isdir(path) and shutil.which("thunar"):
+        return launch(["thunar", path])
     for opener in (["xdg-open"], ["gio", "open"]):
         if shutil.which(opener[0]):
             return launch(opener + [path])

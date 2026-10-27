@@ -412,7 +412,10 @@ class X11Window : MainActivity.MainActivityTagged() {
             override fun openTerminal(): Boolean = desktop?.launch(listOf("x-terminal-emulator")) ?: false
 
             // The file manager the desktop has, at home; xdg-open finds it.
-            override fun openFiles(): Boolean = desktop?.launch(listOf("sh", "-c", "exec xdg-open \"\$HOME\"")) ?: false
+            // Thunar, the desktop's file manager; whatever opens folders where it isn't installed.
+            override fun openFiles(): Boolean = desktop?.launch(
+                listOf("sh", "-c", "command -v thunar >/dev/null && exec thunar \"\$HOME\"; exec xdg-open \"\$HOME\""),
+            ) ?: false
 
             override fun makeFolder(): Boolean = desktop?.makeFolder("New folder") ?: false
 

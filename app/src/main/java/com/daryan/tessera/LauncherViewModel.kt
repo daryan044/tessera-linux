@@ -32,6 +32,7 @@ import com.daryan.tessera.container.DirectConfigStore
 import com.daryan.tessera.container.BASE_LIBRARIES
 import com.daryan.tessera.container.GUI_HELPER_PACKAGES
 import com.daryan.tessera.container.THEME_COMPANIONS
+import com.daryan.tessera.container.DESKTOP_COMPANIONS
 import com.daryan.tessera.container.ThemePack
 import com.daryan.tessera.container.SuConfigStore
 import com.daryan.tessera.container.Distro
@@ -490,8 +491,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         container.registry.refreshInstalled(store)
         val installed = container.registry.installed.value ?: return
         if ("matchbox-window-manager" !in installed) return
-        // And what lets Qt and LibreOffice, where installed, follow the theme.
-        val companions = THEME_COMPANIONS.filterKeys { it in installed }.values.filterNot { it in installed }
+        // And what lets Qt and LibreOffice, where installed, follow the theme, and a desktop's
+        // file manager.
+        val companions = (THEME_COMPANIONS + DESKTOP_COMPANIONS).filterKeys { it in installed }.values.filterNot { it in installed }
         val missing = GUI_HELPER_PACKAGES.filterNot { it in installed } + companions
         if (missing.isEmpty()) return
         container.queue.enqueue("Sound, keyboard and theme helpers", missing, QueueAction.INSTALL, null, backend) {

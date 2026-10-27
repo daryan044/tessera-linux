@@ -14,7 +14,8 @@
     "xfconf",
     "xterm",
     "xdg-utils",
-    "xdg-user-dirs"
+    "xdg-user-dirs",
+    "thunar"
   ],
   "permissions": {
     "network": true,

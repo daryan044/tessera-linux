@@ -132,6 +132,14 @@ val THEME_COMPANIONS = mapOf(
 )
 
 /**
+ * What a desktop (xfwm4) needs beyond its window manager, for systems whose desktop was installed
+ * before it: Thunar, the file manager its Files button, folder icons and xdg-open open.
+ */
+val DESKTOP_COMPANIONS = mapOf(
+    "xfwm4" to "thunar",
+)
+
+/**
  * What Linux apps expect of a desktop system and the minimal image lacks, queued once a
  * container is missing any: OpenGL, EGL and GLES (glvnd, with Mesa's software drivers for when
  * the GPU driver is off; apps failed on a missing libGL.so.1), GLU, Vulkan's loader, glxinfo,
