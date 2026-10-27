@@ -1,0 +1,345 @@
+diff -ruN a/src/syscall/exit.c b/src/syscall/exit.c
+--- a/src/syscall/exit.c	2026-10-27 13:10:29.735299700 +0300
++++ b/src/syscall/exit.c	2026-10-27 13:14:42.471154400 +0300
+@@ -28,6 +28,10 @@
+ #include <linux/prctl.h> /* PR_GET_AUXV, */
+ #include <string.h>      /* strlen(3), */
+ #include <unistd.h>      /* readlink(2), */
++#include <sys/resource.h> /* prlimit(2), RLIMIT_NOFILE, */
++#include <sys/stat.h>   /* lstat(2), */
++#include <sys/socket.h> /* SOCK_CLOEXEC, */
++#include <fcntl.h>      /* O_CLOEXEC, */
+ 
+ #include "cli/note.h"
+ #include "syscall/syscall.h"
+@@ -36,6 +40,7 @@
+ #include "syscall/chain.h"
+ #include "syscall/heap.h"
+ #include "syscall/rlimit.h"
++#include "syscall/seccomp.h"
+ #include "execve/execve.h"
+ #include "tracee/tracee.h"
+ #include "tracee/reg.h"
+@@ -50,6 +55,46 @@
+ #include "arch.h"
+ 
+ /**
++ * Moves the netlink socket @fd that PRoot emulates (see enter.c) to the
++ * lowest free fd from NETLINK_FD_BASE on, where the seccomp filter
++ * traces recvmsg/sendmsg (see seccomp.c): dup3() and close() are
++ * chained, and socket() returns the new fd.  Returns the fd the tracee
++ * will have, or @fd as it was when it can't be moved.
++ */
++static int relocate_netlink_fd(Tracee *tracee, int fd)
++{
++	char path[64];
++	struct stat st;
++	struct rlimit limit;
++	int target;
++
++	if (fd < 0 || fd >= NETLINK_FD_BASE)
++		return fd;
++
++	/* The tracee's fd table, as the tracer sees it.  */
++	for (target = NETLINK_FD_BASE; target < NETLINK_FD_BASE + 256; target++) {
++		snprintf(path, sizeof(path), "/proc/%d/fd/%d", tracee->pid, target);
++		if (lstat(path, &st) < 0 && errno == ENOENT)
++			break;
++	}
++	if (target == NETLINK_FD_BASE + 256)
++		return fd;
++
++	/* dup3() fails beyond the tracee's limit; keep the fd then.  */
++	if (prlimit(tracee->pid, RLIMIT_NOFILE, NULL, &limit) == 0
++	    && limit.rlim_cur != RLIM_INFINITY && (rlim_t) target >= limit.rlim_cur)
++		return fd;
++
++	if (register_chained_syscall(tracee, PR_dup3, fd, target,
++			(peek_reg(tracee, ORIGINAL, SYSARG_2) & SOCK_CLOEXEC) ? O_CLOEXEC : 0, 0, 0, 0) < 0
++	    || register_chained_syscall(tracee, PR_close, fd, 0, 0, 0, 0, 0) < 0)
++		return fd;
++
++	force_chain_final_result(tracee, target);
++	return target;
++}
++
++/**
+  * Translate the output arguments of the current @tracee's syscall in
+  * the @tracee->pid process area. This function sets the result of
+  * this syscall to @tracee->status if an error occured previously
+@@ -742,7 +787,7 @@
+ 	case PR_socket:
+ 		/* Record the fd we substituted for an AF_NETLINK request.  */
+ 		if (tracee->pending_fake_netlink_socket) {
+-			int fd = (int) peek_reg(tracee, CURRENT, SYSARG_RESULT);
++			int fd = relocate_netlink_fd(tracee, (int) peek_reg(tracee, CURRENT, SYSARG_RESULT));
+ 			if (fd >= 0) {
+ 				int i;
+ 				if (tracee->fake_netlink_fds_count < MAX_FAKE_NETLINK_FDS) {
+@@ -769,7 +814,7 @@
+ 		 * requests sent on it still need the ack emulation when
+ 		 * the tracee thinks it owns a network namespace.  */
+ 		if (tracee->pending_real_netlink_socket) {
+-			int fd = (int) peek_reg(tracee, CURRENT, SYSARG_RESULT);
++			int fd = relocate_netlink_fd(tracee, (int) peek_reg(tracee, CURRENT, SYSARG_RESULT));
+ 			if (fd >= 0) {
+ 				int i;
+ 				if (tracee->netlink_route_fds_count < MAX_NETLINK_ROUTE_FDS) {
+diff -ruN a/src/syscall/seccomp.c b/src/syscall/seccomp.c
+--- a/src/syscall/seccomp.c	2026-10-27 13:10:29.743805800 +0300
++++ b/src/syscall/seccomp.c	2026-10-27 13:14:42.453095100 +0300
+@@ -38,6 +38,9 @@
+ #include <stddef.h>        /* offsetof(3), */
+ #include <stdint.h>        /* uint*_t, UINT*_MAX, */
+ #include <assert.h>        /* assert(3), */
++#include <sys/ioctl.h>     /* _IOW, */
++#include <linux/sockios.h> /* SIOCGIFINDEX, */
++#include <termios.h>       /* TCSETS, TCGETS2, ... */
+ 
+ #include "syscall/seccomp.h"
+ #include "tracee/tracee.h"
+@@ -121,13 +124,98 @@
+ 	return 0;
+ }
+ 
++/* ioctl commands PRoot acts on: see the PR_ioctl cases in enter.c and
++ * exit.c.  Every other ioctl (GPU command submission, terminals, ...) goes
++ * straight to the kernel.  */
++static const uint32_t traced_ioctls[] = {
++	SIOCGIFINDEX,
++#ifdef __ANDROID__
++	TCSETS + 2 /* TCSAFLUSH */, TCGETS2, TCSETS2, TCSETSW2, TCSETSF2,
++#endif
++	_IOW(0x94, 9, int) /* FICLONE */,
++};
++#define NB_TRACED_IOCTLS (sizeof(traced_ioctls) / sizeof(traced_ioctls[0]))
++
++/**
++ * Number of statements add_trace_syscall() or add_narrow_trace_syscall()
++ * emits for @sysnum with @flags.
++ */
++static size_t trace_syscall_length(Sysnum sysnum, word_t flags)
++{
++	if (!(flags & FILTER_NARROW))
++		return LENGTH_TRACE_SYSCALL;
++	switch (sysnum) {
++	case PR_ioctl:
++		/* jne, ld, n * jeq, ret allow, ret trace */
++		return 4 + NB_TRACED_IOCTLS;
++	case PR_recvmsg:
++	case PR_sendmsg:
++		/* jne, ld, jge, ret allow, ret trace */
++		return 5;
++	default:
++		return LENGTH_TRACE_SYSCALL;
++	}
++}
++
++/**
++ * Like add_trace_syscall(), but notifies PRoot only for the argument
++ * values it acts on: ioctl() with one of @traced_ioctls, recvmsg() and
++ * sendmsg() on an emulated netlink socket (fd >= NETLINK_FD_BASE).  Each
++ * of these goes through PRoot thousands of times a second for a browser
++ * or a GPU driver, and the tracer is a single thread every tracee waits
++ * on.
++ */
++static int add_narrow_trace_syscall(struct sock_fprog *program, Sysnum sysnum,
++				word_t syscall, int flag)
++{
++	const size_t arg_offset = sysnum == PR_ioctl
++		? offsetof(struct seccomp_data, args[1])
++		: offsetof(struct seccomp_data, args[0]);
++	const size_t length = trace_syscall_length(sysnum, FILTER_NARROW);
++	struct sock_filter statements[4 + NB_TRACED_IOCTLS + 1];
++	size_t n = 0, i;
++
++	if (syscall > UINT32_MAX || length > sizeof(statements) / sizeof(statements[0]))
++		return -ERANGE;
++
++	/* Not this syscall: skip the whole block, the accumulator still
++	 * holds the syscall number.  */
++	statements[n++] = (struct sock_filter) BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, syscall, 0, length - 1);
++
++	/* The low 32 bits of the argument (little endian).  */
++	statements[n++] = (struct sock_filter) BPF_STMT(BPF_LD + BPF_W + BPF_ABS, arg_offset);
++
++	if (sysnum == PR_ioctl) {
++		for (i = 0; i < NB_TRACED_IOCTLS; i++) {
++			/* Jump to "ret trace", the last statement.  */
++			size_t to_trace = length - 1 - (n + 1);
++			statements[n++] = (struct sock_filter) BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K,
++									traced_ioctls[i], to_trace, 0);
++		}
++	}
++	else
++		statements[n++] = (struct sock_filter) BPF_JUMP(BPF_JMP + BPF_JGE + BPF_K,
++								NETLINK_FD_BASE, 1, 0);
++
++	/* The accumulator was overwritten: decide here, for good.  */
++	statements[n++] = (struct sock_filter) BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW);
++	statements[n++] = (struct sock_filter) BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE + flag);
++
++	if (n != length)
++		return -ERANGE;
++
++	DEBUG_FILTER("FILTER:     trace if syscall == %ld, narrowed\n", syscall);
++
++	return add_statements(program, length, statements);
++}
++
+ /**
+  * Append to @program->filter the statements that allow anything (if
+  * unfiltered).  Note that @nb_traced_syscalls is used to make a
+  * sanity check.  This function returns -errno if an error occurred,
+  * otherwise 0.
+  */
+-static int end_arch_section(struct sock_fprog *program, size_t nb_traced_syscalls)
++static int end_arch_section(struct sock_fprog *program, size_t traced_length)
+ {
+ 	int status;
+ 
+@@ -144,7 +232,7 @@
+ 
+ 	/* Sanity check, see start_arch_section().  */
+ 	if (   talloc_array_length(program->filter) - program->len
+-	    != LENGTH_END_SECTION + nb_traced_syscalls * LENGTH_TRACE_SYSCALL)
++	    != LENGTH_END_SECTION + traced_length)
+ 		return -ERANGE;
+ 
+ 	return 0;
+@@ -156,12 +244,11 @@
+  * sanity check.  This function returns -errno if an error occurred,
+  * otherwise 0.
+  */
+-static int start_arch_section(struct sock_fprog *program, uint32_t arch, size_t nb_traced_syscalls)
++static int start_arch_section(struct sock_fprog *program, uint32_t arch, size_t traced_length)
+ {
+ 	const size_t arch_offset    = offsetof(struct seccomp_data, arch);
+ 	const size_t syscall_offset = offsetof(struct seccomp_data, nr);
+-	const size_t section_length = LENGTH_END_SECTION +
+-					nb_traced_syscalls * LENGTH_TRACE_SYSCALL;
++	const size_t section_length = LENGTH_END_SECTION + traced_length;
+ 	int status;
+ 
+ 	/* Sanity checks.  */
+@@ -191,7 +278,7 @@
+ 	};
+ 
+ 	DEBUG_FILTER("FILTER: if arch == %ld, up to %zdth statement\n",
+-		arch, nb_traced_syscalls);
++		arch, traced_length);
+ 
+ 	status = add_statements(program, LENGTH_START_SECTION, statements);
+ 	if (status < 0)
+@@ -256,7 +343,7 @@
+ 	size_t nb_archs = sizeof(seccomp_archs) / sizeof(SeccompArch);
+ 
+ 	struct sock_fprog program = { .len = 0, .filter = NULL };
+-	size_t nb_traced_syscalls;
++	size_t traced_length;
+ 	size_t i, j, k;
+ 	int status;
+ 
+@@ -268,19 +355,19 @@
+ 	for (i = 0; i < nb_archs; i++) {
+ 		word_t syscall;
+ 
+-		nb_traced_syscalls = 0;
++		traced_length = 0;
+ 
+-		/* Pre-compute the number of traced syscalls for this architecture.  */
++		/* Pre-compute the length of the traced syscalls' statements for this architecture.  */
+ 		for (j = 0; j < seccomp_archs[i].nb_abis; j++) {
+ 			for (k = 0; sysnums[k].value != PR_void; k++) {
+ 				syscall = detranslate_sysnum(seccomp_archs[i].abis[j], sysnums[k].value);
+ 				if (syscall != SYSCALL_AVOIDER)
+-					nb_traced_syscalls++;
++					traced_length += trace_syscall_length(sysnums[k].value, sysnums[k].flags);
+ 			}
+ 		}
+ 
+ 		/* Filter: if handled architecture */
+-		status = start_arch_section(&program, seccomp_archs[i].value, nb_traced_syscalls);
++		status = start_arch_section(&program, seccomp_archs[i].value, traced_length);
+ 		if (status < 0)
+ 			goto end;
+ 
+@@ -292,14 +379,19 @@
+ 					continue;
+ 
+ 				/* Filter: trace if handled syscall */
+-				status = add_trace_syscall(&program, syscall, sysnums[k].flags);
++				if (trace_syscall_length(sysnums[k].value, sysnums[k].flags) != LENGTH_TRACE_SYSCALL)
++					status = add_narrow_trace_syscall(&program, sysnums[k].value, syscall,
++									sysnums[k].flags & ~FILTER_NARROW);
++				else
++					status = add_trace_syscall(&program, syscall,
++								sysnums[k].flags & ~FILTER_NARROW);
+ 				if (status < 0)
+ 					goto end;
+ 			}
+ 		}
+ 
+ 		/* Filter: allow untraced syscalls for this architecture */
+-		status = end_arch_section(&program, nb_traced_syscalls);
++		status = end_arch_section(&program, traced_length);
+ 		if (status < 0)
+ 			goto end;
+ 	}
+@@ -346,8 +438,8 @@
+ 	{ PR_connect,		0 },
+ 	{ PR_creat,		0 },
+ 	{ PR_recvfrom,		0 },
+-	{ PR_recvmsg,		0 },
+-	{ PR_sendmsg,		0 },
++	{ PR_recvmsg,		FILTER_NARROW },
++	{ PR_sendmsg,		FILTER_NARROW },
+ 	{ PR_sendto,		0 },
+ 	{ PR_socket,		FILTER_SYSEXIT },
+ 	{ PR_execve,		FILTER_SYSEXIT },
+@@ -365,7 +457,7 @@
+ 	{ PR_getxattr,		0 },
+ 	{ PR_inotify_add_watch,	0 },
+ #ifdef __ANDROID__
+-	{ PR_ioctl,		FILTER_SYSEXIT },
++	{ PR_ioctl,		FILTER_SYSEXIT | FILTER_NARROW },
+ #endif
+ 	{ PR_lchown,		0 },
+ 	{ PR_lchown32,		0 },
+@@ -472,10 +564,15 @@
+ 			/* The last item is the terminator.  */
+ 			(*sysnums)[j + 1].value = PR_void;
+ 		}
+-		else
++		else {
+ 			/* The sysnum is already filtered, merge the
+-			 * flags.  */
+-			(*sysnums)[j].flags |= new_sysnums[i].flags;
++			 * flags.  Narrowed tracing stays only if both
++			 * lists ask for it: an extension naming the
++			 * syscall wants all of its calls.  */
++			word_t narrow = (*sysnums)[j].flags & new_sysnums[i].flags & FILTER_NARROW;
++			(*sysnums)[j].flags = (((*sysnums)[j].flags | new_sysnums[i].flags)
++					       & ~FILTER_NARROW) | narrow;
++		}
+ 	}
+ 
+ 	return 0;
+diff -ruN a/src/syscall/seccomp.h b/src/syscall/seccomp.h
+--- a/src/syscall/seccomp.h	2026-10-27 13:10:29.745360800 +0300
++++ b/src/syscall/seccomp.h	2026-10-27 13:14:42.344386200 +0300
+@@ -43,6 +43,14 @@
+ 
+ #define FILTER_SYSEXIT  0x1
+ 
++/* Traced only for the argument values PRoot acts on (see add_narrow_trace_syscall), when no
++ * extension wants the syscall as a whole. Not part of the seccomp return data.  */
++#define FILTER_NARROW   0x100
++
++/* Netlink sockets PRoot emulates are moved to an fd from here on (see exit.c), so that
++ * recvmsg/sendmsg on every other socket need not be traced.  */
++#define NETLINK_FD_BASE 900
++
+ extern int enable_syscall_filtering(const Tracee *tracee);
+ extern int filtered_sysnum_flags(const Tracee *tracee, Sysnum sysnum);
+ 
