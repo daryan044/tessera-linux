@@ -1,6 +1,6 @@
 diff -ruN a/src/syscall/exit.c b/src/syscall/exit.c
 --- a/src/syscall/exit.c	2026-10-27 13:10:29.735299700 +0300
-+++ b/src/syscall/exit.c	2026-10-27 13:14:42.471154400 +0300
++++ b/src/syscall/exit.c	2026-10-27 13:56:35.576016800 +0300
 @@ -28,6 +28,10 @@
  #include <linux/prctl.h> /* PR_GET_AUXV, */
  #include <string.h>      /* strlen(3), */
@@ -67,16 +67,24 @@ diff -ruN a/src/syscall/exit.c b/src/syscall/exit.c
   * Translate the output arguments of the current @tracee's syscall in
   * the @tracee->pid process area. This function sets the result of
   * this syscall to @tracee->status if an error occured previously
-@@ -742,7 +787,7 @@
+@@ -742,7 +787,15 @@
  	case PR_socket:
  		/* Record the fd we substituted for an AF_NETLINK request.  */
  		if (tracee->pending_fake_netlink_socket) {
 -			int fd = (int) peek_reg(tracee, CURRENT, SYSARG_RESULT);
 +			int fd = relocate_netlink_fd(tracee, (int) peek_reg(tracee, CURRENT, SYSARG_RESULT));
++			/* Not moved: recvmsg on it wouldn't reach PRoot,
++			 * and the tracee would wait forever on a socket
++			 * nothing writes to.  No netlink is better.  */
++			if (fd >= 0 && fd < NETLINK_FD_BASE) {
++				if (register_chained_syscall(tracee, PR_close, fd, 0, 0, 0, 0, 0) == 0)
++					force_chain_final_result(tracee, -EAFNOSUPPORT);
++				fd = -1;
++			}
  			if (fd >= 0) {
  				int i;
  				if (tracee->fake_netlink_fds_count < MAX_FAKE_NETLINK_FDS) {
-@@ -769,7 +814,7 @@
+@@ -769,7 +822,7 @@
  		 * requests sent on it still need the ack emulation when
  		 * the tracee thinks it owns a network namespace.  */
  		if (tracee->pending_real_netlink_socket) {
@@ -87,7 +95,7 @@ diff -ruN a/src/syscall/exit.c b/src/syscall/exit.c
  				if (tracee->netlink_route_fds_count < MAX_NETLINK_ROUTE_FDS) {
 diff -ruN a/src/syscall/seccomp.c b/src/syscall/seccomp.c
 --- a/src/syscall/seccomp.c	2026-10-27 13:10:29.743805800 +0300
-+++ b/src/syscall/seccomp.c	2026-10-27 13:14:42.453095100 +0300
++++ b/src/syscall/seccomp.c	2026-10-27 13:56:35.558882400 +0300
 @@ -38,6 +38,9 @@
  #include <stddef.h>        /* offsetof(3), */
  #include <stdint.h>        /* uint*_t, UINT*_MAX, */
@@ -327,7 +335,7 @@ diff -ruN a/src/syscall/seccomp.c b/src/syscall/seccomp.c
  	return 0;
 diff -ruN a/src/syscall/seccomp.h b/src/syscall/seccomp.h
 --- a/src/syscall/seccomp.h	2026-10-27 13:10:29.745360800 +0300
-+++ b/src/syscall/seccomp.h	2026-10-27 13:14:42.344386200 +0300
++++ b/src/syscall/seccomp.h	2026-10-27 13:56:35.450221000 +0300
 @@ -43,6 +43,14 @@
  
  #define FILTER_SYSEXIT  0x1
