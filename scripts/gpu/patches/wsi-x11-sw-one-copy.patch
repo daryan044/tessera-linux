@@ -1,26 +1,81 @@
---- a/src/vulkan/wsi/wsi_common_x11.c	2026-10-27 12:18:17.495090264 +0300
-+++ b/src/vulkan/wsi/wsi_common_x11.c	2026-10-27 12:18:17.591275542 +0300
-@@ -37,6 +37,7 @@
+--- a/src/vulkan/wsi/wsi_common_x11.c	2026-10-27 12:34:17.211721772 +0300
++++ b/src/vulkan/wsi/wsi_common_x11.c	2026-10-27 12:34:17.280922461 +0300
+@@ -37,6 +37,8 @@
  #include "util/macros.h"
  #include <stdatomic.h>
  #include <stdlib.h>
++#include <sys/mman.h>
 +#include <limits.h>
  #include <stdio.h>
  #include <unistd.h>
  #include <errno.h>
-@@ -1249,6 +1250,8 @@
+@@ -1249,6 +1251,14 @@
     xcb_connection_t *                           conn;
     xcb_window_t                                 window;
     xcb_gc_t                                     gc;
-+   /* Tessera: where software presents are put together before one copy to the window. */
++   /* Tessera: software presents. sw_shm_* is a memfd shared with the server (MIT-SHM 1.2),
++    * sw_back a pixmap frames are put together in where the server can't take that.
++    */
++   int                                          sw_shm_state;
++   xcb_shm_seg_t                                sw_shmseg;
++   uint8_t *                                    sw_shm_map;
++   size_t                                       sw_shm_size;
 +   xcb_pixmap_t                                 sw_back;
     uint32_t                                     depth;
     VkExtent2D                                   extent;
  
-@@ -1840,8 +1843,34 @@
+@@ -1840,8 +1850,84 @@
     return x11_swapchain_result(chain, VK_SUCCESS);
  }
  #endif
++/* Tessera: shares a memfd with the server for the frames of chain (MIT-SHM 1.2, which takes
++ * a file descriptor: Android has no System V shared memory). Returns whether it's usable.
++ */
++static bool
++x11_sw_shm_init(struct x11_swapchain *chain, size_t size)
++{
++   if (chain->sw_shm_state)
++      return chain->sw_shm_state > 0;
++   chain->sw_shm_state = -1;
++
++   xcb_shm_query_version_reply_t *ver =
++      xcb_shm_query_version_reply(chain->conn, xcb_shm_query_version(chain->conn), NULL);
++   bool fd_passing = ver && (ver->major_version > 1 ||
++                             (ver->major_version == 1 && ver->minor_version >= 2));
++   free(ver);
++   if (!fd_passing)
++      return false;
++
++   int fd = memfd_create("mesa-wsi-sw", MFD_CLOEXEC);
++   if (fd < 0)
++      return false;
++   if (ftruncate(fd, size) < 0) {
++      close(fd);
++      return false;
++   }
++   uint8_t *map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
++   if (map == MAP_FAILED) {
++      close(fd);
++      return false;
++   }
++
++   xcb_shm_seg_t seg = xcb_generate_id(chain->conn);
++   /* xcb sends the fd and closes it. */
++   xcb_generic_error_t *err =
++      xcb_request_check(chain->conn, xcb_shm_attach_fd_checked(chain->conn, seg, fd, true));
++   if (err) {
++      free(err);
++      munmap(map, size);
++      return false;
++   }
++
++   chain->sw_shmseg = seg;
++   chain->sw_shm_map = map;
++   chain->sw_shm_size = size;
++   chain->sw_shm_state = 1;
++   return true;
++}
++
 +/* Tessera: puts rows [y, y + height) of a software frame into dst, full width, in as few
 + * requests as the server's size limit allows.
 + */
@@ -46,17 +101,23 @@
 - * Send image to X server unaccelerated (software drivers).
 + * Send image to X server unaccelerated (software drawing)
 + *
-+ * Tessera: a frame used to go to the window in several requests (one per row of each damaged
-+ * rectangle, or two for a frame over the request size limit), and the X server could show the
-+ * window between them: a horizontal tear. Now the rows go to a pixmap first, then one CopyArea
-+ * puts the frame on the window at once.
++ * Tessera: a frame used to go to the window in several PutImage requests (one per row of
++ * each damaged rectangle, or two for a frame over the request size limit), and the X server
++ * could show the window between them: a horizontal tear. Its pixels also crossed the socket,
++ * to be copied again by the server. Now the frame goes to memory shared with the server and
++ * one ShmPutImage puts it on the window; without MIT-SHM, the rows go to a pixmap and one
++ * CopyArea puts the frame on the window. Either way it lands at once.
   */
  static VkResult
  x11_present_to_x11_sw(struct x11_swapchain *chain, uint32_t image_index)
-@@ -1853,58 +1882,41 @@
-     * In this _sw() mode we're expecting network round-trip delay, not just UNIX socket delay. */
-    xcb_get_geometry_cookie_t geom_cookie = xcb_get_geometry(chain->conn, chain->window);
+@@ -1849,64 +1935,68 @@
+    assert(!chain->base.image_info.explicit_sync);
+    struct x11_image *image = &chain->images[image_index];
  
+-   /* Begin querying this before submitting the frame for improved async performance.
+-    * In this _sw() mode we're expecting network round-trip delay, not just UNIX socket delay. */
+-   xcb_get_geometry_cookie_t geom_cookie = xcb_get_geometry(chain->conn, chain->window);
+-
 -   xcb_void_cookie_t cookie;
 -   void *myptr = image->base.cpu_map;
 -   size_t hdr_len = sizeof(xcb_put_image_request_t);
@@ -65,15 +126,6 @@
 -   size_t size = (hdr_len + stride_b * chain->extent.height) >> 2;
     uint64_t max_req_len = xcb_get_maximum_request_length(chain->conn);
  
-+   if (!chain->sw_back) {
-+      chain->sw_back = xcb_generate_id(chain->conn);
-+      xcb_void_cookie_t cookie =
-+         xcb_create_pixmap(chain->conn, chain->depth, chain->sw_back, chain->window,
-+                           chain->extent.width, chain->extent.height);
-+      xcb_discard_reply(chain->conn, cookie.sequence);
-+   }
-+   xcb_drawable_t dst = chain->sw_back;
-+
 +   int x0 = 0, y0 = 0;
 +   int x1 = chain->extent.width, y1 = chain->extent.height;
     if (image->rectangle_count > 0) {
@@ -94,13 +146,7 @@
 -            xcb_discard_reply(chain->conn, cookie.sequence);
 -            data += stride_b;
 -         }
-+         xcb_rectangle_t rect = image->rects[i];
-+         x11_put_rows_sw(chain, dst, myptr, stride_b, rect.y, rect.height, max_req_len);
-+         x0 = MIN2(x0, rect.x);
-+         y0 = MIN2(y0, rect.y);
-+         x1 = MAX2(x1, rect.x + rect.width);
-+         y1 = MAX2(y1, rect.y + rect.height);
-       }
+-      }
 -   } else if (size < max_req_len) {
 -      cookie = xcb_put_image(chain->conn, XCB_IMAGE_FORMAT_Z_PIXMAP,
 -                             chain->window,
@@ -110,7 +156,31 @@
 -                             0,0,0,chain->depth,
 -                             image->base.row_pitches[0] * chain->extent.height,
 -                             image->base.cpu_map);
--      xcb_discard_reply(chain->conn, cookie.sequence);
++         xcb_rectangle_t rect = image->rects[i];
++         x0 = MIN2(x0, rect.x);
++         y0 = MIN2(y0, rect.y);
++         x1 = MAX2(x1, rect.x + rect.width);
++         y1 = MAX2(y1, rect.y + rect.height);
++      }
++      x0 = MAX2(x0, 0);
++      y0 = MAX2(y0, 0);
++      x1 = MIN2(x1, (int)chain->extent.width);
++      y1 = MIN2(y1, (int)chain->extent.height);
++   }
++
++   size_t frame_size = (size_t)stride_b * chain->extent.height;
++   if (x1 <= x0 || y1 <= y0) {
++      /* Nothing changed. */
++   } else if (x11_sw_shm_init(chain, frame_size) && chain->sw_shm_size >= frame_size) {
++      memcpy(chain->sw_shm_map + (size_t)y0 * stride_b, myptr + (size_t)y0 * stride_b,
++             (size_t)(y1 - y0) * stride_b);
++      xcb_void_cookie_t cookie =
++         xcb_shm_put_image(chain->conn, chain->window, chain->gc,
++                           stride_b / 4, chain->extent.height,
++                           x0, y0, x1 - x0, y1 - y0, x0, y0,
++                           chain->depth, XCB_IMAGE_FORMAT_Z_PIXMAP, 0,
++                           chain->sw_shmseg, 0);
+       xcb_discard_reply(chain->conn, cookie.sequence);
     } else {
 -      int num_lines = ((max_req_len << 2) - hdr_len) / stride_b;
 -      int y_start = 0;
@@ -125,27 +195,47 @@
 -                                0,y_start,0,chain->depth,
 -                                this_lines * stride_b,
 -                                (const uint8_t *)myptr + (y_start * stride_b));
--         xcb_discard_reply(chain->conn, cookie.sequence);
++      if (!chain->sw_back) {
++         chain->sw_back = xcb_generate_id(chain->conn);
++         xcb_void_cookie_t cookie =
++            xcb_create_pixmap(chain->conn, chain->depth, chain->sw_back, chain->window,
++                              chain->extent.width, chain->extent.height);
+          xcb_discard_reply(chain->conn, cookie.sequence);
 -         y_start += this_lines;
 -         y_todo -= this_lines;
--      }
-+      x11_put_rows_sw(chain, dst, myptr, stride_b, 0, chain->extent.height, max_req_len);
-+   }
-+
-+   if (x1 > x0 && y1 > y0) {
+       }
++      if (image->rectangle_count > 0) {
++         for (int i = 0; i < image->rectangle_count; i++)
++            x11_put_rows_sw(chain, chain->sw_back, myptr, stride_b,
++                            image->rects[i].y, image->rects[i].height, max_req_len);
++      } else {
++         x11_put_rows_sw(chain, chain->sw_back, myptr, stride_b, 0, chain->extent.height,
++                         max_req_len);
++      }
 +      xcb_void_cookie_t cookie =
 +         xcb_copy_area(chain->conn, chain->sw_back, chain->window, chain->gc,
 +                       x0, y0, x0, y0, x1 - x0, y1 - y0);
 +      xcb_discard_reply(chain->conn, cookie.sequence);
     }
  
++   /* After the frame, not before: its reply also says the server is done reading the shared
++    * memory, which the next frame writes.
++    */
++   xcb_get_geometry_cookie_t geom_cookie = xcb_get_geometry(chain->conn, chain->window);
++
     xcb_flush(chain->conn);
-@@ -2982,6 +2994,8 @@
+ 
+    /* We don't have queued present here.
+@@ -2982,6 +3072,12 @@
  
     for (uint32_t i = 0; i < chain->base.image_count; i++)
        x11_image_finish(chain, pAllocator, &chain->images[i]);
 +   if (chain->sw_back)
 +      xcb_discard_reply(chain->conn, xcb_free_pixmap(chain->conn, chain->sw_back).sequence);
++   if (chain->sw_shm_state > 0) {
++      xcb_discard_reply(chain->conn, xcb_shm_detach(chain->conn, chain->sw_shmseg).sequence);
++      munmap(chain->sw_shm_map, chain->sw_shm_size);
++   }
  #ifdef HAVE_X11_DRM
     xcb_void_cookie_t cookie;
     xcb_unregister_for_special_event(chain->conn, chain->special_event);
