@@ -125,7 +125,8 @@ class BackendTest {
         assertEquals(WINDOWS_FILE_GUEST, gui[7])
         assertTrue("org.freedesktop.portal.Settings" in gui[8])
         assertEquals("app", gui[9])
-        assertEquals(firefox.exec, gui.drop(10))
+        assertTrue("org.freedesktop.Notifications" in gui[10])
+        assertEquals(firefox.exec, gui.drop(11))
         assertEquals(offline.exec, guestCommand(offline))
     }
 
@@ -134,8 +135,9 @@ class BackendTest {
         val cmd = guestCommand(desktop)
         assertEquals(guestCommand(firefox).take(9), cmd.take(9))
         assertEquals("desktop", cmd[9])
-        assertEquals(listOf("/bin/sh", "-c", DESKTOP_SESSION, "desktop", DESKTOP_HELPER), cmd.subList(10, 15))
-        assertEquals(listOf("/usr/bin/xfwm4"), cmd.drop(15))
+        assertEquals(guestCommand(firefox)[10], cmd[10])
+        assertEquals(listOf("/bin/sh", "-c", DESKTOP_SESSION, "desktop", DESKTOP_HELPER), cmd.subList(11, 16))
+        assertEquals(listOf("/usr/bin/xfwm4"), cmd.drop(16))
         assertTrue(desktop.validate().isEmpty())
         assertEquals(listOf("a desktop needs gui"), offline.copy(desktop = true).validate())
     }
