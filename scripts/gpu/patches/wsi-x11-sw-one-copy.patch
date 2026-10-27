@@ -1,0 +1,151 @@
+--- a/src/vulkan/wsi/wsi_common_x11.c	2026-10-27 12:18:17.495090264 +0300
++++ b/src/vulkan/wsi/wsi_common_x11.c	2026-10-27 12:18:17.591275542 +0300
+@@ -37,6 +37,7 @@
+ #include "util/macros.h"
+ #include <stdatomic.h>
+ #include <stdlib.h>
++#include <limits.h>
+ #include <stdio.h>
+ #include <unistd.h>
+ #include <errno.h>
+@@ -1249,6 +1250,8 @@
+    xcb_connection_t *                           conn;
+    xcb_window_t                                 window;
+    xcb_gc_t                                     gc;
++   /* Tessera: where software presents are put together before one copy to the window. */
++   xcb_pixmap_t                                 sw_back;
+    uint32_t                                     depth;
+    VkExtent2D                                   extent;
+ 
+@@ -1840,8 +1843,34 @@
+    return x11_swapchain_result(chain, VK_SUCCESS);
+ }
+ #endif
++/* Tessera: puts rows [y, y + height) of a software frame into dst, full width, in as few
++ * requests as the server's size limit allows.
++ */
++static void
++x11_put_rows_sw(struct x11_swapchain *chain, xcb_drawable_t dst, const uint8_t *data,
++                int stride_b, int y, int height, uint64_t max_req_len)
++{
++   size_t hdr_len = sizeof(xcb_put_image_request_t);
++   int num_lines = MAX2(1, (int)(((max_req_len << 2) - hdr_len) / stride_b));
++   while (height > 0) {
++      int this_lines = MIN2(num_lines, height);
++      xcb_void_cookie_t cookie =
++         xcb_put_image(chain->conn, XCB_IMAGE_FORMAT_Z_PIXMAP, dst, chain->gc,
++                       stride_b / 4, this_lines, 0, y, 0, chain->depth,
++                       this_lines * stride_b, data + (size_t)y * stride_b);
++      xcb_discard_reply(chain->conn, cookie.sequence);
++      y += this_lines;
++      height -= this_lines;
++   }
++}
++
+ /**
+- * Send image to X server unaccelerated (software drivers).
++ * Send image to X server unaccelerated (software drawing)
++ *
++ * Tessera: a frame used to go to the window in several requests (one per row of each damaged
++ * rectangle, or two for a frame over the request size limit), and the X server could show the
++ * window between them: a horizontal tear. Now the rows go to a pixmap first, then one CopyArea
++ * puts the frame on the window at once.
+  */
+ static VkResult
+ x11_present_to_x11_sw(struct x11_swapchain *chain, uint32_t image_index)
+@@ -1853,58 +1882,41 @@
+     * In this _sw() mode we're expecting network round-trip delay, not just UNIX socket delay. */
+    xcb_get_geometry_cookie_t geom_cookie = xcb_get_geometry(chain->conn, chain->window);
+ 
+-   xcb_void_cookie_t cookie;
+-   void *myptr = image->base.cpu_map;
+-   size_t hdr_len = sizeof(xcb_put_image_request_t);
++   const uint8_t *myptr = image->base.cpu_map;
+    int stride_b = image->base.row_pitches[0];
+-   size_t size = (hdr_len + stride_b * chain->extent.height) >> 2;
+    uint64_t max_req_len = xcb_get_maximum_request_length(chain->conn);
+ 
++   if (!chain->sw_back) {
++      chain->sw_back = xcb_generate_id(chain->conn);
++      xcb_void_cookie_t cookie =
++         xcb_create_pixmap(chain->conn, chain->depth, chain->sw_back, chain->window,
++                           chain->extent.width, chain->extent.height);
++      xcb_discard_reply(chain->conn, cookie.sequence);
++   }
++   xcb_drawable_t dst = chain->sw_back;
++
++   int x0 = 0, y0 = 0;
++   int x1 = chain->extent.width, y1 = chain->extent.height;
+    if (image->rectangle_count > 0) {
++      x0 = y0 = INT_MAX;
++      x1 = y1 = INT_MIN;
+       for (int i = 0; i < image->rectangle_count; i++) {
+-         xcb_rectangle_t rect = chain->images[image_index].rects[i];
+-         const uint8_t *data = (const uint8_t*)myptr + (rect.y * stride_b) + (rect.x * 4);
+-         for (int j = 0; j < rect.height; j++) {
+-            cookie = xcb_put_image(chain->conn, XCB_IMAGE_FORMAT_Z_PIXMAP,
+-                                   chain->window, chain->gc,
+-                                   rect.width,
+-                                   1,
+-                                   rect.x, rect.y + j,
+-                                   0, chain->depth,
+-                                   rect.width * 4,
+-                                   data);
+-            xcb_discard_reply(chain->conn, cookie.sequence);
+-            data += stride_b;
+-         }
++         xcb_rectangle_t rect = image->rects[i];
++         x11_put_rows_sw(chain, dst, myptr, stride_b, rect.y, rect.height, max_req_len);
++         x0 = MIN2(x0, rect.x);
++         y0 = MIN2(y0, rect.y);
++         x1 = MAX2(x1, rect.x + rect.width);
++         y1 = MAX2(y1, rect.y + rect.height);
+       }
+-   } else if (size < max_req_len) {
+-      cookie = xcb_put_image(chain->conn, XCB_IMAGE_FORMAT_Z_PIXMAP,
+-                             chain->window,
+-                             chain->gc,
+-                             image->base.row_pitches[0] / 4,
+-                             chain->extent.height,
+-                             0,0,0,chain->depth,
+-                             image->base.row_pitches[0] * chain->extent.height,
+-                             image->base.cpu_map);
+-      xcb_discard_reply(chain->conn, cookie.sequence);
+    } else {
+-      int num_lines = ((max_req_len << 2) - hdr_len) / stride_b;
+-      int y_start = 0;
+-      int y_todo = chain->extent.height;
+-      while (y_todo) {
+-         int this_lines = MIN2(num_lines, y_todo);
+-         cookie = xcb_put_image(chain->conn, XCB_IMAGE_FORMAT_Z_PIXMAP,
+-                                chain->window,
+-                                chain->gc,
+-                                image->base.row_pitches[0] / 4,
+-                                this_lines,
+-                                0,y_start,0,chain->depth,
+-                                this_lines * stride_b,
+-                                (const uint8_t *)myptr + (y_start * stride_b));
+-         xcb_discard_reply(chain->conn, cookie.sequence);
+-         y_start += this_lines;
+-         y_todo -= this_lines;
+-      }
++      x11_put_rows_sw(chain, dst, myptr, stride_b, 0, chain->extent.height, max_req_len);
++   }
++
++   if (x1 > x0 && y1 > y0) {
++      xcb_void_cookie_t cookie =
++         xcb_copy_area(chain->conn, chain->sw_back, chain->window, chain->gc,
++                       x0, y0, x0, y0, x1 - x0, y1 - y0);
++      xcb_discard_reply(chain->conn, cookie.sequence);
+    }
+ 
+    xcb_flush(chain->conn);
+@@ -2982,6 +2994,8 @@
+ 
+    for (uint32_t i = 0; i < chain->base.image_count; i++)
+       x11_image_finish(chain, pAllocator, &chain->images[i]);
++   if (chain->sw_back)
++      xcb_discard_reply(chain->conn, xcb_free_pixmap(chain->conn, chain->sw_back).sequence);
+ #ifdef HAVE_X11_DRM
+    xcb_void_cookie_t cookie;
+    xcb_unregister_for_special_event(chain->conn, chain->special_event);
