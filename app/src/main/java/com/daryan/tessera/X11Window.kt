@@ -110,6 +110,9 @@ class X11Window : MainActivity.MainActivityTagged() {
      * so each applies the app's scale when it comes to the front.
      */
     private fun applyScale() {
+        // At full resolution the app enlarges itself (it started that way); the screen is ours.
+        val session = sessionTag?.let { container.sessions.forWindowTag(it) }
+        if (session?.session?.uiScale != null) return lorieView.setScaleOverride(100)
         lorieView.setScaleOverride(appId?.let { X11Scale.forApp(this, it) } ?: 0)
     }
 
@@ -732,6 +735,14 @@ class X11Window : MainActivity.MainActivityTagged() {
             }
         }
 
+        override fun fullResolution(): Boolean = appId?.let { X11Scale.fullResolution(this@X11Window, it) } ?: false
+
+        override fun setFullResolution(on: Boolean) {
+            X11Scale.setFullResolution(this@X11Window, appId ?: return, on)
+        }
+
+        override fun runningUiScale(): Int? = sessionTag?.let { container.sessions.forWindowTag(it) }?.session?.uiScale
+
         override fun openPermissions(appId: String) {
             (application as LauncherApplication).container.showAppRequests.value = appId
             startActivity(Intent(this@X11Window, com.daryan.tessera.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -868,6 +879,25 @@ object X11Scale {
         c.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().apply {
             if (percent == null) remove(appId) else putInt(appId, percent.coerceIn(MIN, MAX))
         }.apply()
+
+    /**
+     * Whether [appId] draws at the window's full resolution, its interface enlarged by its scale
+     * ([com.daryan.tessera.container.Session.uiScale]), rather than on a smaller screen that is
+     * stretched. Sharper, but the app must start again for it, and not every app enlarges all
+     * of itself.
+     */
+    fun fullResolution(c: android.content.Context, appId: String): Boolean =
+        c.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getBoolean(FULL + appId, false)
+
+    fun setFullResolution(c: android.content.Context, appId: String, on: Boolean) =
+        c.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putBoolean(FULL + appId, on).apply()
+
+    /** The interface scale a session of [appId] starts with: its scale at full resolution, else null. */
+    fun uiScaleFor(c: android.content.Context, appId: String): Int? =
+        if (fullResolution(c, appId)) forApp(c, appId) ?: default(c) else null
+
+    /** Key prefix of the full-resolution switches, apart from the apps' scales (ints). */
+    private const val FULL = "full/"
 }
 
 /**
@@ -901,6 +931,11 @@ interface X11Actions : com.daryan.tessera.input.InputSink {
     fun defaultScale(): Int
     /** Resizes the app's screen to [percent] at once, and keeps it for the app; null resets it. */
     fun setScale(percent: Int?)
+    /** The app's full-resolution switch ([X11Scale.fullResolution]), from its next start. */
+    fun fullResolution(): Boolean
+    fun setFullResolution(on: Boolean)
+    /** The interface scale the running app started with at full resolution, or null when stretched. */
+    fun runningUiScale(): Int?
     fun openPermissions(appId: String)
     fun displaySettings()
     fun close(sessionId: String?)

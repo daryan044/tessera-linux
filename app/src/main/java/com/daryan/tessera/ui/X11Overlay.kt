@@ -56,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -289,7 +290,7 @@ fun X11Overlay(session: RunningSession?, actions: X11Actions) {
                                     controls = on
                                 },
                             )
-                            Page.SCALE -> SubPage("Scale", onBack = { page = Page.MAIN }) { ScalePage(actions) }
+                            Page.SCALE -> SubPage("Scale", onBack = { page = Page.MAIN }) { ScalePage(actions, desktop = session?.app?.desktop == true) }
                             Page.KEYS -> SubPage("Keys", onBack = { page = Page.MAIN }) { KeysPage(actions) }
                             Page.INPUT -> SubPage("Input mode", onBack = { page = Page.MAIN }) { InputPage(actions) }
                             Page.CAST -> SubPage("Cast", onBack = { page = Page.MAIN }) { CastPage(actions, ::run) }
@@ -370,9 +371,11 @@ private fun Tile(icon: ImageVector, label: String, danger: Boolean = false, arme
 /**
  * The app's scale: bigger draws everything larger on a smaller X screen. The app resizes while
  * the slider moves (a little behind it, so it isn't resized on every step), and keeps the value.
+ * At full resolution the app draws at the window's size and enlarges itself instead, from its
+ * next start; a desktop always stretches (it scales its own title bars and dock).
  */
 @Composable
-private fun ScalePage(actions: X11Actions) {
+private fun ScalePage(actions: X11Actions, desktop: Boolean) {
     val default = remember { actions.defaultScale() }
     var value by remember { mutableFloatStateOf(actions.scale().toFloat()) }
     val percent = (value / 10).roundToInt() * 10
@@ -405,6 +408,34 @@ private fun ScalePage(actions: X11Actions) {
         },
         enabled = percent != default,
     ) { Text("Default ($default%)") }
+    if (desktop) return
+    var full by remember { mutableStateOf(actions.fullResolution()) }
+    val running = remember { actions.runningUiScale() }
+    Spacer(Modifier.height(16.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Full resolution", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "Sharper text and video: the app draws at the phone's resolution and enlarges itself. Some apps don't enlarge everything",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = full, onCheckedChange = {
+            full = it
+            actions.setFullResolution(it)
+        })
+    }
+    // The app reads its interface scale as it starts.
+    if (full != (running != null) || (running != null && running != percent)) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Takes effect the next time the app opens.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
 }
 
 @Composable

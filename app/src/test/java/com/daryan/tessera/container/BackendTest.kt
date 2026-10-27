@@ -130,6 +130,24 @@ class BackendTest {
         assertEquals(offline.exec, guestCommand(offline))
     }
 
+    @Test fun `full resolution tells each toolkit how much larger to draw`() {
+        val at250 = uiScaleEnv(250)
+        assertEquals("2.50", at250["TESSERA_UI_SCALE"])
+        // GTK only scales widgets by whole numbers; the rest goes to its fonts.
+        assertEquals("2", at250["GDK_SCALE"])
+        assertEquals("1.25", at250["GDK_DPI_SCALE"])
+        // Firefox's own factor replaces GDK_SCALE and is multiplied by GDK_DPI_SCALE.
+        assertEquals("2.00", at250["TESSERA_FIREFOX_SCALE"])
+        assertEquals("2.50", at250["QT_SCALE_FACTOR"])
+        assertEquals("60", at250["XCURSOR_SIZE"])
+        val at100 = uiScaleEnv(100)
+        assertEquals("1", at100["GDK_SCALE"])
+        assertEquals("1.00", at100["GDK_DPI_SCALE"])
+        // Stretched sessions get none of it.
+        assertFalse("TESSERA_UI_SCALE" in guestEnv(firefox, session))
+        assertEquals("1.80", guestEnv(firefox, session.copy(uiScale = 180))["TESSERA_UI_SCALE"])
+    }
+
     @Test fun `a desktop runs its window manager beside the desktop helper, not matchbox`() {
         val desktop = firefox.copy(id = "desktop", desktop = true, exec = listOf("/usr/bin/xfwm4"))
         val cmd = guestCommand(desktop)

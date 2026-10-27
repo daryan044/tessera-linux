@@ -56,6 +56,12 @@ data class Session(
     val flatpak: Boolean = false,
     /** Where adb inside reaches this phone ([PhoneAdb]), when the app may and it's on. */
     val adb: String? = null,
+    /**
+     * Full resolution: the app's X screen is the window's own size and the app draws its
+     * interface this many percent larger itself ([uiScaleEnv]), instead of drawing small and
+     * being stretched. Null for the stretched kind.
+     */
+    val uiScale: Int? = null,
 )
 
 /** Host-side locations a backend needs. Built from a Context in the app, by hand in tests. */
@@ -211,16 +217,23 @@ if [ -n "${'$'}TESSERA_THEME" ]; then
 fi
 # Firefox doesn't know Zink and draws pages on the CPU, which can't keep up with video or
 # scrolling at the phone's resolution. With the GPU driver its profiles get a block in user.js
-# turning GPU drawing on; without it the block goes, as forcing it onto Mesa's software
-# rasterizer would be slower than Firefox's own.
+# turning GPU drawing on; without it, off, as forcing it onto Mesa's software rasterizer would be
+# slower than Firefox's own. At full resolution the block also sets Firefox's own scale
+# (TESSERA_FIREFOX_SCALE), which replaces GDK_SCALE: Firefox reads no environment variable for it.
+# Firefox keeps what user.js set in prefs.js, so the block always says the value: Firefox's
+# default when the feature is off.
 for p in "${'$'}HOME"/.mozilla/firefox/*/ "${'$'}HOME"/.mozilla/firefox-esr/*/ "${'$'}HOME"/.config/mozilla/firefox/*/ "${'$'}HOME"/.var/app/org.mozilla.firefox/.mozilla/firefox/*/; do
   [ -f "${'$'}p/prefs.js" ] || continue
   u="${'$'}p/user.js"
+  gpu=false
+  [ "${'$'}GALLIUM_DRIVER" = zink ] && gpu=true
   {
     [ -f "${'$'}u" ] && sed '/^\/\/ tessera-gpu {/,/^\/\/ } tessera-gpu/d' "${'$'}u"
-    if [ "${'$'}GALLIUM_DRIVER" = zink ]; then
-      printf '%s\n' '// tessera-gpu { (written by Tessera at every start)' 'user_pref("gfx.webrender.all", true);' 'user_pref("layers.acceleration.force-enabled", true);' '// } tessera-gpu'
-    fi
+    echo '// tessera-gpu { (written by Tessera at every start)'
+    echo "user_pref(\"gfx.webrender.all\", ${'$'}gpu);"
+    echo "user_pref(\"layers.acceleration.force-enabled\", ${'$'}gpu);"
+    echo "user_pref(\"layout.css.devPixelsPerPx\", \"${'$'}{TESSERA_FIREFOX_SCALE:--1.0}\");"
+    echo '// } tessera-gpu'
   } > "${'$'}u.tessera" && mv "${'$'}u.tessera" "${'$'}u"
 done
 if [ -n "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && [ -d /usr/lib/python3/dist-packages/gi ]; then

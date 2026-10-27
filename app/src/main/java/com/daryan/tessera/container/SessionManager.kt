@@ -181,6 +181,8 @@ class SessionManager(
             theme = app.gui && appearance?.forApp(app.id) != null,
             flatpak = app.gui && app.flatpak != null,
             adb = adb,
+            // A desktop scales its own title bars and dock (rescaleDesktop), so it stays stretched.
+            uiScale = if (app.gui && !app.desktop) com.daryan.tessera.X11Scale.uiScaleFor(context, app.id) else null,
         )
         // Ids restart with the process, so a previous run's s1 may have left a dead X socket here.
         paths.sessionTmp(session).apply {

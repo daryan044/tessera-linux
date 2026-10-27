@@ -144,6 +144,28 @@ private val SANDBOX_OFF = mapOf(
     "ELECTRON_DISABLE_SANDBOX" to "1",
 )
 
+/**
+ * What makes toolkits draw their interface [percent] larger on a full-resolution X screen
+ * ([Session.uiScale]). GTK scales widgets by whole numbers only, so the rest goes to its fonts;
+ * Qt takes any factor; Firefox gets the whole number, in user.js (see guestCommand): its own
+ * factor replaces GDK_SCALE, and GTK's font scale (GDK_DPI_SCALE) multiplies it. The cursor
+ * follows, as it's drawn in X pixels.
+ */
+internal fun uiScaleEnv(percent: Int): Map<String, String> {
+    val scale = percent / 100.0
+    val whole = maxOf(1, kotlin.math.floor(scale).toInt())
+    fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.2f", v)
+    return mapOf(
+        "TESSERA_UI_SCALE" to f(scale),
+        "TESSERA_FIREFOX_SCALE" to f(whole.toDouble()),
+        "GDK_SCALE" to "$whole",
+        "GDK_DPI_SCALE" to f(scale / whole),
+        "QT_SCALE_FACTOR" to f(scale),
+        "QT_AUTO_SCREEN_SCALE_FACTOR" to "0",
+        "XCURSOR_SIZE" to "${kotlin.math.round(ThemePack.CURSOR_SIZE * scale).toInt()}",
+    )
+}
+
 /** Environment inside the container; shared by both backends. */
 internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, String> = buildMap {
     val p = app.permissions
@@ -169,6 +191,7 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
         // opens a "closed unexpectedly" prompt offering Safe Mode instead of the browser.
         put("MOZ_DISABLE_AUTO_SAFE_MODE", "1")
         putAll(ThemePack.CURSOR_ENV)
+        session.uiScale?.let { putAll(uiScaleEnv(it)) }
         // Accessibility on, so the focus watcher hears about text fields (see guestCommand).
         // GTK 3/4 report over AT-SPI by default; Firefox and Qt need asking.
         put("GNOME_ACCESSIBILITY", "1")
