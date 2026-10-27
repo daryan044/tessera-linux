@@ -40,6 +40,8 @@ data class RunningSession(
     val revision: Int = 0,
     /** A GUI app's X windows, as its window watcher last reported them. */
     val windows: XWindows = XWindows(),
+    /** A desktop's icons (~/Desktop), as its helper last listed them. */
+    val desktopItems: List<DesktopItem> = emptyList(),
 ) {
     val running get() = exitCode == null
 
@@ -98,6 +100,20 @@ class SessionManager(
     private val _desktopEvents = kotlinx.coroutines.flow.MutableSharedFlow<Pair<String, DesktopEvent>>(extraBufferCapacity = 16)
     /** (session id, a tap or a menu request on a desktop icon), from each desktop's helper. */
     val desktopEvents: kotlinx.coroutines.flow.SharedFlow<Pair<String, DesktopEvent>> = _desktopEvents
+
+    /** Linux apps' notifications, shown as Android's. */
+    private val notifier by lazy { LinuxNotifier(context) }
+
+    /** A notification's [action] ("default" for a tap), for the app that sent it. */
+    fun notificationAction(sessionId: String, id: Int, action: String) {
+        val running = byId(sessionId) ?: return
+        sendLine(File(paths.x11SocketDir(running.session), NOTIFY_COMMANDS_NAME), "action $id ${action.filterNot { it.isWhitespace() }}")
+    }
+
+    fun notificationDismissed(sessionId: String, id: Int) {
+        val running = byId(sessionId) ?: return
+        sendLine(File(paths.x11SocketDir(running.session), NOTIFY_COMMANDS_NAME), "dismissed $id")
+    }
 
     /** Per GUI session, the X windows that have an Android task of their own. */
     private val windowTasks = ConcurrentHashMap<String, MutableSet<Long>>()
@@ -179,7 +195,7 @@ class SessionManager(
         // The helpers' command pipes are made here, not by the helpers: in chroot mode a pipe
         // the guest makes carries su's SELinux label, and Android refuses the app writing to it.
         if (app.gui) {
-            val pipes = listOf(WINDOW_COMMANDS_NAME) + if (app.desktop) listOf(DESKTOP_COMMANDS_NAME) else emptyList()
+            val pipes = listOf(WINDOW_COMMANDS_NAME, NOTIFY_COMMANDS_NAME) + if (app.desktop) listOf(DESKTOP_COMMANDS_NAME) else emptyList()
             pipes.forEach { makeFifo(File(paths.x11SocketDir(session), it)) }
         }
         if (session.theme) writeTheme(app, session, backend.name)
@@ -246,6 +262,7 @@ class SessionManager(
                 diagnostics?.recordSession(app, session, backend.name, -1, "Couldn't start: ${e.stackTraceToString()}")
             } finally {
                 windowReports.remove(session.id)?.stopWatching()
+                notifier.clear(session.id)
                 desktopBackends.remove(session.id)
                 windowTasks.remove(session.id)
                 audio?.stop()
@@ -430,6 +447,9 @@ class SessionManager(
             paths.x11SocketDir(session),
             onFocus = { _focusChanges.tryEmit(session.id to it) },
             onDesktop = if (ownTasks) null else ({ _desktopEvents.tryEmit(session.id to it) }),
+            onDesktopItems = if (ownTasks) null else ({ items -> update(session.id) { it.copy(desktopItems = items) } }),
+            // Tessera targets API 28, so Android 13 and later ask for notifications by themselves.
+            onNotify = { n -> byId(session.id)?.let { notifier.handle(it, n) } },
         ) { windows ->
             update(session.id) { it.copy(windows = windows) }
             if (!ownTasks) return@SessionFiles
@@ -477,6 +497,14 @@ class SessionManager(
 
     fun snapWindow(sessionId: String, windowId: Long, left: Boolean) {
         windowReports[sessionId]?.snap(windowId, left)
+    }
+
+    fun showWorkspace(sessionId: String, n: Int) {
+        windowReports[sessionId]?.workspace(n)
+    }
+
+    fun moveToWorkspace(sessionId: String, windowId: Long, n: Int) {
+        windowReports[sessionId]?.moveTo(windowId, n)
     }
 
     /** Chroot sessions' su, to end their processes with: the app can't see them itself. */

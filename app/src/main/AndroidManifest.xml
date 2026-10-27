@@ -61,6 +61,9 @@
             android:windowSoftInputMode="stateHidden|adjustNothing"
             android:configChanges="fontScale|orientation|screenSize|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|screenLayout|touchscreen|uiMode|smallestScreenSize|density" />
 
+        <!-- A Linux app's notification swiped away (LinuxNotifier). -->
+        <receiver android:name=".container.LinuxNotifier$Dismissed" android:exported="false" />
+
         <!-- One task per terminal session, so each gets its own card in Recents. Both name their
              task "<app> (Linux)" (brandForRecents); the label is for launchers that ignore that. -->
         <activity

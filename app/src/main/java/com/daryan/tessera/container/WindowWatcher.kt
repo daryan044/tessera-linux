@@ -11,11 +11,16 @@ const val WINDOW_COMMANDS_NAME = "launcher-wincmd"
 /**
  * Runs next to a GUI app (see [guestCommand]) with python3-xlib. It keeps [WINDOWS_FILE_GUEST]
  * up to date with the app's windows as JSON, {"active": id, "windows": [{"id", "title",
- * "main", "class", "hidden", "maximized"}], "screen": [width, height]}, replaced atomically on
- * every change, where "main" means a window of its own rather than a dialog. Commands come one
- * per line through the FIFO next to it: "activate <id>" brings a window to the front (and back
- * from minimized), "close <id>" asks it to close; for a desktop's taskbar also "minimize <id>",
- * "maximize <id>" (toggles) and "snap <id> left|right" (half of the work area).
+ * "main", "class", "hidden", "maximized", "desktop"}], "screen": [width, height], "workspace":
+ * n, "workspaces": n}, replaced atomically on every change, where "main" means a window of its
+ * own rather than a dialog and "desktop" is its workspace (-1: on all of them). Commands come
+ * one per line through the FIFO next to it: "activate <id>" brings a window to the front (and
+ * back from minimized), "close <id>" asks it to close; for a desktop's taskbar also "minimize
+ * <id>", "maximize <id>" (toggles), "snap <id> left|right" (half of the work area), "workspace
+ * <n>" (switches to it) and "move <id> <n>" (sends a window to workspace n).
+ *
+ * What it knows of each window is kept until that window's properties change, so a title that
+ * keeps changing (a terminal's, a download's) costs one window's lookups, not every window's.
  */
 internal const val WINDOW_WATCHER = """
 import json, os, select, sys
@@ -33,9 +38,12 @@ STATE, HIDDEN = A("_NET_WM_STATE"), A("_NET_WM_STATE_HIDDEN")
 MAX_V, MAX_H = A("_NET_WM_STATE_MAXIMIZED_VERT"), A("_NET_WM_STATE_MAXIMIZED_HORZ")
 CHANGE_STATE, WORKAREA = A("WM_CHANGE_STATE"), A("_NET_WORKAREA")
 MOVERESIZE, EXTENTS = A("_NET_MOVERESIZE_WINDOW"), A("_NET_FRAME_EXTENTS")
+WM_DESKTOP, CURRENT, COUNT = A("_NET_WM_DESKTOP"), A("_NET_CURRENT_DESKTOP"), A("_NET_NUMBER_OF_DESKTOPS")
 # Structure too: the screen changes size when the phone turns.
 root.change_attributes(event_mask=X.PropertyChangeMask | X.StructureNotifyMask)
 watched = set()
+# What describe() found, by window, until a property of it changes.
+known = {}
 
 def prop(w, atom):
     try:
@@ -70,8 +78,15 @@ def describe(wid):
     except error.XError:
         cls = ""
     states = list(prop(w, STATE) or [])
+    desk = (prop(w, WM_DESKTOP) or [0])[0]
     return {"id": wid, "title": name or "", "main": transient is None and (not types or NORMAL in types),
-            "class": cls, "hidden": HIDDEN in states, "maximized": MAX_V in states and MAX_H in states}
+            "class": cls, "hidden": HIDDEN in states, "maximized": MAX_V in states and MAX_H in states,
+            "desktop": -1 if desk >= 0xFFFFFFFF else desk}
+
+def cached(wid):
+    if wid not in known:
+        known[wid] = describe(wid)
+    return known[wid]
 
 last = None
 def publish():
@@ -83,7 +98,11 @@ def publish():
         screen = [g.width, g.height]
     except error.XError:
         screen = []
-    text = json.dumps({"active": active, "windows": [describe(i) for i in ids], "screen": screen})
+    for gone in set(known) - set(ids):
+        known.pop(gone, None)
+        watched.discard(gone)
+    text = json.dumps({"active": active, "windows": [cached(i) for i in ids], "screen": screen,
+                       "workspace": (prop(root, CURRENT) or [0])[0], "workspaces": (prop(root, COUNT) or [1])[0]})
     if text == last:
         return
     last = text
@@ -137,6 +156,10 @@ while True:
             wid = int(parts[1], 0)
         except ValueError:
             continue
+        if parts[0] == "workspace":
+            # Here the number is the workspace's, not a window's.
+            message(root.id, CURRENT, [wid, X.CurrentTime, 0, 0, 0])
+            continue
         if parts[0] == "activate":
             message(wid, ACTIVE, [2, X.CurrentTime, 0, 0, 0])
         elif parts[0] == "close":
@@ -147,7 +170,13 @@ while True:
             message(wid, STATE, [2, MAX_V, MAX_H, 1, 0])
         elif parts[0] == "snap" and len(parts) == 3:
             snap(wid, parts[2])
+        elif parts[0] == "move" and len(parts) == 3 and parts[2].isdigit():
+            message(wid, WM_DESKTOP, [int(parts[2]), 2, 0, 0, 0])
     while d.pending_events():
-        d.next_event()
+        e = d.next_event()
+        # A window's own property changed: look at it again. The root's (the window list, the
+        # active window, the workspace) are read on every publish anyway.
+        if e.type == X.PropertyNotify and e.window.id != root.id:
+            known.pop(e.window.id, None)
     publish()
 """

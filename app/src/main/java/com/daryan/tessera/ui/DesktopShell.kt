@@ -6,10 +6,14 @@
 package com.daryan.tessera.ui
 
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.AudioManager
 import android.net.Uri
 import android.os.BatteryManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -66,6 +70,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -75,11 +80,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -111,6 +119,8 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -132,6 +142,7 @@ import com.daryan.tessera.container.PermissionManifest
 import com.daryan.tessera.container.RunningSession
 import com.daryan.tessera.container.XWindow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlin.math.ceil
@@ -146,19 +157,39 @@ interface DesktopActions {
     /** Launcher app ids pinned to the dock, in order. */
     val pins: StateFlow<List<String>>
     fun setPinned(appId: String, pinned: Boolean)
+    /** Launcher app ids opened from the desktop lately, the latest first. */
+    val recent: StateFlow<List<String>>
+    /** The apps that had windows open when a desktop was last used, to offer them again. */
+    val lastOpen: List<String>
+    fun rememberOpen(appIds: List<String>)
     /** Opens [app] in the desktop; false when the desktop isn't listening yet. */
     fun launch(app: PermissionManifest): Boolean
+    fun openTerminal(): Boolean
+    /** The desktop's file manager, at home. */
+    fun openFiles(): Boolean
+    /** A new folder on the desktop. */
+    fun makeFolder(): Boolean
     fun activate(windowId: Long)
     fun minimize(windowId: Long)
     fun toggleMaximize(windowId: Long)
     fun snap(windowId: Long, left: Boolean)
     fun close(windowId: Long)
+    fun showWorkspace(n: Int)
+    fun moveToWorkspace(windowId: Long, n: Int)
     /** Keeps [px] X pixels along the [left] or bottom edge for the dock. */
     fun reserve(left: Boolean, px: Int): Boolean
+    /** Whether the desktop shows a picture the user chose rather than the phone's wallpaper. */
+    val customWallpaper: StateFlow<Boolean>
+    /** Bumped when the background changes, to send it again. */
+    val wallpaperVersion: StateFlow<Int>
+    /** Asks for a picture to put behind the windows. */
+    fun pickWallpaper()
+    fun usePhoneWallpaper()
     /**
-     * Puts the phone's wallpaper behind the windows, fitted to a [width] × [height] X screen
-     * (where it can't be read, a gradient from [top] to [bottom], ARGB), with [icons] painted
-     * over it: a picture of this view's [viewWidth] × [viewHeight], each icon at [places] in it.
+     * Puts the background behind the windows (the user's picture, else the phone's wallpaper),
+     * fitted to a [width] × [height] X screen (where neither can be read, a gradient from [top]
+     * to [bottom], ARGB), with [icons] painted over it: a picture of this view's [viewWidth] ×
+     * [viewHeight], each icon at [places] in it.
      */
     suspend fun wallpaper(
         width: Int,
@@ -173,8 +204,6 @@ interface DesktopActions {
     /** A long press or right click on a desktop icon, until the menu it asks for closes. */
     val iconMenu: StateFlow<DesktopEvent?>
     fun dismissIconMenu()
-    /** What is on the desktop (~/Desktop) now. */
-    fun items(): List<DesktopItem>
     fun open(item: DesktopItem)
     fun addToDesktop(app: PermissionManifest): Boolean
     /** A shortcut comes off the desktop; a file or folder goes to the trash. */
@@ -182,6 +211,13 @@ interface DesktopActions {
     /** Copies files dropped from another Android app onto the desktop; how many made it. */
     suspend fun importDropped(uris: List<Uri>): Int
     fun toggleKeyboard()
+    /** A hardware keyboard's desktop shortcuts (the Super key's). */
+    val shortcuts: SharedFlow<DesktopShortcut>
+    /** The desktop's scale in percent, as a window's panel sets it. */
+    fun scale(): Int
+    fun setScale(percent: Int?)
+    /** The desktop's permissions and settings, in the launcher. */
+    fun openSettings()
     /** Hides the phone's bars again, after something brought them back. */
     fun keepFullscreen()
     /**
@@ -192,6 +228,9 @@ interface DesktopActions {
     /** Ends the desktop and everything open in it. */
     fun end()
 }
+
+/** What the Super key asks for: the Start menu, the desktop, every window. */
+enum class DesktopShortcut { START, SHOW_DESKTOP, OVERVIEW }
 
 /**
  * Apps the Start menu can open in a desktop: not another desktop, or one that wants root (it
@@ -238,9 +277,6 @@ fun dockEntries(pins: List<String>, windows: List<XWindow>, apps: List<Permissio
     return pinned + running
 }
 
-/** An app being dragged out of the Start menu, and where the finger has it, in root pixels. */
-private data class Dragging(val app: PermissionManifest, val at: Offset)
-
 /**
  * A desktop's own shell over its full-screen X screen (the phone's bars hidden; only the camera
  * cutout is kept clear), in the phone's Material look: a floating dock (a
@@ -256,7 +292,11 @@ fun DesktopShell(actions: DesktopActions) {
     val pins by actions.pins.collectAsStateWithLifecycle()
     val apps = remember(allApps) { desktopApps(allApps) }
     val windows = session?.windows
-    val main = windows?.main.orEmpty()
+    val workspace = windows?.workspace ?: 0
+    val workspaces = windows?.workspaces ?: 1
+    val all = windows?.main.orEmpty()
+    // The dock has the workspace in view; the overview has them all.
+    val main = all.filter { it.on(workspace) }
     val screen = windows?.screen.orEmpty()
     val config = LocalConfiguration.current
     val vertical = config.screenWidthDp > config.screenHeightDp
@@ -265,6 +305,11 @@ fun DesktopShell(actions: DesktopActions) {
     val motion = MaterialTheme.motionScheme
     val scope = rememberCoroutineScope()
     var startOpen by rememberSaveable { mutableStateOf(false) }
+    var overview by rememberSaveable { mutableStateOf(false) }
+    BackHandler(startOpen || overview) {
+        startOpen = false
+        overview = false
+    }
     val focus = LocalFocusManager.current
     LaunchedEffect(startOpen) {
         if (!startOpen) {
@@ -275,7 +320,12 @@ fun DesktopShell(actions: DesktopActions) {
     // How far the dock reaches in from its edge, in this view's pixels, and where it is.
     var dockReach by remember { mutableIntStateOf(0) }
     var dockBounds by remember { mutableStateOf(Rect.Zero) }
-    var dragging by remember { mutableStateOf<Dragging?>(null) }
+    // An app being dragged out of the Start menu, and where the finger has it, in root pixels:
+    // read only where the app is drawn, so following the finger redraws it without recomposing
+    // the whole shell.
+    var dragApp by remember { mutableStateOf<PermissionManifest?>(null) }
+    val dragAt = remember { mutableStateOf(Offset.Zero) }
+    val dropHere by remember { derivedStateOf { dragApp != null && dockBounds.contains(dragAt.value) } }
     var message by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(message) {
         if (message != null) {
@@ -285,13 +335,36 @@ fun DesktopShell(actions: DesktopActions) {
     }
     // The windows "Show desktop" put away, to bring back with a second tap.
     var putAway by remember { mutableStateOf(emptyList<Long>()) }
-    val items by produceState(emptyList<DesktopItem>(), session?.session?.id) {
-        while (true) {
-            value = actions.items()
-            delay(1500)
+    val showDesktop = {
+        val visible = main.filterNot { it.hidden }
+        if (visible.isNotEmpty()) {
+            putAway = visible.map { it.id }
+            visible.forEach { actions.minimize(it.id) }
+        } else {
+            putAway.filter { id -> main.any { it.id == id } }.forEach(actions::activate)
+            putAway = emptyList()
         }
     }
+    val items = session?.desktopItems.orEmpty()
     val entries = remember(pins, main, allApps) { dockEntries(pins, main, allApps) }
+    // What's open, for next time; offered in the Start menu until something opens.
+    LaunchedEffect(all, allApps) {
+        val open = dockEntries(emptyList(), all, allApps).map { it.app.id }.filter { id -> apps.any { it.id == id } }
+        actions.rememberOpen(open)
+    }
+    var hadWindows by remember { mutableStateOf(false) }
+    LaunchedEffect(all.isNotEmpty()) { if (all.isNotEmpty()) hadWindows = true }
+    val reopen = if (hadWindows) emptyList() else actions.lastOpen.mapNotNull { id -> apps.firstOrNull { it.id == id } }
+    val recent by actions.recent.collectAsStateWithLifecycle()
+    val recentApps = remember(recent, apps) { recent.mapNotNull { id -> apps.firstOrNull { it.id == id } } }
+    val onShortcut by rememberUpdatedState { s: DesktopShortcut ->
+        when (s) {
+            DesktopShortcut.START -> startOpen = !startOpen
+            DesktopShortcut.SHOW_DESKTOP -> showDesktop()
+            DesktopShortcut.OVERVIEW -> overview = !overview
+        }
+    }
+    LaunchedEffect(actions) { actions.shortcuts.collect { onShortcut(it) } }
     val stillStarting = "The desktop is still starting"
     // Termux:X11 shows the phone's bars again on its own (turning, settings, reconnecting);
     // a swipe's brief look at them doesn't count as showing, so this only undoes those.
@@ -358,33 +431,52 @@ fun DesktopShell(actions: DesktopActions) {
         ) {
             DesktopIcons(items, allApps, onPlaced = { path, r -> places[path] = r })
         }
-        LaunchedEffect(screen, items, allApps, reach, vertical, top, bottom) {
+        val paperVersion by actions.wallpaperVersion.collectAsStateWithLifecycle()
+        LaunchedEffect(screen, items, allApps, reach, vertical, top, bottom, paperVersion) {
             if (screen.size != 2) return@LaunchedEffect
-            // Long enough for the icons' own pictures to load.
-            delay(700)
-            val image = runCatching { picture.toImageBitmap().asAndroidBitmap() }.getOrNull()
-            val spots = items.mapNotNull { i ->
-                places[i.path]?.let { r -> i.path to android.graphics.Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt()) }
-            }.toMap()
-            retrying { actions.wallpaper(screen[0], screen[1], top, bottom, image, spots, viewWidth, viewHeight) }
+            // As soon as the icons are laid out, and once more when their own pictures have
+            // loaded. Only the icons' strip travels; the background goes when it changes.
+            for (wait in listOf(120L, 800L)) {
+                delay(wait)
+                val image = runCatching { picture.toImageBitmap().asAndroidBitmap() }.getOrNull()
+                val spots = items.mapNotNull { i ->
+                    places[i.path]?.let { r -> i.path to android.graphics.Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt()) }
+                }.toMap()
+                retrying { actions.wallpaper(screen[0], screen[1], top, bottom, image, spots, viewWidth, viewHeight) }
+            }
         }
         val openItem: (DesktopItem) -> Unit = { item ->
             val app = allApps.firstOrNull { it.id == item.app }.takeIf { item.isShortcut }
             if (app != null) actions.launch(app) else actions.open(item)
         }
         val iconMenu by actions.iconMenu.collectAsStateWithLifecycle()
+        val customPaper by actions.customWallpaper.collectAsStateWithLifecycle()
         iconMenu?.let { event ->
             val item = items.firstOrNull { it.path == event.path }
-            if (item != null && ratio > 0f) {
+            if ((item != null || event.path.isEmpty()) && ratio > 0f) {
                 Box(Modifier.offset { IntOffset((event.x / ratio).roundToInt(), (event.y / ratio).roundToInt()) }) {
                     val close = { actions.dismissIconMenu(); actions.returnFocus() }
+                    fun said(ok: Boolean) { if (!ok) message = stillStarting }
                     DropdownMenu(expanded = true, onDismissRequest = close, shape = RoundedCornerShape(16.dp)) {
-                        MenuTitle(item.name)
-                        DropdownMenuItem(text = { Text("Open") }, onClick = { close(); openItem(item) })
-                        DropdownMenuItem(
-                            text = { Text(if (item.isShortcut || item.isLink) "Remove from desktop" else "Move to Trash", color = colors.error) },
-                            onClick = { close(); actions.removeFromDesktop(item) },
-                        )
+                        if (item != null) {
+                            MenuTitle(item.name)
+                            DropdownMenuItem(text = { Text("Open") }, onClick = { close(); openItem(item) })
+                            DropdownMenuItem(
+                                text = { Text(if (item.isShortcut || item.isLink) "Remove from desktop" else "Move to Trash", color = colors.error) },
+                                onClick = { close(); actions.removeFromDesktop(item) },
+                            )
+                        } else {
+                            // The empty desktop's own menu.
+                            DropdownMenuItem(text = { Text("Open terminal") }, leadingIcon = { Icon(LauncherIcons.Terminal, null) }, onClick = { close(); said(actions.openTerminal()) })
+                            DropdownMenuItem(text = { Text("Files") }, leadingIcon = { Icon(LauncherIcons.Folder, null) }, onClick = { close(); said(actions.openFiles()) })
+                            DropdownMenuItem(text = { Text("New folder") }, leadingIcon = { Icon(LauncherIcons.NewFolder, null) }, onClick = { close(); said(actions.makeFolder()) })
+                            HorizontalDivider()
+                            DropdownMenuItem(text = { Text("Change wallpaper…") }, leadingIcon = { Icon(LauncherIcons.Image, null) }, onClick = { close(); actions.pickWallpaper() })
+                            if (customPaper) {
+                                DropdownMenuItem(text = { Text("Use the phone's wallpaper") }, leadingIcon = { Icon(LauncherIcons.Phone, null) }, onClick = { close(); actions.usePhoneWallpaper() })
+                            }
+                            DropdownMenuItem(text = { Text("Desktop settings") }, leadingIcon = { Icon(Icons.Rounded.Settings, null) }, onClick = { close(); actions.openSettings() })
+                        }
                     }
                 }
             }
@@ -392,7 +484,7 @@ fun DesktopShell(actions: DesktopActions) {
 
         Starting(session, screen.isEmpty(), Modifier.align(Alignment.Center))
 
-        if (startOpen && dragging == null) {
+        if (startOpen && dragApp == null) {
             Box(
                 Modifier.fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.2f))
@@ -410,17 +502,11 @@ fun DesktopShell(actions: DesktopActions) {
             onLaunch = { app -> if (!actions.launch(app)) message = stillStarting },
             onAddToDesktop = { app -> message = if (actions.addToDesktop(app)) "${app.name} is on the desktop" else stillStarting },
             showingDesktop = main.isNotEmpty() && main.all { it.hidden },
-            onShowDesktop = {
-                val visible = main.filterNot { it.hidden }
-                if (visible.isNotEmpty()) {
-                    putAway = visible.map { it.id }
-                    visible.forEach { actions.minimize(it.id) }
-                } else {
-                    putAway.filter { id -> main.any { it.id == id } }.forEach(actions::activate)
-                    putAway = emptyList()
-                }
-            },
-            dropHere = dragging?.let { dockBounds.contains(it.at) } == true,
+            onShowDesktop = showDesktop,
+            workspace = workspace,
+            workspaces = workspaces,
+            onOverview = { overview = true },
+            dropHere = dropHere,
             actions = actions,
             maxLength = with(density) { (if (vertical) viewHeight else viewWidth).toDp() } - 32.dp,
             modifier = Modifier
@@ -445,51 +531,79 @@ fun DesktopShell(actions: DesktopActions) {
                     else Modifier.padding(bottom = maxOf(reach + 12.dp, imeBottom + 8.dp), start = 16.dp, end = 16.dp),
                 )
                 // Out of sight while an app is dragged out of it, but still there to carry the drag.
-                .graphicsLayer { alpha = if (dragging != null) 0f else 1f },
+                .graphicsLayer { alpha = if (dragApp != null) 0f else 1f },
         ) {
             StartMenu(
                 apps = apps,
                 pins = pins,
-                windows = main.size,
+                recent = recentApps,
+                reopen = reopen,
+                onReopen = {
+                    reopen.forEach(actions::launch)
+                    hadWindows = true
+                    startOpen = false
+                },
+                onFiles = { if (actions.openFiles()) startOpen = false else message = stillStarting },
+                onSettings = { startOpen = false; actions.openSettings() },
+                windows = all.size,
                 wide = vertical,
                 onLaunch = { app -> if (actions.launch(app)) startOpen = false else message = stillStarting },
                 onAddToDesktop = { app -> message = if (actions.addToDesktop(app)) "${app.name} is on the desktop" else stillStarting },
                 onPin = { app, on -> actions.setPinned(app.id, on) },
-                onDragStart = { app, at -> dragging = Dragging(app, at) },
-                onDrag = { delta -> dragging = dragging?.let { it.copy(at = it.at + delta) } },
+                onDragStart = { app, at ->
+                    dragAt.value = at
+                    dragApp = app
+                },
+                onDrag = { delta -> dragAt.value += delta },
                 onDragEnd = {
-                    dragging?.let { d ->
-                        message = if (dockBounds.contains(d.at)) {
-                            actions.setPinned(d.app.id, true)
-                            "${d.app.name} is on the dock"
-                        } else if (actions.addToDesktop(d.app)) "${d.app.name} is on the desktop" else stillStarting
+                    dragApp?.let { app ->
+                        message = if (dockBounds.contains(dragAt.value)) {
+                            actions.setPinned(app.id, true)
+                            "${app.name} is on the dock"
+                        } else if (actions.addToDesktop(app)) "${app.name} is on the desktop" else stillStarting
                     }
-                    dragging = null
+                    dragApp = null
                     startOpen = false
                 },
-                onDragCancel = { dragging = null },
+                onDragCancel = { dragApp = null },
                 onEnd = actions::end,
                 maxHeight = with(density) { viewHeight.toDp() } * (if (vertical) 0.94f else 0.7f),
             )
         }
 
         // The app being dragged, just above the finger.
-        dragging?.let { d ->
+        dragApp?.let { app ->
             val size = 60.dp
             val half = with(density) { (size / 2).roundToPx() }
-            val (container, onContainer) = appColors(d.app)
+            val (container, onContainer) = appColors(app)
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .offset { IntOffset(d.at.x.roundToInt() - half, d.at.y.roundToInt() - half * 2) }
+                    .offset { dragAt.value.let { at -> IntOffset(at.x.roundToInt() - half, at.y.roundToInt() - half * 2) } }
                     .size(size)
                     .graphicsLayer {
                         scaleX = 1.1f
                         scaleY = 1.1f
                     }
-                    .clip(appShape(d.app))
+                    .clip(appShape(app))
                     .background(container),
-            ) { AppGlyph(d.app, 28.dp, onContainer) }
+            ) { AppGlyph(app, 28.dp, onContainer) }
+        }
+
+        AnimatedVisibility(
+            visible = overview,
+            enter = fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 1.04f),
+            exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec(), targetScale = 1.04f),
+        ) {
+            Overview(
+                windows = all,
+                active = windows?.active ?: 0,
+                workspace = workspace,
+                workspaces = workspaces,
+                apps = allApps,
+                actions = actions,
+                onDone = { overview = false; actions.returnFocus() },
+            )
         }
 
         AnimatedVisibility(
@@ -498,7 +612,10 @@ fun DesktopShell(actions: DesktopActions) {
             exit = fadeOut(motion.fastEffectsSpec()),
             modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.displayCutout).padding(top = 16.dp),
         ) {
-            Surface(shape = CircleShape, color = colors.inverseSurface, contentColor = colors.inverseOnSurface, shadowElevation = 6.dp) {
+            Surface(
+                shape = CircleShape, color = colors.inverseSurface, contentColor = colors.inverseOnSurface, shadowElevation = 6.dp,
+                modifier = Modifier.pointerHoverIcon(PointerIcon.Default),
+            ) {
                 Text(message.orEmpty(), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
             }
         }
@@ -554,12 +671,13 @@ private fun DesktopIcons(
         }
         return
     }
+    val byId = remember(allApps) { allApps.associateBy { it.id } }
     // Down the side and then across, as a Linux desktop lays them out.
     FlowColumn(verticalArrangement = Arrangement.spacedBy(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxHeight()) {
         items.forEach { item ->
             key(item.path) {
                 Box(Modifier.width(84.dp)) {
-                    DesktopIcon(item, allApps.firstOrNull { it.id == item.app }?.takeIf { item.isShortcut }, onPlaced)
+                    DesktopIcon(item, byId[item.app]?.takeIf { item.isShortcut }, onPlaced)
                 }
             }
         }
@@ -638,6 +756,9 @@ private fun Dock(
     onAddToDesktop: (PermissionManifest) -> Unit,
     showingDesktop: Boolean,
     onShowDesktop: () -> Unit,
+    workspace: Int,
+    workspaces: Int,
+    onOverview: () -> Unit,
     dropHere: Boolean,
     actions: DesktopActions,
     maxLength: Dp,
@@ -654,6 +775,9 @@ private fun Dock(
         contentColor = colors.onSurface,
         shadowElevation = 12.dp,
         modifier = modifier
+            // Termux:X11 hides Android's pointer over its view, and a view without a pointer of
+            // its own shows the one under it: without this a mouse over the dock was invisible.
+            .pointerHoverIcon(PointerIcon.Default)
             .graphicsLayer {
                 scaleX = grow
                 scaleY = grow
@@ -683,7 +807,11 @@ private fun Dock(
                 key(e.app.id) { DockApp(e, active, launchable(e.app), onLaunch, onAddToDesktop, actions, compact = vertical) }
             }
             Separator(vertical)
-            Status(vertical, showingDesktop, onShowDesktop, actions::toggleKeyboard)
+            if (workspaces > 1) {
+                Workspaces(vertical, workspace, workspaces, actions::showWorkspace)
+                Separator(vertical)
+            }
+            Status(vertical, showingDesktop, onShowDesktop, onOverview, actions)
         }
         if (vertical) {
             Column(
@@ -851,10 +979,34 @@ private fun MenuTitle(title: String) {
     )
 }
 
-/** The dock's corner of what a phone's status bar has: show desktop, the keyboard, battery and time. */
+/** The workspaces, one dot-like button each, the one in view filled; as Android's page dots. */
 @Composable
-private fun Status(vertical: Boolean, showingDesktop: Boolean, onShowDesktop: () -> Unit, onKeyboard: () -> Unit) {
+private fun Workspaces(vertical: Boolean, current: Int, count: Int, onPick: (Int) -> Unit) {
     val colors = MaterialTheme.colorScheme
+    val content = @Composable {
+        repeat(count) { n ->
+            val on = n == current
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(28.dp).clip(CircleShape)
+                    .background(if (on) colors.secondaryContainer else Color.Transparent)
+                    .clickable(onClickLabel = "Desktop ${n + 1}") { onPick(n) },
+            ) {
+                Text("${n + 1}", style = MaterialTheme.typography.labelMedium, color = if (on) colors.onSecondaryContainer else colors.onSurfaceVariant)
+            }
+        }
+    }
+    if (vertical) Column(horizontalAlignment = Alignment.CenterHorizontally) { content() } else Row { content() }
+}
+
+/**
+ * The dock's corner of what a phone's status bar has: every window, show desktop, the
+ * keyboard, battery and time; a tap on those last two opens the quick settings.
+ */
+@Composable
+private fun Status(vertical: Boolean, showingDesktop: Boolean, onShowDesktop: () -> Unit, onOverview: () -> Unit, actions: DesktopActions) {
+    val colors = MaterialTheme.colorScheme
+    IconButton(onClick = onOverview) { Icon(LauncherIcons.Grid, "Every window", tint = colors.onSurfaceVariant) }
     IconButton(onClick = onShowDesktop) {
         Icon(
             LauncherIcons.Desktop,
@@ -862,12 +1014,89 @@ private fun Status(vertical: Boolean, showingDesktop: Boolean, onShowDesktop: ()
             tint = if (showingDesktop) colors.primary else colors.onSurfaceVariant,
         )
     }
-    IconButton(onClick = onKeyboard) { Icon(LauncherIcons.Keyboard, "Keyboard", tint = colors.onSurfaceVariant) }
+    IconButton(onClick = actions::toggleKeyboard) { Icon(LauncherIcons.Keyboard, "Keyboard", tint = colors.onSurfaceVariant) }
     // Battery over the time, as on the rail, so the bar keeps its width for apps.
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
-        Battery()
-        Spacer(Modifier.height(4.dp))
-        Clock(vertical)
+    var quick by remember { mutableStateOf(false) }
+    Box {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                .clickable(onClickLabel = "Quick settings") { quick = true }
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+        ) {
+            Battery()
+            Spacer(Modifier.height(4.dp))
+            Clock(vertical)
+        }
+        DropdownMenu(expanded = quick, onDismissRequest = { quick = false; actions.returnFocus() }, shape = RoundedCornerShape(24.dp)) {
+            QuickSettings(actions) { quick = false }
+        }
+    }
+}
+
+/** Sound, brightness and the desktop's size, as a phone's quick settings have them; and the wallpaper. */
+@Composable
+private fun QuickSettings(actions: DesktopActions, onDone: () -> Unit) {
+    val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
+    val audio = remember { context.getSystemService(AudioManager::class.java) }
+    val maxVolume = remember { audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1) }
+    var volume by remember { mutableStateOf(audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat()) }
+    val window = (context as? Activity)?.window
+    var brightness by remember {
+        val own = window?.attributes?.screenBrightness ?: -1f
+        mutableStateOf(
+            if (own >= 0f) own
+            else runCatching { android.provider.Settings.System.getInt(context.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS) / 255f }.getOrDefault(0.5f),
+        )
+    }
+    var scale by remember { mutableStateOf(actions.scale().toFloat()) }
+    Column(Modifier.width(300.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        @Composable
+        fun Labeled(icon: ImageVector, label: String, value: String, slider: @Composable () -> Unit) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, null, tint = colors.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                Text(value, style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
+            }
+            slider()
+        }
+        Labeled(LauncherIcons.Music, "Volume", "${(volume * 100 / maxVolume).roundToInt()}%") {
+            Slider(
+                value = volume,
+                onValueChange = {
+                    volume = it
+                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, it.roundToInt(), 0)
+                },
+                valueRange = 0f..maxVolume.toFloat(),
+            )
+        }
+        Labeled(LauncherIcons.Spark, "Brightness", "${(brightness * 100).roundToInt()}%") {
+            Slider(
+                value = brightness,
+                onValueChange = {
+                    brightness = it
+                    // This window's own brightness, as a video app sets it; the phone's setting stays.
+                    window?.let { w -> w.attributes = w.attributes.apply { screenBrightness = it.coerceAtLeast(0.02f) } }
+                },
+            )
+        }
+        Labeled(LauncherIcons.Scale, "Size", "${scale.roundToInt()}%") {
+            Slider(
+                value = scale,
+                onValueChange = { scale = it },
+                // The screen changes size once the slider rests, not on every step.
+                onValueChangeFinished = { actions.setScale(scale.roundToInt()) },
+                valueRange = com.daryan.tessera.X11Scale.MIN.toFloat()..com.daryan.tessera.X11Scale.MAX.toFloat(),
+                steps = (com.daryan.tessera.X11Scale.MAX - com.daryan.tessera.X11Scale.MIN) / 25 - 1,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = { onDone(); actions.pickWallpaper() }) { Text("Wallpaper") }
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = { onDone(); actions.openSettings() }) { Text("Settings") }
+        }
     }
 }
 
@@ -877,7 +1106,8 @@ private fun Clock(vertical: Boolean) {
         val format = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)
         while (true) {
             value = format.format(java.util.Date())
-            delay(10_000)
+            // On the minute, as the status bar's turns.
+            delay(60_000 - System.currentTimeMillis() % 60_000)
         }
     }
     Text(
@@ -893,19 +1123,21 @@ private fun Clock(vertical: Boolean) {
 private fun Battery() {
     val context = LocalContext.current
     val state by produceState<Pair<Int, Boolean>?>(null) {
-        while (true) {
-            val i: Intent? = ContextCompat.registerReceiver(
-                context, null, IntentFilter(Intent.ACTION_BATTERY_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED,
-            )
-            if (i != null) {
-                val level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-                val scale = i.getIntExtra(BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
-                val status = i.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-                val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-                if (level >= 0) value = level * 100 / scale to charging
-            }
-            delay(30_000)
+        fun read(i: Intent?): Pair<Int, Boolean>? {
+            i ?: return null
+            val level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = i.getIntExtra(BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
+            val status = i.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+            return if (level >= 0) level * 100 / scale to charging else null
         }
+        // Told when it changes, rather than asking every so often.
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) { read(i)?.let { value = it } }
+        }
+        read(ContextCompat.registerReceiver(context, receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED))
+            ?.let { value = it }
+        awaitDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
     val (percent, charging) = state ?: return
     val colors = MaterialTheme.colorScheme
@@ -928,6 +1160,13 @@ private fun Battery() {
 private fun StartMenu(
     apps: List<PermissionManifest>,
     pins: List<String>,
+    /** Opened lately, the latest first. */
+    recent: List<PermissionManifest>,
+    /** Open when the desktop was last used, while nothing's open yet. */
+    reopen: List<PermissionManifest>,
+    onReopen: () -> Unit,
+    onFiles: () -> Unit,
+    onSettings: () -> Unit,
     windows: Int,
     /** Landscape: wider, as tall as the screen allows, more apps to a row. */
     wide: Boolean,
@@ -953,7 +1192,8 @@ private fun StartMenu(
         color = colors.surfaceContainer,
         contentColor = colors.onSurface,
         shadowElevation = 16.dp,
-        modifier = Modifier.widthIn(max = if (wide) 620.dp else 440.dp).fillMaxWidth().heightIn(max = maxHeight)
+        modifier = Modifier.pointerHoverIcon(PointerIcon.Default)
+            .widthIn(max = if (wide) 620.dp else 440.dp).fillMaxWidth().heightIn(max = maxHeight)
             .border(1.dp, colors.outlineVariant.copy(alpha = 0.35f), RoundedCornerShape(28.dp)),
     ) {
         Column(Modifier.padding(if (wide) 12.dp else 16.dp)) {
@@ -993,6 +1233,33 @@ private fun StartMenu(
             } else {
                 Spacer(Modifier.height(12.dp))
             }
+            if (query.isBlank() && category == null && reopen.isNotEmpty()) {
+                Surface(
+                    onClick = onReopen,
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.secondaryContainer,
+                    contentColor = colors.onSecondaryContainer,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Icon(LauncherIcons.History, null)
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            if (reopen.size == 1) "Open ${reopen[0].name} again" else "Open the ${reopen.size} apps from last time",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
+            }
+            if (query.isBlank() && category == null && recent.isNotEmpty()) {
+                Text("Recent", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
+                    items(recent, key = { "recent-" + it.id }) { app ->
+                        Box(Modifier.width(if (wide) 80.dp else 84.dp)) { CompactAppTile(app) { onLaunch(app) } }
+                    }
+                }
+                Text("All apps", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+            }
             if (shown.isEmpty()) {
                 Text(
                     if (apps.isEmpty()) "No apps yet. Install some from the Store." else "No apps match",
@@ -1025,6 +1292,8 @@ private fun StartMenu(
                         color = colors.onSurfaceVariant,
                     )
                 }
+                IconButton(onClick = onFiles) { Icon(LauncherIcons.Folder, "Files") }
+                IconButton(onClick = onSettings) { Icon(Icons.Rounded.Settings, "Desktop settings") }
                 // Two taps, like the window panel's Close: the first asks.
                 var armed by rememberArmed()
                 TextButton(onClick = { if (armed) onEnd() else armed = true }) {
@@ -1095,6 +1364,121 @@ private fun StartTile(
             DropdownMenuItem(text = { Text("Open") }, onClick = { menu = false; onLaunch(app) })
             DropdownMenuItem(text = { Text("Add to desktop") }, onClick = { menu = false; onAddToDesktop(app) })
             DropdownMenuItem(text = { Text(if (pinned) "Unpin from dock" else "Pin to dock") }, onClick = { menu = false; onPin(app, !pinned) })
+        }
+    }
+}
+
+/**
+ * Every window, on every workspace, as cards over a dimmed desktop (Android's Recents, for the
+ * desktop): tap one to bring it up, close it from its card, hold it to send it to another
+ * workspace or snap it.
+ */
+@Composable
+private fun Overview(
+    windows: List<XWindow>,
+    active: Long,
+    workspace: Int,
+    workspaces: Int,
+    apps: List<PermissionManifest>,
+    actions: DesktopActions,
+    onDone: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        Modifier.fillMaxSize()
+            .pointerHoverIcon(PointerIcon.Default)
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDone)
+            .windowInsetsPadding(WindowInsets.displayCutout)
+            .padding(24.dp),
+    ) {
+        if (windows.isEmpty()) {
+            Text("No windows open", style = MaterialTheme.typography.titleMedium, color = Color.White, modifier = Modifier.align(Alignment.Center))
+            return@Box
+        }
+        val groups = (0 until maxOf(1, workspaces)).map { n -> n to windows.filter { it.desktop == n || (n == 0 && it.desktop == -1) } }
+            .filter { it.second.isNotEmpty() }
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 220.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            groups.forEach { (n, list) ->
+                if (workspaces > 1) {
+                    item(key = "ws-$n", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            "Desktop ${n + 1}" + if (n == workspace) " · in view" else "",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = Color.White,
+                        )
+                    }
+                }
+                items(list, key = { it.id }) { w ->
+                    WindowCard(w, appForWindow(w, apps), focused = w.id == active && !w.hidden, workspaces, actions) {
+                        if (w.desktop >= 0 && w.desktop != workspace) actions.showWorkspace(w.desktop)
+                        actions.activate(w.id)
+                        onDone()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WindowCard(
+    window: XWindow,
+    app: PermissionManifest,
+    focused: Boolean,
+    workspaces: Int,
+    actions: DesktopActions,
+    onOpen: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    var menu by remember { mutableStateOf(false) }
+    val (container, onContainer) = appColors(app)
+    Box {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = if (focused) colors.primaryContainer else colors.surfaceContainerHigh,
+            contentColor = if (focused) colors.onPrimaryContainer else colors.onSurface,
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                .combinedClickable(onClickLabel = window.title.ifBlank { app.name }, onClick = onOpen, onLongClick = { menu = true }),
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(40.dp).clip(appShape(app)).background(container), contentAlignment = Alignment.Center) {
+                        AppGlyph(app, 20.dp, onContainer)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(app.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { actions.close(window.id) }) { Icon(Icons.Rounded.Close, "Close") }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    window.title.ifBlank { app.name },
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.heightIn(min = 40.dp),
+                )
+                if (window.hidden) {
+                    Text("Minimized", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                }
+            }
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(16.dp)) {
+            MenuTitle(window.title.ifBlank { app.name })
+            DropdownMenuItem(text = { Text(if (window.maximized) "Restore" else "Maximize") }, onClick = { menu = false; actions.toggleMaximize(window.id) })
+            DropdownMenuItem(text = { Text("Left half") }, onClick = { menu = false; actions.snap(window.id, left = true) })
+            DropdownMenuItem(text = { Text("Right half") }, onClick = { menu = false; actions.snap(window.id, left = false) })
+            if (workspaces > 1) {
+                HorizontalDivider()
+                (0 until workspaces).filter { it != window.desktop }.forEach { n ->
+                    DropdownMenuItem(text = { Text("Move to desktop ${n + 1}") }, onClick = { menu = false; actions.moveToWorkspace(window.id, n) })
+                }
+            }
         }
     }
 }

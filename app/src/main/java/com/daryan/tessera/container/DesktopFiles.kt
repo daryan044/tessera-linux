@@ -5,6 +5,8 @@ package com.daryan.tessera.container
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -14,6 +16,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.ByteBuffer
 
 /** The desktop helper's command FIFO in the session's X11 directory; see [DESKTOP_HELPER]. */
 const val DESKTOP_COMMANDS_NAME = "launcher-desktop"
@@ -22,19 +25,25 @@ const val DESKTOP_ITEMS_NAME = "launcher-desktop-items"
 /** Taps and menus on the desktop's icons, one per line, as [DESKTOP_HELPER] reports them. */
 const val DESKTOP_EVENTS_NAME = "launcher-desktop-events"
 
-/** A tap ([menu] false) or a long press or right click on the desktop icon at [path]; [x], [y] in X pixels. */
-data class DesktopEvent(val path: String, val menu: Boolean, val x: Int = 0, val y: Int = 0)
+/**
+ * A tap ([menu] false) or a long press or right click on the desktop icon at [path] (an empty
+ * path: on the empty desktop), or with [dock], a tap in the dock's room from the X screen's own
+ * pointer (a mouse or touchpad the dock didn't see); [x], [y] in X pixels.
+ */
+data class DesktopEvent(val path: String, val menu: Boolean, val x: Int = 0, val y: Int = 0, val dock: Boolean = false)
 
 internal fun parseEvent(line: String): DesktopEvent? = runCatching {
     val (kind, arg) = line.split(" ", limit = 2).takeIf { it.size == 2 } ?: return null
+    fun at(o: JsonObject, key: String) = (o[key] as JsonPrimitive).content.toInt()
     when (kind) {
         "open" -> DesktopEvent(Json.decodeFromString(JsonPrimitive.serializer(), arg).content, menu = false)
         "menu" -> {
             val o = Json.decodeFromString(JsonObject.serializer(), arg)
-            DesktopEvent(
-                (o["path"] as JsonPrimitive).content, menu = true,
-                x = (o["x"] as JsonPrimitive).content.toInt(), y = (o["y"] as JsonPrimitive).content.toInt(),
-            )
+            DesktopEvent((o["path"] as JsonPrimitive).content, menu = true, x = at(o, "x"), y = at(o, "y"))
+        }
+        "dock" -> {
+            val o = Json.decodeFromString(JsonObject.serializer(), arg)
+            DesktopEvent("", menu = false, x = at(o, "x"), y = at(o, "y"), dock = true)
         }
         else -> null
     }
@@ -47,7 +56,8 @@ data class DesktopItem(val name: String, val path: String, val kind: String, val
     val isLink get() = kind == "link"
     val isFolder get() = kind == "dir"
 }
-private const val WALLPAPER_NAME = "desktop-wallpaper.raw"
+private const val WALLPAPER_NAME = "desktop-wallpaper"
+private const val PATCH_NAME = "desktop-icons"
 
 /**
  * A desktop session's side of things, in its X11 directory [dir]: what the taskbar asks of
@@ -63,9 +73,7 @@ class DesktopFiles(private val dir: File) {
         send("launch " + Json.encodeToString(JsonArray.serializer(), JsonArray(argv.map(::JsonPrimitive))))
 
     /** What is on the desktop now; empty until the helper has looked. */
-    fun items(): List<DesktopItem> = runCatching {
-        itemsJson.decodeFromString(ListSerializer(DesktopItem.serializer()), File(dir, DESKTOP_ITEMS_NAME).readText())
-    }.getOrDefault(emptyList())
+    fun items(): List<DesktopItem> = readItems(dir)
 
     /** Opens [path] with its app inside the desktop; a .desktop file runs its command. */
     fun open(path: String): Boolean = send("open " + Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(path)))
@@ -97,31 +105,41 @@ class DesktopFiles(private val dir: File) {
     /** Keeps [px] X pixels along the bottom, or the [left] edge, clear of maximized windows. */
     fun reserve(left: Boolean, px: Int): Boolean = send("strut ${if (left) "left" else "bottom"} $px")
 
+    /** Makes a folder on the desktop named [name], or a name like it not taken yet. */
+    fun makeFolder(name: String): Boolean = send("mkdir " + Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(name)))
+
+    /** Each picture the helper is sent gets a file of its own, as it may read the last one late. */
+    private val generations = HashMap<String, Int>()
+
     /**
-     * Shows [picture] behind the windows, cropped to fill a [width] × [height] X screen, with
-     * [icons] (the desktop's icons, drawn at the screen's proportions) over it, and tells the
-     * helper where each icon is, in X pixels, by its path. Run off the main thread: it writes
-     * the whole screen's pixels.
+     * Sends [picture], cropped to fill a [width] × [height] X screen, as the background, and
+     * returns it as sent, for [icons] to lay the icons over; null when the helper isn't
+     * listening (yet: it starts with the desktop). Run off the main thread: it's the whole
+     * screen's pixels, sent only when the background changes.
      */
-    fun wallpaper(
-        picture: Bitmap,
-        width: Int,
-        height: Int,
-        icons: Bitmap? = null,
-        places: Map<String, android.graphics.Rect> = emptyMap(),
-    ): Boolean {
-        // Not the whole screen's pixels for nobody: the helper may not be up yet.
-        if (width <= 0 || height <= 0 || !File(dir, DESKTOP_COMMANDS_NAME).exists()) return false
+    fun paper(picture: Bitmap, width: Int, height: Int): Bitmap? {
+        if (width <= 0 || height <= 0 || !File(dir, DESKTOP_COMMANDS_NAME).exists()) return null
         val scale = maxOf(width.toFloat() / picture.width, height.toFloat() / picture.height)
         val fitted = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         Canvas(fitted).apply {
-            save()
             translate((width - picture.width * scale) / 2, (height - picture.height * scale) / 2)
             scale(scale, scale)
             drawBitmap(picture, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
-            restore()
-            icons?.let { drawBitmap(it, null, android.graphics.Rect(0, 0, width, height), Paint(Paint.FILTER_BITMAP_FLAG)) }
         }
+        val file = write(WALLPAPER_NAME, fitted)
+        if (!send("paper /tmp/.X11-unix/${file.name} $width $height")) {
+            fitted.recycle()
+            return null
+        }
+        return fitted
+    }
+
+    /**
+     * Lays [icons] (the desktop's icons, drawn at the screen's proportions) over [paper] (as
+     * [paper] returned it), sending only [area]'s pixels (X pixels; null or empty: no icons),
+     * and tells the helper where each icon is, in X pixels, by its path.
+     */
+    fun icons(paper: Bitmap, icons: Bitmap?, area: android.graphics.Rect?, places: Map<String, android.graphics.Rect>): Boolean {
         val spots = JsonArray(
             places.map { (path, r) ->
                 JsonObject(
@@ -132,23 +150,40 @@ class DesktopFiles(private val dir: File) {
                 )
             },
         )
-        send("icons " + Json.encodeToString(JsonArray.serializer(), spots))
-        // The X server's 24-bit pixels, as XPutImage takes them: B, G, R, unused.
-        val pixels = IntArray(width * height)
-        fitted.getPixels(pixels, 0, width, 0, 0, width, height)
-        fitted.recycle()
-        val bytes = ByteArray(pixels.size * 4)
-        for (i in pixels.indices) {
-            val p = pixels[i]
-            bytes[i * 4] = p.toByte()
-            bytes[i * 4 + 1] = (p shr 8).toByte()
-            bytes[i * 4 + 2] = (p shr 16).toByte()
+        if (!send("icons " + Json.encodeToString(JsonArray.serializer(), spots))) return false
+        val box = area?.let { android.graphics.Rect(it) }
+        if (icons == null || box == null || !box.intersect(0, 0, paper.width, paper.height)) return send("patch - 0 0 0 0")
+        val patch = Bitmap.createBitmap(box.width(), box.height(), Bitmap.Config.ARGB_8888)
+        Canvas(patch).apply {
+            translate(-box.left.toFloat(), -box.top.toFloat())
+            drawBitmap(paper, 0f, 0f, null)
+            drawBitmap(icons, null, android.graphics.Rect(0, 0, paper.width, paper.height), Paint(Paint.FILTER_BITMAP_FLAG))
         }
-        val file = File(dir, WALLPAPER_NAME)
-        val tmp = File(dir, "$WALLPAPER_NAME.tmp")
-        tmp.writeBytes(bytes)
+        val file = write(PATCH_NAME, patch)
+        patch.recycle()
+        return send("patch /tmp/.X11-unix/${file.name} ${box.left} ${box.top} ${box.width()} ${box.height()}")
+    }
+
+    /**
+     * Writes [bitmap] in the X server's 24-bit pixels, as XPutImage takes them (B, G, R,
+     * unused), to a new file named after [name]; the ones two pictures back go.
+     */
+    private fun write(name: String, bitmap: Bitmap): File {
+        val n = (generations[name] ?: 0) + 1
+        generations[name] = n
+        // Android keeps ARGB_8888 as R, G, B, A in memory: with red and blue swapped, that's
+        // X's order, copied out in one go.
+        val swapped = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+        Canvas(swapped).drawBitmap(bitmap, 0f, 0f, Paint().apply { colorFilter = SWAP_RED_BLUE })
+        val bytes = ByteBuffer.allocate(swapped.byteCount)
+        swapped.copyPixelsToBuffer(bytes)
+        swapped.recycle()
+        val file = File(dir, "$name-$n.raw")
+        val tmp = File(dir, "$name-$n.tmp")
+        tmp.writeBytes(bytes.array())
         tmp.renameTo(file)
-        return send("wallpaper /tmp/.X11-unix/$WALLPAPER_NAME $width $height")
+        File(dir, "$name-${n - 2}.raw").delete()
+        return file
     }
 
     private fun send(line: String) = sendLine(File(dir, DESKTOP_COMMANDS_NAME), line)
@@ -172,6 +207,21 @@ class DesktopFiles(private val dir: File) {
 
     companion object {
         private val itemsJson = Json { ignoreUnknownKeys = true }
+        private val SWAP_RED_BLUE = ColorMatrixColorFilter(
+            ColorMatrix(
+                floatArrayOf(
+                    0f, 0f, 1f, 0f, 0f,
+                    0f, 1f, 0f, 0f, 0f,
+                    1f, 0f, 0f, 0f, 0f,
+                    0f, 0f, 0f, 1f, 0f,
+                ),
+            ),
+        )
+
+        /** What is on the desktop, as [DESKTOP_HELPER] last listed it in [dir]; empty until it has. */
+        fun readItems(dir: File): List<DesktopItem> = runCatching {
+            itemsJson.decodeFromString(ListSerializer(DesktopItem.serializer()), File(dir, DESKTOP_ITEMS_NAME).readText())
+        }.getOrDefault(emptyList())
         private const val INCOMING = "incoming"
         private const val THEME_DIR = "desktop"
         /** Names the theme in use; [DESKTOP_HELPER] sets xfwm4's theme to the path in it. */
@@ -343,20 +393,27 @@ exit ${'$'}status
  * - "launch <JSON argv>" starts an app in the desktop, in a session of its own;
  * - "strut left|bottom <px>" keeps that much of the edge for the dock, as a dock window's strut,
  *   so maximized windows stop at it;
- * - "wallpaper <file> <width> <height>" shows the file's B, G, R, x pixels behind the windows,
- *   on a window of the desktop type under every other (the launcher draws the icons into it);
+ * - "paper <file> <width> <height>" keeps the file's B, G, R, x pixels as the background, and
+ *   "patch <file> <x> <y> <width> <height>" lays a smaller picture over it (the icons, as the
+ *   launcher drew them over that background): both shown behind the windows, on a window of
+ *   the desktop type under every other. The background is sent again only when it changes;
  * - "icons <JSON [{path, x, y, w, h}]>" says where those icons are: a tap on one is reported as
- *   "open <JSON path>", a right click or a long press as "menu <JSON {path, x, y}>", one per
- *   line appended to [DESKTOP_EVENTS_NAME];
+ *   "open <JSON path>", a right click or a long press as "menu <JSON {path, x, y}>" (path ""
+ *   on the empty desktop), one per line appended to [DESKTOP_EVENTS_NAME]. A tap in the dock's
+ *   room (a mouse or touchpad pointer the X screen has, rather than Android) is "dock <JSON
+ *   {x, y}>", for the launcher to pass on to its dock;
+ * - "mkdir <JSON name>" makes a folder on the desktop, under a name not taken yet;
  * - "open <JSON path>" opens a file or folder on the desktop with its app (a .desktop file runs);
  * - "shortcut <JSON {id, name, argv}>" puts an app on the desktop as a .desktop file;
  * - "remove <JSON path>" takes a shortcut off the desktop, or moves a file there to the trash;
  * Files and web links dragged from Linux apps onto the desktop window (XDND) are copied there.
  * - "import <JSON {from, name}>" moves a file dropped from Android (copied into the X11
  *   directory's incoming folder first) onto the desktop, under a name not taken yet.
- * It keeps [DESKTOP_ITEMS_NAME] to what is in ~/Desktop (the XDG desktop folder), as JSON.
- * It also sets xfwm4 up for touch the first time (snap to edges, center new windows, shadows;
- * the user's own changes are kept after that) and sets its theme to the one [DesktopFiles.writeTheme]
+ * It keeps [DESKTOP_ITEMS_NAME] to what is in ~/Desktop (the XDG desktop folder), as JSON,
+ * looking again when the folder changes. It does nothing between events: it wakes for commands,
+ * X events and the windows it's waiting to fit.
+ * It also sets xfwm4 up for touch the first time (snap to edges, center new windows, shadows,
+ * two workspaces; the user's own changes are kept after that) and sets its theme to the one [DesktopFiles.writeTheme]
  * names, again whenever that changes.
  */
 internal const val DESKTOP_HELPER = """
@@ -374,6 +431,8 @@ try:
     d = display.Display()
     root = d.screen().root
     A = d.intern_atom
+    # New windows (the window list changes) are when there's anything to fit or frame.
+    root.change_attributes(event_mask=X.PropertyChangeMask)
 except Exception as e:
     print("desktop: no python3-xlib (%s); no wallpaper or dock space" % e, file=sys.stderr)
     d = None
@@ -387,14 +446,20 @@ def xfconf(prop, kind, value):
 
 def first_run():
     marker = os.path.expanduser("~/.config/tessera/desktop-configured-2")
-    if os.path.exists(marker) or not shutil.which("xfconf-query"):
+    # Two workspaces, given once to desktops set up before the taskbar had them.
+    spaces = os.path.expanduser("~/.config/tessera/desktop-workspaces")
+    if (os.path.exists(marker) and os.path.exists(spaces)) or not shutil.which("xfconf-query"):
         return
     # xfconfd comes up with xfwm4; give it a few tries.
     for _ in range(20):
-        if xfconf("workspace_count", "int", 1) == 0:
+        if xfconf("workspace_count", "int", 2) == 0:
             break
         time.sleep(0.5)
     else:
+        return
+    os.makedirs(os.path.dirname(spaces), exist_ok=True)
+    open(spaces, "w").close()
+    if os.path.exists(marker):
         return
     for prop, kind, value in [
         ("button_layout", "string", "|HMC"),
@@ -418,10 +483,21 @@ def first_run():
     os.makedirs(os.path.dirname(marker), exist_ok=True)
     open(marker, "w").close()
 
+def stamp(path):
+    try:
+        st = os.stat(path)
+        return (st.st_mtime_ns, st.st_ino, st.st_size)
+    except OSError:
+        return None
+
 theme_seen = None
+theme_stamp = None
 def follow_theme():
-    global theme_seen
+    global theme_seen, theme_stamp
     if not current:
+        return
+    now = stamp(current)
+    if now is None or now == theme_stamp:
         return
     try:
         text = open(current).read()
@@ -432,22 +508,29 @@ def follow_theme():
         if len(lines) > 1 and lines[1]:
             xfconf("title_font", "string", lines[1])
         theme_seen = text
+        theme_stamp = now
 
 fitted = {}
 def fit_new_windows():
     # A phone's screen is smaller than most apps' windows: one that doesn't fit, its buttons off
     # the edge, is maximized when it opens (a dialog is moved into the screen instead). Looked
-    # at half a second after it appears, once the app has sized it.
+    # at half a second after it appears, once the app has sized it. Returns how long until the
+    # next one is due, or None.
     if d is None:
-        return
+        return None
     clients = root.get_full_property(A("_NET_CLIENT_LIST"), X.AnyPropertyType)
     area = root.get_full_property(A("_NET_WORKAREA"), X.AnyPropertyType)
     if not clients or not area or len(area.value) < 4:
-        return
+        return None
     ax, ay, aw, ah = list(area.value)[:4]
     now = time.time()
+    for gone in set(fitted) - set(clients.value):
+        del fitted[gone]
+    due = None
     for wid in clients.value:
         first = fitted.setdefault(wid, now)
+        if first is not None and now - first < 0.5:
+            due = min(due or 1, 0.5 - (now - first))
         if first is None or now - first < 0.5:
             continue
         fitted[wid] = None
@@ -469,6 +552,7 @@ def fit_new_windows():
                 message(wid, A("_NET_WM_STATE"), [1, A("_NET_WM_STATE_MAXIMIZED_VERT"), A("_NET_WM_STATE_MAXIMIZED_HORZ"), 2, 0])
         except Exception:
             pass
+    return due
 
 def message(wid, atom, data):
     w = d.create_resource_object("window", wid)
@@ -507,8 +591,11 @@ def give_title_bars():
             pass
 
 dock = None
+# The dock's edge and its room there, in X pixels: taps there are the launcher's dock's.
+dock_room = (None, 0)
 def strut(side, px):
-    global dock
+    global dock, dock_room
+    dock_room = (side, px)
     if d is None:
         return
     g = root.get_geometry()
@@ -531,7 +618,6 @@ def strut(side, px):
     dock.change_property(A("_NET_WM_STRUT"), Xatom.CARDINAL, 32, values[:4])
     d.flush()
 
-paper = None
 desk = None
 def ensure_desk(w, h):
     # The desktop itself: a window of the desktop type (xfwm4 keeps it under every other one,
@@ -551,24 +637,61 @@ def ensure_desk(w, h):
     else:
         desk.configure(x=0, y=0, width=w, height=h)
 
-def wallpaper(path, w, h):
-    global paper
-    if d is None:
-        return
-    s = d.screen()
-    data = open(path, "rb").read()
-    if len(data) < w * h * 4:
-        return
-    pm = root.create_pixmap(w, h, s.root_depth)
+def put(pm, data, x, y, w, h):
     gc = pm.create_gc()
     # In strips that fit in a request.
     rows = max(1, 200000 // (w * 4))
-    for y in range(0, h, rows):
-        n = min(rows, h - y)
-        pm.put_image(gc, 0, y, w, n, X.ZPixmap, s.root_depth, 0, data[y * w * 4:(y + n) * w * 4])
+    for top in range(0, h, rows):
+        n = min(rows, h - top)
+        pm.put_image(gc, x, y + top, w, n, X.ZPixmap, d.screen().root_depth, 0, data[top * w * 4:(top + n) * w * 4])
     gc.free()
+
+base = None
+overlay = None
+def set_paper(path, w, h):
+    # The background alone, kept to lay each new picture of the icons over.
+    global base
+    if d is None:
+        return False
+    data = open(path, "rb").read()
+    if len(data) < w * h * 4:
+        return False
+    pm = root.create_pixmap(w, h, d.screen().root_depth)
+    put(pm, data, 0, 0, w, h)
+    if base is not None:
+        base[0].free()
+    base = (pm, w, h)
+    return True
+
+def set_patch(path, x, y, w, h):
+    global overlay
+    if w <= 0 or h <= 0:
+        overlay = None
+        return True
+    data = open(path, "rb").read()
+    if len(data) < w * h * 4:
+        return False
+    overlay = (data, x, y, w, h)
+    return True
+
+paper = None
+def compose():
+    # The background with the icons over it, shown on the root (where compositors, xfwm4's
+    # too, look) and on the desktop window. Copied within the X server: only the icons'
+    # pixels travel each time.
+    global paper
+    if d is None or base is None:
+        return
+    bpm, w, h = base
+    pm = root.create_pixmap(w, h, d.screen().root_depth)
+    gc = pm.create_gc()
+    pm.copy_area(gc, bpm, 0, 0, w, h, 0, 0)
+    gc.free()
+    if overlay is not None:
+        data, x, y, pw, ph = overlay
+        if x + pw <= w and y + ph <= h:
+            put(pm, data, x, y, pw, ph)
     root.change_attributes(background_pixmap=pm)
-    # Where compositors (xfwm4's too) look for the background.
     root.change_property(A("_XROOTPMAP_ID"), Xatom.PIXMAP, 32, [pm.id])
     root.change_property(A("ESETROOT_PMAP_ID"), Xatom.PIXMAP, 32, [pm.id])
     root.clear_area()
@@ -595,6 +718,12 @@ def hit(x, y):
         if i["x"] <= x < i["x"] + i["w"] and i["y"] <= y < i["y"] + i["h"]:
             return i["path"]
     return None
+
+def in_dock(x, y):
+    side, px = dock_room
+    if not px or base is None:
+        return False
+    return x < px if side == "left" else y >= base[2] - px
 
 from urllib.parse import unquote, urlparse
 
@@ -662,8 +791,13 @@ def dropped(e):
         reply(source, "XdndFinished", [desk.id, ok, A("XdndActionCopy") if ok else 0, 0, 0])
 
 press = None
+clients_changed = True
 def on_event(e):
-    global press
+    global press, clients_changed
+    if e.type == X.PropertyNotify and e.window.id == root.id:
+        if e.atom == A("_NET_CLIENT_LIST"):
+            clients_changed = True
+        return
     if desk is None or getattr(e, "window", None) is None or e.window.id != desk.id:
         return
     if e.type == X.ClientMessage:
@@ -673,18 +807,19 @@ def on_event(e):
     if e.type == X.ButtonPress and e.detail == 1:
         press = (e.event_x, e.event_y, e.time)
     elif e.type == X.ButtonPress and e.detail == 3:
-        # A right click, or Termux:X11's touch and hold: the icon's menu.
-        p = hit(e.event_x, e.event_y)
-        if p:
-            emit("menu " + json.dumps({"path": p, "x": e.event_x, "y": e.event_y}))
+        # A right click, or Termux:X11's touch and hold: the icon's menu, or the desktop's.
+        if not in_dock(e.event_x, e.event_y):
+            emit("menu " + json.dumps({"path": hit(e.event_x, e.event_y) or "", "x": e.event_x, "y": e.event_y}))
     elif e.type == X.ButtonRelease and e.detail == 1 and press:
         x0, y0, t0 = press
         press = None
         if abs(e.event_x - x0) > 24 or abs(e.event_y - y0) > 24:
             return
+        if in_dock(e.event_x, e.event_y):
+            return emit("dock " + json.dumps({"x": e.event_x, "y": e.event_y}))
         p = hit(e.event_x, e.event_y)
-        if p and (e.time - t0) % 0x100000000 > 600:
-            emit("menu " + json.dumps({"path": p, "x": e.event_x, "y": e.event_y}))
+        if (e.time - t0) % 0x100000000 > 600:
+            emit("menu " + json.dumps({"path": p or "", "x": e.event_x, "y": e.event_y}))
         elif p:
             emit("open " + json.dumps(p))
 
@@ -803,6 +938,9 @@ def import_file(spec):
         n += 1
     shutil.move(src, dest)
 
+def make_folder(name):
+    os.makedirs(unique(os.path.basename(str(name)) or "New folder"))
+
 def run(line):
     parts = line.split(" ", 1)
     if parts[0] == "import" and len(parts) == 2:
@@ -820,9 +958,14 @@ def run(line):
     elif parts[0] == "strut" and len(parts) == 2:
         side, px = parts[1].split()
         strut(side, max(0, int(px)))
-    elif parts[0] == "wallpaper" and len(parts) == 2:
+    elif parts[0] == "paper" and len(parts) == 2:
         path, w, h = parts[1].split()
-        wallpaper(path, int(w), int(h))
+        return set_paper(path, int(w), int(h))
+    elif parts[0] == "patch" and len(parts) == 2:
+        path, x, y, w, h = parts[1].split()
+        return set_patch(path, int(x), int(y), int(w), int(h))
+    elif parts[0] == "mkdir" and len(parts) == 2:
+        make_folder(json.loads(parts[1]))
     elif parts[0] == "icons" and len(parts) == 2:
         icons[:] = [i for i in json.loads(parts[1]) if isinstance(i, dict)]
 
@@ -836,26 +979,45 @@ except OSError:
 cmd = os.open(cmd_path, os.O_RDWR | os.O_NONBLOCK)
 pending = b""
 first_run()
+listed_stamp = None
+listed_at = 0
+due = None
 while True:
     follow_theme()
-    give_title_bars()
-    fit_new_windows()
-    try:
-        publish_desktop()
-    except OSError as e:
-        print("desktop: %s" % e, file=sys.stderr)
+    if clients_changed or due is not None:
+        if clients_changed:
+            give_title_bars()
+        clients_changed = False
+        due = fit_new_windows()
+    # The folder's times change as files come and go, renames too; once in a while regardless,
+    # for a .desktop file edited in place.
+    now = stamp(desktop_dir)
+    if now != listed_stamp or time.time() - listed_at > 15:
+        listed_stamp, listed_at = now, time.time()
+        try:
+            publish_desktop()
+        except OSError as e:
+            print("desktop: %s" % e, file=sys.stderr)
     watch = [cmd] + ([d.fileno()] if d is not None else [])
-    select.select(watch, [], [], 1)
+    select.select(watch, [], [], 5 if due is None else max(0.05, due))
     try:
         pending += os.read(cmd, 65536)
     except BlockingIOError:
         pass
+    redraw = False
     while b"\n" in pending:
         line, pending = pending.split(b"\n", 1)
         try:
-            run(line.decode(errors="replace").strip())
+            text = line.decode(errors="replace").strip()
+            done = run(text)
+            redraw = redraw or (text.startswith(("paper ", "patch ")) and bool(done))
+            if text.startswith(("shortcut ", "remove ", "import ", "mkdir ")):
+                listed_stamp = None
         except Exception as e:
             print("desktop: %s" % e, file=sys.stderr)
+    # Once for all that came together: a new background and its icons make one picture.
+    if redraw:
+        compose()
     while d is not None and d.pending_events():
         on_event(d.next_event())
 """
