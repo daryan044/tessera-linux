@@ -1,0 +1,64 @@
+--- a/src/vulkan/wsi/wsi_common.c	2026-10-27 12:06:06.408242966 +0300
++++ b/src/vulkan/wsi/wsi_common.c	2026-10-27 12:06:06.486017422 +0300
+@@ -229,6 +229,7 @@
+    WSI_GET_CB(GetCalibratedTimestampsKHR);
+    WSI_GET_CB(GetQueryPoolResults);
+    WSI_GET_CB(GetSemaphoreFdKHR);
++   WSI_GET_CB(InvalidateMappedMemoryRanges);
+    WSI_GET_CB(ResetFences);
+    WSI_GET_CB(QueueSubmit2);
+    WSI_GET_CB(SetDebugUtilsObjectNameEXT);
+@@ -2889,6 +2890,18 @@
+       if (wsi->sw) {
+          wsi->WaitForFences(vk_device_to_handle(dev),
+                             1, &swapchain->fences[image_index], true, ~0ull);
++         /* Tessera: the frame may sit in non-coherent cached memory; drop stale lines. */
++         VkDeviceMemory cpu_mem = image->blit.memory != VK_NULL_HANDLE ?
++            image->blit.memory : image->memory;
++         if (image->cpu_map && cpu_mem != VK_NULL_HANDLE) {
++            const VkMappedMemoryRange range = {
++               .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
++               .memory = cpu_mem,
++               .offset = 0,
++               .size = VK_WHOLE_SIZE,
++            };
++            wsi->InvalidateMappedMemoryRanges(vk_device_to_handle(dev), 1, &range);
++         }
+       }
+ 
+       const VkPresentRegionKHR *region = NULL;
+@@ -3084,8 +3097,22 @@
+ {
+    VkMemoryPropertyFlags req_props = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+ 
+-   if (wsi->sw)
+-      req_props |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
++   /* Tessera: frames the CPU reads back go in cached memory that isn't coherent, and are
++    * invalidated before each read (see wsi_common_queue_present). On Adreno (KGSL) the
++    * cached coherent kind is IO-coherent, and the CPU read stale cache lines of what the
++    * GPU drew: blocks of old or blank pixels. Uncached memory, used before, is always
++    * current but slow to read: at 1440x3000 reading it out took most of every frame.
++    */
++   if (wsi->sw) {
++      for (uint32_t t = 0; t < wsi->memory_props.memoryTypeCount; t++) {
++         VkMemoryPropertyFlags flags = wsi->memory_props.memoryTypes[t].propertyFlags;
++         if ((type_bits & (1u << t)) &&
++             (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) &&
++             (flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) &&
++             !(flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
++            return t;
++      }
++   }
+ 
+    return wsi_select_memory_type(wsi, req_props, 0 /* deny_props */, type_bits);
+ }
+--- a/src/vulkan/wsi/wsi_common.h	2026-10-27 12:06:06.408335310 +0300
++++ b/src/vulkan/wsi/wsi_common.h	2026-10-27 12:06:06.482135147 +0300
+@@ -241,6 +241,7 @@
+    WSI_CB(GetPhysicalDeviceQueueFamilyProperties);
+    WSI_CB(GetQueryPoolResults);
+    WSI_CB(GetSemaphoreFdKHR);
++   WSI_CB(InvalidateMappedMemoryRanges);
+    WSI_CB(ResetFences);
+    WSI_CB(QueueSubmit2);
+    WSI_CB(SetDebugUtilsObjectNameEXT);
