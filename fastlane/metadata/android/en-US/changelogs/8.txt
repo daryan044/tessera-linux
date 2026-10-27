@@ -1,0 +1,7 @@
+0.5.0 (alpha)
+- GPU apps up to 5x faster, with no tearing; Firefox draws on the GPU.
+- Smoother video and sound: PRoot does a third of the work, and video no longer rushes.
+- Full resolution per app (Scale page): sharp text and video at any size.
+- Sessions: CPU, RAM and GPU meters; logs behind a button.
+- Desktop: a file manager (Thunar), notifications, workspaces, own wallpaper.
+- Fixed: GPU apps failing with "failed to load driver: zink".
