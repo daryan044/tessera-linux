@@ -129,11 +129,15 @@ val THEME_COMPANIONS = mapOf(
  * What Linux apps expect of a desktop system and the minimal image lacks, queued once a
  * container is missing any: OpenGL, EGL and GLES (glvnd, with Mesa's software drivers for when
  * the GPU driver is off; apps failed on a missing libGL.so.1), GLU, Vulkan's loader, glxinfo,
- * and what AppImages (FUSE 2) and Electron apps load.
+ * what our GPU driver ([GpuDriver]) links and Debian's Mesa doesn't pull in, and what
+ * AppImages (FUSE 2) and Electron apps load.
  */
 val BASE_LIBRARIES = listOf(
     "libgl1", "libegl1", "libgles2", "libglx-mesa0", "libegl-mesa0", "libgl1-mesa-dri", "libgbm1",
     "libglu1-mesa", "libvulkan1", "mesa-utils",
+    // Turnip's X11 presenting links it; without it the driver doesn't load, Zink finds no
+    // Vulkan device, and every GPU app fails with "failed to load driver: zink".
+    "libxcb-keysyms1",
     "libfuse2t64", "libnss3", "libxkbcommon0", "libasound2t64", "libxss1", "libxtst6", "libsecret-1-0", "libgtk-3-0t64",
     "ca-certificates", "fonts-dejavu-core",
 )
