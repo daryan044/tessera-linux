@@ -233,7 +233,7 @@ if [ -n "${'$'}LAUNCHER_AUDIO" ] && command -v pulseaudio >/dev/null 2>&1; then
   mkdir -p "${'$'}PULSE_RUNTIME_PATH"
   pulseaudio -n --daemonize=no --exit-idle-time=-1 --disable-shm=yes \
     --load="module-native-protocol-unix auth-anonymous=1" \
-    --load="module-pipe-sink file=/tmp/.X11-unix/$AUDIO_FIFO_NAME format=s16le rate=$AUDIO_RATE channels=2 sink_name=android" \
+    --load="module-pipe-sink file=/tmp/.X11-unix/$AUDIO_FIFO_NAME format=s16le rate=$AUDIO_RATE channels=2 sink_name=android use_system_clock_for_timing=yes" \
     --load="module-suspend-on-idle timeout=2" >/dev/null 2>&1 & pa=${'$'}!
   # Apps that find no server at startup stay silent, so give it a moment.
   for i in 1 2 3 4 5 6 7 8 9 10; do [ -S "${'$'}PULSE_RUNTIME_PATH/native" ] && break; sleep 0.2; done

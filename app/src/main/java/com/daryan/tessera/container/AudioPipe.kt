@@ -14,8 +14,10 @@ import java.io.IOException
 /**
  * Plays a GUI session's sound. Its PulseAudio (started by [guestCommand]) has a pipe sink
  * writing 16-bit stereo PCM into [fifo]; this reads it and hands it to an [AudioTrack].
- * AudioTrack's blocking write paces the reads, and a full pipe paces PulseAudio, so the guest
- * plays in real time without a clock of its own. No host server, no native code.
+ * The sink plays by the system clock (use_system_clock_for_timing) rather than by the pipe
+ * filling up: paced by the pipe, the position it reported moved in steps as AudioTrack drained
+ * it, and players timing video by it (Firefox) held frames, then rushed through them. Its
+ * clock and AudioTrack's agree closely enough that this keeps up. No host server, no native code.
  */
 class AudioPipe(private val fifo: File) {
     @Volatile private var stopped = false
