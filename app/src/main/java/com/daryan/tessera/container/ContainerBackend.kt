@@ -209,6 +209,20 @@ if [ -n "${'$'}TESSERA_THEME" ]; then
   fi
   [ -z "${'$'}SAL_USE_VCLPLUGIN" ] && [ -e /usr/lib/libreoffice/program/libvclplug_gtk3lo.so ] && export SAL_USE_VCLPLUGIN=gtk3
 fi
+# Firefox doesn't know Zink and draws pages on the CPU, which can't keep up with video or
+# scrolling at the phone's resolution. With the GPU driver its profiles get a block in user.js
+# turning GPU drawing on; without it the block goes, as forcing it onto Mesa's software
+# rasterizer would be slower than Firefox's own.
+for p in "${'$'}HOME"/.mozilla/firefox/*/ "${'$'}HOME"/.mozilla/firefox-esr/*/ "${'$'}HOME"/.config/mozilla/firefox/*/ "${'$'}HOME"/.var/app/org.mozilla.firefox/.mozilla/firefox/*/; do
+  [ -f "${'$'}p/prefs.js" ] || continue
+  u="${'$'}p/user.js"
+  {
+    [ -f "${'$'}u" ] && sed '/^\/\/ tessera-gpu {/,/^\/\/ } tessera-gpu/d' "${'$'}u"
+    if [ "${'$'}GALLIUM_DRIVER" = zink ]; then
+      printf '%s\n' '// tessera-gpu { (written by Tessera at every start)' 'user_pref("gfx.webrender.all", true);' 'user_pref("layers.acceleration.force-enabled", true);' '// } tessera-gpu'
+    fi
+  } > "${'$'}u.tessera" && mv "${'$'}u.tessera" "${'$'}u"
+done
 if [ -n "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && [ -d /usr/lib/python3/dist-packages/gi ]; then
   python3 -c "${'$'}notify" /tmp/.X11-unix & nd=${'$'}!
 fi
