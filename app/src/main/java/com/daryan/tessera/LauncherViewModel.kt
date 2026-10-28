@@ -191,6 +191,23 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         list.mapNotNull { it.flatpak?.app }.filter { present == null || it in present }.toSet()
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
+    private val _flathubFsync = MutableStateFlow(
+        app.getSharedPreferences("launcher", Context.MODE_PRIVATE).getBoolean(KEY_FLATHUB_FSYNC, true),
+    )
+    /** Whether Flathub installs flush each file to storage: safe, and slow (PRoot above all). */
+    val flathubFsync: StateFlow<Boolean> = _flathubFsync
+
+    /** Tessera's stand-in for bubblewrap, which Flathub installs run in its place. */
+    private val bwrapStandIn by lazy { getApplication<Application>().assets.open("flatpak/bwrap.sh").reader().use { it.readText() } }
+
+    /** A Flathub install of [id], as the settings and the stand-in for bubblewrap have it. */
+    private fun flathubInstallScript(id: String) = Flatpak.installScript(id, _flathubFsync.value, bwrapStandIn)
+
+    fun setFlathubFsync(on: Boolean) {
+        _flathubFsync.value = on
+        prefs.edit().putBoolean(KEY_FLATHUB_FSYNC, on).apply()
+    }
+
     fun setStoreSource(source: StoreSource) {
         _storeSource.value = source
         prefs.edit().putString(KEY_STORE_SOURCE, source.name).apply()
@@ -630,7 +647,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (!Flatpak.validId(app.id) || store == null) return false
             container.queue.enqueue(
                 app.name, listOf(flatpakJob(app.id)), QueueAction.INSTALL, container.flathub.iconFile(app)?.path, backend,
-                script = Flatpak.installScript(app.id),
+                script = flathubInstallScript(app.id), flatpakApp = app.id,
             ) { container.registry.registerFlatpak(app, store, container.flathub.icon(app)) }
             return true
         }
@@ -648,7 +665,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (!Flatpak.validId(app.id)) return false
             container.queue.enqueue(
                 app.name, listOf(flatpakJob(app.id)), QueueAction.REMOVE, container.flathub.iconFile(app)?.path, backend,
-                script = Flatpak.uninstallScript(app.id),
+                script = Flatpak.uninstallScript(app.id, _flathubFsync.value),
             ) { container.registry.unregister(StoreRegistry.idFor(app), store) }
             return true
         }
@@ -669,7 +686,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (!Flatpak.validId(ref.app)) return false
             container.queue.enqueue(
                 app.name, listOf(flatpakJob(ref.app)), QueueAction.REMOVE, app.iconFile, backend,
-                script = Flatpak.uninstallScript(ref.app),
+                script = Flatpak.uninstallScript(ref.app, _flathubFsync.value),
             ) { container.registry.unregister(app.id, store) }
             return true
         }
@@ -711,7 +728,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (!Flatpak.validId(ref.app) || store == null) return false
             container.queue.enqueue(
                 app.name, listOf(flatpakJob(ref.app)), QueueAction.INSTALL, app.iconFile, backend,
-                script = Flatpak.installScript(ref.app),
+                script = flathubInstallScript(ref.app), flatpakApp = ref.app,
             ) { container.registry.reresolveFlatpak(app, store) }
             return true
         }
@@ -908,6 +925,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         const val KEY_MODE = "backend_mode"
         const val KEY_ROOT_GRANTED = "root_granted"
         const val KEY_STORE_SOURCE = "store_source"
+        const val KEY_FLATHUB_FSYNC = "flathub_fsync"
         /** What stands for Flathub's setup and its apps in the install queue's package lists. */
         const val FLATHUB_SETUP = "flathub-setup"
         fun flatpakJob(id: String) = "flathub:$id"

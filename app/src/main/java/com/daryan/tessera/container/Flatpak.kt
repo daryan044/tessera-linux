@@ -52,19 +52,42 @@ object Flatpak {
     /**
      * Installs [id] for aarch64. Flatpak's post-install steps (icon caches) need bubblewrap and
      * fail; the app is there all the same, so success is its deployed files, not the exit code.
+     * Not --noninteractive: that prints no progress, and [FlatpakProgress] reads the bar it draws.
+     * [bwrap] is Tessera's stand-in for bubblewrap (assets/flatpak/bwrap.sh), which apps whose
+     * maker ships them separately (VS Code) need to unpack them, and the triggers to run.
      */
-    fun installScript(id: String): String {
+    fun installScript(id: String, fsync: Boolean = true, bwrap: String? = null): String {
         require(validId(id)) { "not a Flathub id: $id" }
-        return "flatpak install -y --noninteractive --arch=aarch64 $REMOTE $id; " +
+        return fsyncScript(fsync) + bwrap?.let(::bwrapScript).orEmpty() +
+            "flatpak install -y --arch=aarch64 $REMOTE $id; " +
             "test -e $ROOT/app/$id/current/active/metadata"
     }
 
+    /** Where the install's own /tmp gets the bubblewrap stand-in. */
+    const val BWRAP = "/tmp/.tessera-bwrap"
+
+    /** Writes [script] to [BWRAP] and tells flatpak to run it in bubblewrap's place. */
+    internal fun bwrapScript(script: String): String {
+        require("\nTESSERA_BWRAP\n" !in "\n$script\n") { "the stand-in can't contain its heredoc's end" }
+        return "cat > $BWRAP <<'TESSERA_BWRAP'\n${script.trimEnd('\n')}\nTESSERA_BWRAP\n" +
+            "chmod 755 $BWRAP; export FLATPAK_BWRAP=$BWRAP; "
+    }
+
     /** Removes [id] and any runtime no app uses any more. */
-    fun uninstallScript(id: String): String {
+    fun uninstallScript(id: String, fsync: Boolean = true): String {
         require(validId(id)) { "not a Flathub id: $id" }
-        return "flatpak uninstall -y --noninteractive $id; flatpak uninstall -y --noninteractive --unused; " +
+        return fsyncScript(fsync) + "flatpak uninstall -y --noninteractive $id; flatpak uninstall -y --noninteractive --unused; " +
             "test ! -e $ROOT/app/$id/current"
     }
+
+    /**
+     * Sets whether OSTree flushes each file it writes to storage ([core] fsync in the repo's
+     * config). Off is much faster, in PRoot above all, where every call goes through ptrace, but a
+     * power cut mid-install can leave that install broken, to be installed again.
+     */
+    internal fun fsyncScript(fsync: Boolean): String =
+        "sed -i '/^fsync=/d' $REPO_CONFIG; " +
+            (if (fsync) "" else "sed -i 's/^\\[core\\]\$/[core]\\nfsync=false/' $REPO_CONFIG; ")
 
     /** Whether Flathub is set up in a container, from its repo config. */
     fun isSetUp(repoConfig: String?): Boolean = repoConfig?.contains("[remote \"$REMOTE\"]") == true

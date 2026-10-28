@@ -58,6 +58,9 @@ class BackendTest {
         val root = proot.buildLaunch(offline.copy(permissions = Permissions(root = true)), session).argv
         assertTrue("--root-id" in root)
         assertFalse(root.any { it.startsWith("--change-id") })
+        // Root sessions (installs) see Tessera's proot, for the bubblewrap stand-in; apps don't.
+        assertTrue("--bind=/app/lib:/opt/tessera-proot" in root)
+        assertFalse(proot.buildLaunch(offline, session).argv.any { "tessera-proot" in it })
     }
 
     @Test fun `proot cannot withhold network and says so`() {

@@ -45,6 +45,8 @@ data class QueueJob(
     val finishedAt: Long? = null,
     /** What runs instead of apt (Flathub's setup, flatpak install), as root; its last line is the progress text. */
     val script: String? = null,
+    /** The Flathub id a flatpak install [script] installs, whose progress [FlatpakProgress] reads. */
+    val flatpakApp: String? = null,
 ) {
     val active get() = state is JobState.Queued || state is JobState.Running
 }
@@ -75,10 +77,11 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         iconFile: String?,
         backend: ContainerBackend,
         script: String? = null,
+        flatpakApp: String? = null,
         onDone: suspend () -> Unit,
     ) {
         if (_jobs.value.any { it.active && it.packages == packages }) return
-        val job = QueueJob(nextId.getAndIncrement(), title, packages, action, iconFile, script = script)
+        val job = QueueJob(nextId.getAndIncrement(), title, packages, action, iconFile, script = script, flatpakApp = flatpakApp)
         reruns[job.id] = backend to onDone
         _jobs.update { it + job }
         scope.launch(Dispatchers.IO) {
@@ -113,7 +116,7 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         val job = _jobs.value.firstOrNull { it.id == id && it.state is JobState.Failed } ?: return
         val (backend, onDone) = reruns.remove(id) ?: return
         _jobs.update { list -> list.filterNot { it.id == id } }
-        enqueue(job.title, job.packages, job.action, job.iconFile, backend, job.script, onDone)
+        enqueue(job.title, job.packages, job.action, job.iconFile, backend, job.script, job.flatpakApp, onDone)
     }
 
     private fun run(job: QueueJob, backend: ContainerBackend): Boolean {
@@ -135,19 +138,25 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
             stopRequested = false
             runningPid = pid[0]
             val parser = AptProgress()
+            val flatpak = job.flatpakApp?.let(::FlatpakProgress)
             val tail = ArrayDeque<String>()
             val log = StringBuilder()
             var state: JobState = JobState.Running(null, "Starting")
             var published = 0L
-            ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.adoptFd(fd)).bufferedReader().use { r ->
+            val pty = ParcelFileDescriptor.adoptFd(fd)
+            val answer = java.io.FileOutputStream(pty.fileDescriptor)
+            ParcelFileDescriptor.AutoCloseInputStream(pty).bufferedReader().use { r ->
                 try {
-                    r.lineSequence().forEach { raw ->
+                    terminalLines(r) { runCatching { answer.write(CURSOR_REPORT) } }.forEach { raw ->
                         // Without terminal colors: flatpak colors its errors even on a pipe.
                         val line = raw.trimEnd('\r').replace(ANSI, "")
                         if (job.script == null) parser.feed(line)?.let { (p, msg) -> state = JobState.Running(p, msg) }
+                        else if (flatpak != null) flatpak.feed(line)?.let { (p, msg) -> state = JobState.Running(p, msg) }
                         // Other tools' progress isn't machine-readable: their latest line says it.
                         else if (line.isNotBlank()) state = JobState.Running(null, line.trim().take(120))
-                        if (line.isNotBlank() && !line.startsWith("dlstatus:") && !line.startsWith("pmstatus:") && !line.startsWith("##phase")) {
+                        if (line.isNotBlank() && !line.startsWith("dlstatus:") && !line.startsWith("pmstatus:") && !line.startsWith("##phase") &&
+                            !FlatpakProgress.isProgress(line)
+                        ) {
                             tail.addLast(line); if (tail.size > 3) tail.removeFirst()
                             log.append(line).append('\n')
                             if (log.length > MAX_LOG) log.delete(0, log.length - MAX_LOG)
@@ -170,7 +179,10 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
             } else {
                 val why = when {
                     code < 0 -> ended(-code, stopRequested)
-                    else -> tail.lastOrNull { it.startsWith("E:") } ?: tail.lastOrNull() ?: "apt failed ($code)"
+                    else -> tail.lastOrNull { it.startsWith("E:") }
+                        // flatpak's own words, not the table row drawn before them.
+                        ?: tail.lastOrNull { "error: " in it }?.let { it.substring(it.indexOf("error: ")) }
+                        ?: tail.lastOrNull() ?: "apt failed ($code)"
                 }
                 set(job.id, JobState.Failed(why), log)
                 false
@@ -229,6 +241,98 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         }
     }
 }
+
+/**
+ * Turns the progress line flatpak draws in a terminal ("Installing 2/3… ███ 45%  1.2 MB/s") into
+ * one 0..1 figure over all its steps, naming each runtime it brings: the first app on Flathub
+ * comes with hundreds of MB of them, and a bar stuck on the app's name read as a hang. [app] is
+ * the Flathub id being installed.
+ */
+class FlatpakProgress(private val app: String) {
+    /** What each numbered step installs, from the table flatpak prints first. */
+    private val steps = mutableMapOf<Int, String>()
+    private var started = false
+
+    /**
+     * Progress and a short message for [line], or null if it says nothing new. Where the terminal
+     * answers its cursor queries, flatpak redraws the table and the bar together, with no line
+     * breaks between its rows, so rows and bar are looked for anywhere in [line].
+     */
+    fun feed(line: String): Pair<Float?, String>? {
+        val rows = ROW.findAll(line).onEach { steps[it.groupValues[1].toInt()] = it.groupValues[2] }.count()
+        val m = STEP.findAll(line).lastOrNull()
+        if (m == null) {
+            // Before the bar: "Looking for matches…"; after it, bubblewrap's noise.
+            return if (started || rows > 0 || line.isBlank() || HEADER.containsMatchIn(line)) null else null to line.trim().take(120)
+        }
+        started = true
+        val (verb, n, total, pct) = m.destructured
+        val step = n.toIntOrNull() ?: 1
+        val of = total.toIntOrNull() ?: 1
+        val p = pct.toFloat().coerceIn(0f, 100f) / 100f
+        val id = steps[step]
+        val what = when {
+            id == null || id == app -> verb
+            else -> "$verb runtime $id"
+        }
+        val speed = SPEED.find(line, m.range.first)?.value?.let { ", $it" }.orEmpty()
+        val count = if (of > 1) " ($step of $of)" else ""
+        return ((step - 1 + p) / of).coerceIn(0f, 1f) to "$what$count$speed"
+    }
+
+    companion object {
+        private val STEP = Regex("""(Installing|Updating|Uninstalling)(?: (\d+)/(\d+))?(?:…|\.\.\.)[^%]*?(\d{1,3})%""")
+        /** " 1.     org.kde.Platform  aarch64  6.9  i  flathub  < 400 MB", once done "1. [✓] …". */
+        private val ROW = Regex("""(?<![\d.])(\d+)\.\s+(?:\[.]\s+)?([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+)\s+\S+\s+\S+\s+[iur]\s""")
+        private val HEADER = Regex("""^\s*ID\s+Arch\s""")
+        /** "1.2 MB/s"; flatpak puts a no-break space before the unit. */
+        private val SPEED = Regex("""\d+(?:\.\d+)?[\s\u00A0]*[kMG]B/s""")
+
+        /** A row as redrawn while it runs, with its state in brackets: "1. [/] org.kde.Platform …". */
+        private val REDRAWN_ROW = Regex("""\d+\.\s+\[.]\s""")
+
+        /** Whether [line] is one of the bar's or the table's redraws, which the log can do without. */
+        fun isProgress(line: String) = STEP.containsMatchIn(line) || REDRAWN_ROW.containsMatchIn(line)
+    }
+}
+
+/**
+ * [r]'s lines, split at \n or \r (a redrawn progress line starts with \r) and where the cursor is
+ * moved or the screen cleared (ESC [ … H or J: flatpak goes back to the top and draws its table
+ * and bar again), answering a terminal's cursor position query with [onQuery] as soon as it
+ * arrives: flatpak asks before each redraw and waits a tenth of a second for the answer, with its
+ * downloads waiting too.
+ */
+internal fun terminalLines(r: java.io.Reader, onQuery: () -> Unit): Sequence<String> = sequence {
+    val line = StringBuilder()
+    while (true) {
+        val c = r.read()
+        if (c < 0) break
+        if (c == '\n'.code || c == '\r'.code) {
+            yield(line.toString())
+            line.setLength(0)
+        } else {
+            line.append(c.toChar())
+            if (line.endsWith(CURSOR_QUERY)) {
+                line.setLength(line.length - CURSOR_QUERY.length)
+                onQuery()
+            } else if (c == 'H'.code || c == 'J'.code) {
+                MOVE.find(line)?.let { move ->
+                    line.setLength(move.range.first)
+                    if (line.isNotEmpty()) yield(line.toString())
+                    line.setLength(0)
+                }
+            }
+        }
+    }
+    if (line.isNotEmpty()) yield(line.toString())
+}
+
+/** "Where is the cursor?", and an answer: top left, which is all flatpak needs to draw. */
+private const val CURSOR_QUERY = "\u001B[6n"
+/** Moving the cursor (ESC [ row ; col H) or clearing (ESC [ n J), at the end of the text so far. */
+private val MOVE = Regex("""\u001B\[[0-9;]*[HJ]$""")
+internal val CURSOR_REPORT = "\u001B[1;1R".toByteArray()
 
 /**
  * Turns apt's Status-Fd lines into one 0..1 figure: package lists (first 10%), downloads (to

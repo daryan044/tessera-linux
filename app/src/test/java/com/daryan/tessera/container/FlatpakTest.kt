@@ -81,7 +81,16 @@ class FlatpakTest {
         assertTrue(Flatpak.isSetUp("[core]\nrepo_version=1\n\n[remote \"flathub\"]\nurl=https://dl.flathub.org/repo/\n"))
         assertFalse(Flatpak.isSetUp("[core]\n"))
         assertFalse(Flatpak.isSetUp(null))
-        assertTrue("flatpak install -y --noninteractive --arch=aarch64 flathub io.mpv.Mpv;" in Flatpak.installScript("io.mpv.Mpv"))
+        assertTrue("flatpak install -y --arch=aarch64 flathub io.mpv.Mpv;" in Flatpak.installScript("io.mpv.Mpv"))
+        // Flushing each file: back on unless switched off, then off in the repo's [core].
+        assertTrue(Flatpak.installScript("io.mpv.Mpv").startsWith("sed -i '/^fsync=/d' /var/lib/flatpak/repo/config; flatpak install"))
+        assertTrue("""s/^\[core\]$/[core]\nfsync=false/""" in Flatpak.installScript("io.mpv.Mpv", fsync = false))
+        assertTrue("fsync=false" in Flatpak.uninstallScript("io.mpv.Mpv", fsync = false))
+        // The bubblewrap stand-in, written out and named to flatpak before it runs.
+        val withStandIn = Flatpak.installScript("io.mpv.Mpv", bwrap = "#!/bin/sh\necho stand-in\n")
+        assertTrue("cat > /tmp/.tessera-bwrap <<'TESSERA_BWRAP'\n#!/bin/sh\necho stand-in\nTESSERA_BWRAP\n" in withStandIn)
+        assertTrue(withStandIn.indexOf("export FLATPAK_BWRAP=/tmp/.tessera-bwrap") < withStandIn.indexOf("flatpak install"))
+        assertFalse("FLATPAK_BWRAP" in Flatpak.installScript("io.mpv.Mpv"))
         assertFalse(Flatpak.validId("io.mpv.Mpv; rm -rf /"))
         assertFalse(Flatpak.validId("mpv"))
     }

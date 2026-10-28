@@ -45,4 +45,62 @@ class InstallQueueTest {
         assertEquals("Ended by signal 11", InstallQueue.ended(11, byUser = false))
         assertEquals("Stopped", InstallQueue.ended(9, byUser = true))
     }
+
+    @Test fun `flatpak's bar maps onto one figure over its steps, naming the runtimes`() {
+        // As flatpak draws it in a terminal, without its colors.
+        val p = FlatpakProgress("org.kde.kate")
+        assertEquals(null to "Looking for matches…", p.feed("Looking for matches…"))
+        assertNull(p.feed("        ID                       Arch    Branch Op Remote  Download"))
+        assertNull(p.feed(" 1.     org.kde.Platform         aarch64 6.9    i  flathub < 400.1 MB"))
+        assertNull(p.feed(" 2.     org.kde.kate             aarch64 stable i  flathub  < 30.2 MB"))
+        val rt = p.feed("Installing 1/2… ████▌                 23%  1.2 MB/s  05:12")!!
+        assertEquals(0.115f, rt.first!!, 0.001f)
+        assertEquals("Installing runtime org.kde.Platform (1 of 2), 1.2 MB/s", rt.second)
+        val app = p.feed("Installing 2/2… ██████████          50%  800.0 kB/s  00:20")!!
+        assertEquals(0.75f, app.first!!, 0.001f)
+        assertEquals("Installing (2 of 2), 800.0 kB/s", app.second)
+        assertTrue(FlatpakProgress.isProgress("Installing 2/2… ███ 50%"))
+        // As a phone printed it: a no-break space before the unit, and no speed while it starts.
+        assertEquals("Installing runtime org.kde.Platform (1 of 3), 454.6\u00A0kB/s", p.feed("Installing 1/3… █       75%  454.6\u00A0kB/s")!!.second)
+        assertEquals("Installing (2 of 2)", p.feed("Installing 2/2…                        0%  0\u00A0bytes/s")!!.second)
+        // After the bar, bubblewrap's failures aren't news.
+        assertNull(p.feed("bwrap: Creating new namespace failed: Invalid argument"))
+        // One step: no count.
+        assertEquals(1f to "Installing", FlatpakProgress("net.zdechov.app.x2048").feed("Installing… ████████ 100%"))
+    }
+
+    @Test fun `flatpak's redrawn table and bar, all on one line, still read as progress`() {
+        // What flatpak sends when its cursor queries are answered, as a phone sent it: back to the
+        // top, clear, then the table's rows padded to the width and the bar, with no line breaks.
+        val nb = " "
+        val raw = "\u001B[?25l\u001B[6n\u001B[1;1H\u001B[0J" +
+            " 1. [|] org.freedesktop.Platform.openh264 aarch64 2.5.1  i  flathub < 930.4${nb}kB" +
+            " 2. [ ] org._2006Scape.Launcher           aarch64 stable i  flathub  < 61.6${nb}MB" +
+            "Installing 1/2… \u001B[2m████████ \u001B[22m             40%  217.0${nb}kB/s" +
+            "\u001B[6n\u001B[1;1H\u001B[0J" +
+            " 1. [✓] org.freedesktop.Platform.openh264 aarch64 2.5.1  i  flathub 930.4${nb}kB / 930.4${nb}kB" +
+            " 2. [/] org._2006Scape.Launcher           aarch64 stable i  flathub  1.0${nb}MB / 61.6${nb}MB" +
+            "Installing 2/2… \u001B[2m█ \u001B[22m             5%"
+        var asked = 0
+        val ansi = Regex("\u001B\\[[0-9;?]*[A-Za-z]")
+        val chunks = terminalLines(java.io.StringReader(raw)) { asked++ }.map { it.replace(ansi, "") }.filter { it.isNotBlank() }.toList()
+        assertEquals(2, asked)
+        assertEquals(2, chunks.size)
+        assertTrue(chunks.all(FlatpakProgress::isProgress))
+        val p = FlatpakProgress("org._2006Scape.Launcher")
+        val rt = p.feed(chunks[0])!!
+        assertEquals(0.2f, rt.first!!, 0.001f)
+        assertEquals("Installing runtime org.freedesktop.Platform.openh264 (1 of 2), 217.0${nb}kB/s", rt.second)
+        val app = p.feed(chunks[1])!!
+        assertEquals(0.525f, app.first!!, 0.001f)
+        assertEquals("Installing (2 of 2)", app.second)
+    }
+
+    @Test fun `terminal lines split at returns, and cursor queries are answered at once`() {
+        var asked = 0
+        val text = "Looking\r\n\u001B[6n\rInstalling… 2%\u001B[6n\rInstalling… 100%\nend"
+        val lines = terminalLines(java.io.StringReader(text)) { asked++ }.toList()
+        assertEquals(listOf("Looking", "", "", "Installing… 2%", "Installing… 100%", "end"), lines)
+        assertEquals(2, asked)
+    }
 }

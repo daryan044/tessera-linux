@@ -151,6 +151,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val storeSource by vm.storeSource.collectAsStateWithLifecycle()
     val flathubReady by vm.flathubReady.collectAsStateWithLifecycle()
     val flathubInstalled by vm.flathubInstalled.collectAsStateWithLifecycle()
+    val flathubFsync by vm.flathubFsync.collectAsStateWithLifecycle()
     val installedPackages by vm.installedPackages.collectAsStateWithLifecycle()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val launchApp: (PermissionManifest) -> Unit = { app ->
@@ -551,6 +552,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onRemoveTab = { removingTab = it },
             catalog = catalog,
             onRefreshCatalog = { vm.openStore(refresh = true) },
+            flathubFsync = flathubFsync,
+            onFlathubFsync = vm::setFlathubFsync,
             activeInstalls = queue.count { it.active },
             onOpenQueue = { showQueue = true },
             onDisplaySettings = { context.startActivity(Intent().setClassName(context, "com.termux.x11.LoriePreferences")) },
@@ -580,10 +583,17 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             installed = if (flathub) app.id in flathubInstalled else installedPackages?.contains(app.pkg),
             blocker = blocker,
             job = queue.lastOrNull { key in it.packages && it.active },
+            firstFlathub = flathub && flathubInstalled.isEmpty(),
             onInstall = {
+                val first = flathub && flathubInstalled.isEmpty()
                 if (vm.storeInstall(app)) {
                     openStoreApp = null
-                    scope.launch { snackbar.showSnackbar("${app.name} added to installs") }
+                    scope.launch {
+                        snackbar.showSnackbar(
+                            if (first) "${app.name} added to installs. The first Flathub app brings its runtimes too, so it takes longer"
+                            else "${app.name} added to installs",
+                        )
+                    }
                 }
             },
             onOpen = entry?.let { e -> { openStoreApp = null; launchApp(e) } },

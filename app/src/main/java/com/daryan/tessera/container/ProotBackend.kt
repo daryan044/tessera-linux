@@ -59,6 +59,9 @@ class ProotBackend(
                 p.devices.filter { exists(it) && !it.startsWith(UsbBridge.USB_PATH) }.forEach { bind(it) }
                 bind(paths.sessionUsb(session).invariantSeparatorsPath, UsbBridge.USB_PATH.removeSuffix("/"))
             }
+            // Installs run as root: Tessera's proot, for the bubblewrap stand-in (bwrap.sh) to
+            // build an app's root in, a PRoot inside this one.
+            if (p.root) bind(paths.nativeLibDir.invariantSeparatorsPath, PROOT_GUEST_DIR)
 
             add("/usr/bin/env")
             add("-i")
@@ -127,6 +130,9 @@ class ProotBackend(
         add(if (host == guest) "--bind=$host" else "--bind=$host:$guest")
     }
 }
+
+/** Where root sessions see Tessera's proot and its loader; bwrap.sh looks for it there. */
+internal const val PROOT_GUEST_DIR = "/opt/tessera-proot"
 
 /**
  * Firefox's per-process sandboxes install seccomp filters that clash with PRoot's ptrace, and
