@@ -152,18 +152,17 @@ LD="$R/usr/lib/ld-linux-aarch64.so.1"
 GROUPS_ARG=
 [ -n "$NET_GROUPS" ] && GROUPS_ARG="--groups=$NET_GROUPS"
 cd /
-# The app's own processes carry TESSERA_APP_RUN, and the app lasts while any of them runs, not
-# just the first: VS Code's `code` starts the editor apart and exits at once. Not the session's
-# own mark, which the process holding the session open (FLATPAK_HOLD) carries too.
-RUN=$$
+# The app lasts while any process in its root runs, not just the first: VS Code's `code` starts
+# the editor apart and exits at once. Its root tells them apart (this tmpfs is the app's alone),
+# not their environment: Chromium writes its process titles over it.
 exec "$LD" --library-path "$R/usr/lib/aarch64-linux-gnu" "$R/usr/sbin/chroot" \
   --userspec="$U:$U" $GROUPS_ARG "$F" \
-  /usr/bin/env -i "$@" TESSERA_APP_RUN=$RUN /bin/sh -c "cd \"\$HOME\" 2>/dev/null; $CMD; s=\$?
+  /usr/bin/env -i "$@" /bin/sh -c "cd \"\$HOME\" 2>/dev/null; $CMD; s=\$?
     while :; do
       left=0
       for p in /proc/[0-9]*; do
         [ \"\${p#/proc/}\" = \$\$ ] && continue
-        tr '\0' '\n' 2>/dev/null < \$p/environ | grep -qx TESSERA_APP_RUN=$RUN && { left=1; break; }
+        [ \$p/root/. -ef / ] 2>/dev/null && { left=1; break; }
       done
       [ \$left = 0 ] && exit \$s
       sleep 1

@@ -81,6 +81,12 @@ class FlatpakTest {
         val root = Flatpak.env(ref, gpu = false, sessionEnv = mapOf("HOME" to "/root", "XDG_CACHE_HOME" to "/tmp/cache"))
         assertEquals("/root/.local/state", root["XDG_STATE_HOME"])
         assertFalse("XDG_CACHE_HOME" in root)
+        // The app's own PATH, as AAT sets it for its bundled Java; the usual two otherwise.
+        assertEquals("/app/bin:/usr/bin", env["PATH"])
+        val java = Flatpak.env(ref.copy(env = mapOf("PATH" to "/app/jre/bin:/app/bin:/usr/bin")), gpu = false, sessionEnv = session)
+        assertEquals("/app/jre/bin:/app/bin:/usr/bin", java["PATH"])
+        val partial = Flatpak.env(ref.copy(env = mapOf("PATH" to "/app/jre/bin")), gpu = false, sessionEnv = session)
+        assertEquals("/app/jre/bin:/app/bin:/usr/bin", partial["PATH"])
     }
 
     @Test fun `setup and install scripts`() {

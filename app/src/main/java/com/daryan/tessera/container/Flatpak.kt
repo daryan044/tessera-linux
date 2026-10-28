@@ -149,7 +149,10 @@ object Flatpak {
     fun env(ref: FlatpakRef, gpu: Boolean, sessionEnv: Map<String, String>): Map<String, String> = buildMap {
         // What the runtime and app ask for, under what Tessera sets (the cursor, the theme).
         putAll(ref.env.filterKeys { it !in sessionEnv })
-        put("PATH", "/app/bin:/usr/bin")
+        // The app's own PATH when it sets one (AAT puts its Java there: /app/jre/bin), with the
+        // usual two in it all the same.
+        val path = ref.env["PATH"]?.split(':')?.filter { it.isNotEmpty() }.orEmpty()
+        put("PATH", (path + listOf("/app/bin", "/usr/bin")).distinct().joinToString(":"))
         // flatpak run always sets these, and launchers build paths on them: VS Code's put its
         // settings and extensions under / without. The usual places in the home, where these
         // apps' data has been all along.
