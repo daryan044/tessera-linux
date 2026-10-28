@@ -1,0 +1,4 @@
+0.5.4 (alpha)
+- Chroot mode no longer uses the phone's own tools, only the root manager's busybox: on a Galaxy Z Fold5 with KernelSU, which lacks touch, tr and unshare, every install and app failed.
+- An app that stops for a missing library, program or Python module says what it needs, and Tessera can find the Debian package and install it.
+- Flathub in chroot mode: VS Code no longer closes after 2 seconds, and apps keep their own PATH (AAT's Java was not found).
