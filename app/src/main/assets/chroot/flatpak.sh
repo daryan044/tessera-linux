@@ -16,7 +16,11 @@ for bb in /data/adb/magisk/busybox /data/adb/ksu/bin/busybox /data/adb/ap/bin/bu
   if [ -x "$bb" ]; then break; fi
 done
 [ -x "$bb" ] || { echo "busybox from Magisk/KernelSU/APatch not found" >&2; exit 1; }
-mount() { "$bb" mount "$@"; }
+# Every tool from busybox, never the phone's: some phones' root shell reaches none of toybox's
+# (no unshare, tr or touch on a Galaxy Z Fold5 with KernelSU, #5).
+for c in mount touch mkdir ln rm sed grep head cat chmod chown stat dirname find ls sort tr chroot; do
+  eval "$c() { \"\$bb\" $c \"\$@\"; }"
+done
 # Shares host path $1 at $2 with what's mounted inside it (rbind: the phone's / alone is
 # Android's read-only root, its /data and /storage empty), read-only when $3 is ro.
 share() {
@@ -48,6 +52,15 @@ mount --bind "$R$FP_RUNTIME" usr
 mount -o remount,bind,ro usr
 mount --bind "$R$FP_APP" app
 mount -o remount,bind,ro app
+# zypak (Flathub's Electron apps: VS Code, Discord, Obsidian) sandboxes Electron through
+# Flatpak's own services, which aren't here: it aborts ("Assertion failed: bus"). A stand-in runs
+# the app straight; Electron's own sandbox needs user namespaces, so it's off too.
+ZYPAK=
+for z in zypak-wrapper.sh zypak-wrapper; do
+  [ -e "app/bin/$z" ] || continue
+  [ -n "$ZYPAK" ] || { ZYPAK=run/host/tessera-zypak; printf '#!/bin/sh\nexec "$@"\n' > "$ZYPAK"; chmod 755 "$ZYPAK"; }
+  mount --bind "$ZYPAK" "app/bin/$z"
+done
 if [ -n "$FP_GL" ] && [ -d "$R$FP_GL" ]; then
   # The extension's folder doesn't exist in the read-only runtime; a tmpfs over its parent
   # makes room for it.
@@ -134,6 +147,7 @@ set --
 while IFS= read -r kv; do [ -n "$kv" ] && set -- "$@" "$kv"; done <<ENVEOF
 $GUEST_ENV
 ENVEOF
+[ -n "$ZYPAK" ] && set -- "$@" ELECTRON_DISABLE_SANDBOX=1
 
 # The runtime has no setpriv; the container's chroot (run with the container's own loader,
 # since this is still Android's side) changes root and drops to the app's uid in one go.
@@ -142,6 +156,18 @@ LD="$R/usr/lib/ld-linux-aarch64.so.1"
 GROUPS_ARG=
 [ -n "$NET_GROUPS" ] && GROUPS_ARG="--groups=$NET_GROUPS"
 cd /
+# The app lasts while any process in its root runs, not just the first: VS Code's `code` starts
+# the editor apart and exits at once. Its root tells them apart (this tmpfs is the app's alone),
+# not their environment: Chromium writes its process titles over it.
 exec "$LD" --library-path "$R/usr/lib/aarch64-linux-gnu" "$R/usr/sbin/chroot" \
   --userspec="$U:$U" $GROUPS_ARG "$F" \
-  /usr/bin/env -i "$@" /bin/sh -c "cd \"\$HOME\" 2>/dev/null; exec $CMD"
+  /usr/bin/env -i "$@" /bin/sh -c "cd \"\$HOME\" 2>/dev/null; $CMD; s=\$?
+    while :; do
+      left=0
+      for p in /proc/[0-9]*; do
+        [ \"\${p#/proc/}\" = \$\$ ] && continue
+        [ \$p/root/. -ef / ] 2>/dev/null && { left=1; break; }
+      done
+      [ \$left = 0 ] && exit \$s
+      sleep 1
+    done"

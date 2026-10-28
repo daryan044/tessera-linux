@@ -148,6 +148,7 @@ fun StoreScreen(
                             FilterChip(selected = category == c, onClick = { category = c }, label = { Text(c) })
                         }
                     }
+                    CommandLineHint()
                     Text(
                         "${shown.size} apps from ${source.label}",
                         style = MaterialTheme.typography.labelLarge,
@@ -202,6 +203,30 @@ fun StoreScreen(
                     else -> ContainedLoadingIndicator(Modifier.size(72.dp))
                 }
             }
+        }
+    }
+}
+
+/**
+ * That the Store isn't the only way in: it's a Debian system, so a terminal installs the usual
+ * way too, and whatever brings a menu entry shows up among the apps.
+ */
+@Composable
+private fun CommandLineHint() {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Icon(LauncherIcons.Terminal, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "Prefer the command line? Open Root shell or Terminal from your apps and install the usual Linux way: " +
+                    "apt install, wget or curl a .deb or an AppImage, pip, and so on. Apps that add a menu entry show up in your apps.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -338,6 +363,8 @@ fun StoreAppSheet(
     blocker: String?,
     /** This app's job in the install queue, while it's waiting or running. */
     job: QueueJob?,
+    /** No Flathub app is installed in this system yet, so this one brings the runtimes too. */
+    firstFlathub: Boolean,
     onInstall: () -> Unit,
     onOpen: (() -> Unit)?,
     onUninstall: () -> Unit,
@@ -390,7 +417,9 @@ fun StoreAppSheet(
                 if (blocker == null) {
                     Text(
                         if (app.source == StoreSource.FLATHUB) {
-                            "Installs ${app.name} from Flathub with flatpak, with the runtime it needs, then adds it to your apps."
+                            "Installs ${app.name} from Flathub with flatpak, with the runtime it needs, then adds it to your apps." +
+                                if (firstFlathub) " As the first Flathub app here, it also downloads the runtimes Flathub apps share, " +
+                                    "often several hundred MB, so it takes longer. Apps after it that use the same runtimes install faster." else ""
                         } else {
                             "Installs ${app.pkg} from Debian ${app.component} with apt, in a terminal you can watch, " +
                                 "then adds it to your apps."

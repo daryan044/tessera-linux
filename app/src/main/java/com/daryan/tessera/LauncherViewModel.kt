@@ -15,6 +15,8 @@ import com.daryan.tessera.files.FileBrowser
 import com.daryan.tessera.files.FilesEngine
 import com.daryan.tessera.files.GuestFiles
 import com.daryan.tessera.store.CatalogState
+import com.daryan.tessera.store.Missing
+import com.daryan.tessera.store.MissingPackages
 import com.daryan.tessera.store.QueueAction
 import com.daryan.tessera.store.QueueJob
 import com.daryan.tessera.store.StoreApp
@@ -207,6 +209,23 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         list.mapNotNull { it.flatpak?.app }.filter { present == null || it in present }.toSet()
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
+    private val _flathubFsync = MutableStateFlow(
+        app.getSharedPreferences("launcher", Context.MODE_PRIVATE).getBoolean(KEY_FLATHUB_FSYNC, true),
+    )
+    /** Whether Flathub installs flush each file to storage: safe, and slow (PRoot above all). */
+    val flathubFsync: StateFlow<Boolean> = _flathubFsync
+
+    /** Tessera's stand-in for bubblewrap, which Flathub installs run in its place. */
+    private val bwrapStandIn by lazy { getApplication<Application>().assets.open("flatpak/bwrap.sh").reader().use { it.readText() } }
+
+    /** A Flathub install of [id], as the settings and the stand-in for bubblewrap have it. */
+    private fun flathubInstallScript(id: String) = Flatpak.installScript(id, _flathubFsync.value, bwrapStandIn)
+
+    fun setFlathubFsync(on: Boolean) {
+        _flathubFsync.value = on
+        prefs.edit().putBoolean(KEY_FLATHUB_FSYNC, on).apply()
+    }
+
     fun setStoreSource(source: StoreSource) {
         _storeSource.value = source
         prefs.edit().putString(KEY_STORE_SOURCE, source.name).apply()
@@ -303,6 +322,56 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             installState.collect { if (it == InstallState.Done) refresh() }
         }
+    }
+
+    /** A Debian app that stopped, and what it said was missing; see [missingFor]. */
+    data class MissingPrompt(val sessionId: String, val app: PermissionManifest, val missing: Missing)
+
+    private val _missingPrompt = MutableStateFlow<MissingPrompt?>(null)
+    /** The latest app to stop for want of something a package would bring, until dismissed. */
+    val missingPrompt: StateFlow<MissingPrompt?> = _missingPrompt
+
+    fun dismissMissingPrompt() { _missingPrompt.value = null }
+
+    /**
+     * What [s] said it couldn't find as it stopped, when a Debian package would bring it: windowed
+     * apps that ended by themselves with an error, not Flathub's (their runtime brings what they
+     * need) nor terminals (where "command not found" is just a typo).
+     */
+    fun missingFor(s: RunningSession): Missing? =
+        if (s.running || s.endedBy != null || s.exitCode == 0 || s.terminal != null || s.app.flatpak != null) null
+        else MissingPackages.find(s.output)
+
+    private val _reopen = Channel<PermissionManifest>(Channel.BUFFERED)
+    /** Apps whose missing package was just installed, to offer opening again. */
+    val reopen = _reopen.receiveAsFlow()
+
+    init {
+        // An app that stopped on its own, saying what it couldn't find: offer the package once.
+        viewModelScope.launch {
+            val seen = mutableSetOf<String>()
+            sessions.sessions.collect { list ->
+                list.filter { !it.running && seen.add(it.session.id) }.firstNotNullOfOrNull { s ->
+                    missingFor(s)?.let { MissingPrompt(s.session.id, s.app, it) }
+                }?.let { _missingPrompt.value = it }
+            }
+        }
+    }
+
+    /** Finds the package with [missing] and installs it, in the queue; false when no system is ready. */
+    fun installMissing(app: PermissionManifest, missing: Missing): Boolean {
+        val backend = backend() ?: return false
+        if (blocker(_status.value, _mode.value) != null) return false
+        val store = configStore(_status.value, _mode.value)
+        _missingPrompt.value = null
+        container.queue.enqueue(
+            "What ${app.name} needs: ${missing.label}", listOf("missing:${missing.pattern}"), QueueAction.INSTALL, app.iconFile, backend,
+            script = MissingPackages.script(missing),
+        ) {
+            container.registry.refreshInstalled(store)
+            _reopen.send(app)
+        }
+        return true
     }
 
     /** Installs Linux for the current mode: into app storage for PRoot, as root for chroot. */
@@ -754,7 +823,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (!Flatpak.validId(app.id) || store == null) return false
             container.queue.enqueue(
                 app.name, listOf(flatpakJob(app.id)), QueueAction.INSTALL, container.flathub.iconFile(app)?.path, backend,
-                script = Flatpak.installScript(app.id),
+                script = flathubInstallScript(app.id), flatpakApp = app.id,
             ) { container.registry.registerFlatpak(app, store, container.flathub.icon(app)) }
             return true
         }
@@ -772,7 +841,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (!Flatpak.validId(app.id)) return false
             container.queue.enqueue(
                 app.name, listOf(flatpakJob(app.id)), QueueAction.REMOVE, container.flathub.iconFile(app)?.path, backend,
-                script = Flatpak.uninstallScript(app.id),
+                script = Flatpak.uninstallScript(app.id, _flathubFsync.value),
             ) { container.registry.unregister(StoreRegistry.idFor(app), store) }
             return true
         }
@@ -793,7 +862,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (!Flatpak.validId(ref.app)) return false
             container.queue.enqueue(
                 app.name, listOf(flatpakJob(ref.app)), QueueAction.REMOVE, app.iconFile, backend,
-                script = Flatpak.uninstallScript(ref.app),
+                script = Flatpak.uninstallScript(ref.app, _flathubFsync.value),
             ) { container.registry.unregister(app.id, store) }
             return true
         }
@@ -840,7 +909,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (!Flatpak.validId(ref.app) || store == null) return false
             container.queue.enqueue(
                 app.name, listOf(flatpakJob(ref.app)), QueueAction.INSTALL, app.iconFile, backend,
-                script = Flatpak.installScript(ref.app),
+                script = flathubInstallScript(ref.app), flatpakApp = ref.app,
             ) { container.registry.reresolveFlatpak(app, store) }
             return true
         }
@@ -1045,6 +1114,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         const val KEY_DS_CONTAINER = "droidspaces_container"
         const val KEY_ROOT_GRANTED = "root_granted"
         const val KEY_STORE_SOURCE = "store_source"
+        const val KEY_FLATHUB_FSYNC = "flathub_fsync"
         /** What stands for Flathub's setup and its apps in the install queue's package lists. */
         const val FLATHUB_SETUP = "flathub-setup"
         fun flatpakJob(id: String) = "flathub:$id"

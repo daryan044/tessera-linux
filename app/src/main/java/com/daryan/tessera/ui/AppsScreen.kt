@@ -302,8 +302,10 @@ private fun TabsPager(
     // Tabs whose tiles already rose in: coming back to one (or swiping past it) shouldn't replay it.
     val shown = remember { mutableSetOf<String>() }
     // The tabs either side are composed ahead, so a swipe doesn't build a whole grid mid-gesture.
-    HorizontalPager(pagerState, Modifier.fillMaxSize(), beyondViewportPageCount = 1, key = { tabs[it].title }) { page ->
-        val tab = tabs[page]
+    // The page count can run a frame ahead of [tabs] when a tab comes or goes (an app in a new
+    // category): until this recomposes, a page past the end has no tab, rather than a crash.
+    HorizontalPager(pagerState, Modifier.fillMaxSize(), beyondViewportPageCount = 1, key = { tabs.getOrNull(it)?.title ?: "page-$it" }) { page ->
+        val tab = tabs.getOrNull(page) ?: return@HorizontalPager
         val animate = remember(tab.title) { shown.add(tab.title) && page == pagerState.currentPage }
         // Only the first screenful rises in; tiles scrolled to later just appear.
         val enteredAt = remember(tab.title) { SystemClock.uptimeMillis() }

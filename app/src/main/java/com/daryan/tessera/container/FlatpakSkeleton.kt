@@ -37,6 +37,18 @@ object FlatpakSkeleton {
             }
         }
         File(dir, "run/host/font-dirs.xml").takeIf { !it.isFile }?.writeText(FONT_DIRS)
+        File(dir, ZYPAK_STUB).takeIf { !it.isFile }?.apply { writeText("#!/bin/sh\nexec \"\$@\"\n"); setExecutable(true, false) }
         return dir
     }
+
+    /**
+     * What stands in for zypak's wrapper in Flathub's Electron apps (VS Code, Discord, Obsidian):
+     * zypak sandboxes Electron through Flatpak's own services, which aren't here, and aborts
+     * without them ("Assertion failed: bus"). This runs the app straight, its sandbox off as it
+     * is for every PRoot app. Relative to the skeleton.
+     */
+    const val ZYPAK_STUB = "run/host/tessera-zypak"
+
+    /** The wrappers [ZYPAK_STUB] goes over, in an app's /app/bin. */
+    val ZYPAK_WRAPPERS = listOf("zypak-wrapper.sh", "zypak-wrapper")
 }

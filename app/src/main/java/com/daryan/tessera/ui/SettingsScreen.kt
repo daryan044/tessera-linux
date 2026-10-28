@@ -72,6 +72,9 @@ fun SettingsScreen(
     onRemoveTab: (String) -> Unit,
     catalog: CatalogState,
     onRefreshCatalog: () -> Unit,
+    /** Whether Flathub installs flush each file to storage as they write it. */
+    flathubFsync: Boolean,
+    onFlathubFsync: (Boolean) -> Unit,
     activeInstalls: Int,
     onOpenQueue: () -> Unit,
     onDisplaySettings: () -> Unit,
@@ -128,6 +131,12 @@ fun SettingsScreen(
                         CatalogState.Empty -> "Not downloaded yet (about 20 MB)"
                     },
                     action = { IconButton(onClick = onRefreshCatalog) { Icon(Icons.Rounded.Refresh, "Refresh catalog") } },
+                )
+                Row(
+                    LauncherIcons.Store, "Faster Flathub installs",
+                    if (flathubFsync) "Off: every file is flushed to storage as it's written, which is safe and slow, in PRoot mode most of all"
+                    else "Files aren't flushed to storage one by one. If the phone loses power during an install, install that app again. Applies to installs from now on",
+                    action = { androidx.compose.material3.Switch(checked = !flathubFsync, onCheckedChange = { onFlathubFsync(!it) }) },
                 )
                 Row(LauncherIcons.Store, "Install queue", if (activeInstalls == 0) "Nothing installing" else "$activeInstalls installing or waiting", onClick = onOpenQueue)
             }

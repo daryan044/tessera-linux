@@ -6,7 +6,10 @@ package com.daryan.tessera.container
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.io.File
 
 class BackendTest {
@@ -55,6 +58,9 @@ class BackendTest {
         val root = proot.buildLaunch(offline.copy(permissions = Permissions(root = true)), session).argv
         assertTrue("--root-id" in root)
         assertFalse(root.any { it.startsWith("--change-id") })
+        // Root sessions (installs) see Tessera's proot, for the bubblewrap stand-in; apps don't.
+        assertTrue("--bind=/app/lib:/opt/tessera-proot" in root)
+        assertFalse(proot.buildLaunch(offline, session).argv.any { "tessera-proot" in it })
     }
 
     @Test fun `proot cannot withhold network and says so`() {
@@ -67,13 +73,43 @@ class BackendTest {
         val chroot = ChrootBackend(paths, "/system/bin/su", appUid = 10123)
         val denied = chroot.buildLaunch(offline, Session("s1")).argv
         assertEquals("/system/bin/su", denied[0])
-        assertTrue(denied[2].endsWith("exec unshare -m -n /system/bin/sh /app/files/chroot/enter.sh"))
+        assertTrue(denied[2].endsWith("exec \$UNSHARE -m -n /system/bin/sh /app/files/chroot/enter.sh"))
         assertTrue("export NET_GROUPS=''" in denied[2])
 
         val granted = chroot.buildLaunch(firefox, session).argv[2]
-        assertTrue(granted.endsWith("exec unshare -m /system/bin/sh /app/files/chroot/enter.sh"))
+        assertTrue(granted.endsWith("exec \$UNSHARE -m /system/bin/sh /app/files/chroot/enter.sh"))
         assertTrue("export NET_GROUPS=3003,3004" in granted)
         assertTrue("export X11_DIR=/app/cache/sessions/s3/tmp/.X11-unix" in granted)
+    }
+
+    @get:Rule val tmp = TemporaryFolder()
+
+    /** Runs [FIND_UNSHARE] on a phone without unshare, with Linux at [root]; prints UNSHARE. */
+    private fun findUnshare(root: File): Pair<Int, String> {
+        val sh = File("/bin/sh")
+        assumeTrue(sh.canExecute())
+        // A function hides any unshare the machine running the test has.
+        val proc = ProcessBuilder(sh.path, "-c", "unshare() { return 1; }; R=${root.path}; ${FIND_UNSHARE}echo \"\$UNSHARE\"")
+            .redirectErrorStream(true).start()
+        val out = proc.inputStream.bufferedReader().readText().trim()
+        return proc.waitFor() to out
+    }
+
+    @Test fun `chroot falls back to Debian's unshare when the phone has none`() {
+        val root = tmp.root
+        File(root, "lib/aarch64-linux-gnu").mkdirs()
+        File(root, "lib/ld-linux-aarch64.so.1").writeText("")
+        File(root, "usr/lib/aarch64-linux-gnu").mkdirs()
+        File(root, "usr/bin/unshare").apply { parentFile?.mkdirs(); writeText(""); setExecutable(true) }
+        val (code, out) = findUnshare(root)
+        assertEquals(0, code)
+        assertEquals("$root/lib/ld-linux-aarch64.so.1 --library-path $root/usr/lib/aarch64-linux-gnu $root/usr/bin/unshare", out)
+    }
+
+    @Test fun `chroot says so when there's no unshare at all`() {
+        val (code, out) = findUnshare(tmp.root)
+        assertEquals(127, code)
+        assertTrue(out, out.startsWith("unshare not found"))
     }
 
     @Test fun `chroot quotes the command so arguments survive the shell`() {

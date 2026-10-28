@@ -59,6 +59,9 @@ class ProotBackend(
                 p.devices.filter { exists(it) && !it.startsWith(UsbBridge.USB_PATH) }.forEach { bind(it) }
                 bind(paths.sessionUsb(session).invariantSeparatorsPath, UsbBridge.USB_PATH.removeSuffix("/"))
             }
+            // Installs run as root: Tessera's proot, for the bubblewrap stand-in (bwrap.sh) to
+            // build an app's root in, a PRoot inside this one.
+            if (p.root) bind(paths.nativeLibDir.invariantSeparatorsPath, PROOT_GUEST_DIR)
 
             add("/usr/bin/env")
             add("-i")
@@ -84,7 +87,9 @@ class ProotBackend(
         val skeleton = FlatpakSkeleton.ensure(paths.flatpakSkeleton)
         val argv = buildList {
             add(paths.proot.invariantSeparatorsPath)
-            add("--kill-on-exit")
+            // Not --kill-on-exit: PRoot then ends when the app's last process does, not its first.
+            // VS Code's `code` starts the editor apart and exits at once, and took it along.
+            // Stopping the session still ends them all (ProcessTree.killTree).
             // Flatpak's files are link2symlink's stand-ins for hard links; without it a program
             // is known by its stand-in's name in the store, and $ORIGIN points there: java
             // couldn't find libjli.so next to it.
@@ -94,6 +99,9 @@ class ProotBackend(
             add("--cwd=/home/user")
             bind("$rootfs${ref.runtimeDir}", "/usr")
             bind("$rootfs${ref.appDir}", "/app")
+            FlatpakSkeleton.ZYPAK_WRAPPERS.filter { exists("$rootfs${ref.appDir}/bin/$it") }.forEach {
+                bind(File(skeleton, FlatpakSkeleton.ZYPAK_STUB).invariantSeparatorsPath, "/app/bin/$it")
+            }
             if (ref.glDir != null && ref.glMount != null) bind("$rootfs${ref.glDir}", ref.glMount)
             // Flatpak's store hard-links every file; PRoot (--link2symlink) made those symlinks
             // to absolute paths in the container, which must resolve here too.
@@ -127,6 +135,9 @@ class ProotBackend(
         add(if (host == guest) "--bind=$host" else "--bind=$host:$guest")
     }
 }
+
+/** Where root sessions see Tessera's proot and its loader; bwrap.sh looks for it there. */
+internal const val PROOT_GUEST_DIR = "/opt/tessera-proot"
 
 /**
  * Firefox's per-process sandboxes install seccomp filters that clash with PRoot's ptrace, and

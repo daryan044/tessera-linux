@@ -12,7 +12,11 @@ for bb in /data/adb/magisk/busybox /data/adb/ksu/bin/busybox /data/adb/ap/bin/bu
   if [ -x "$bb" ]; then break; fi
 done
 [ -x "$bb" ] || { echo "busybox from Magisk/KernelSU/APatch not found" >&2; exit 1; }
-mount() { "$bb" mount "$@"; }
+# Every tool from busybox, never the phone's: some phones' root shell reaches none of toybox's
+# (no unshare, tr or touch on a Galaxy Z Fold5 with KernelSU, #5).
+for c in mount touch mkdir ln rm sed grep head cat chmod chown stat dirname find ls sort tr chroot; do
+  eval "$c() { \"\$bb\" $c \"\$@\"; }"
+done
 # Shares host path $1 at $2 with what's mounted inside it (rbind: the phone's / alone is
 # Android's read-only root, its /data and /storage empty), read-only when $3 is ro.
 share() {
@@ -125,7 +129,7 @@ CTTY=
 START='cd "$HOME" 2>/dev/null; exec '
 
 if [ "$RUN_AS_ROOT" = 1 ]; then
-  exec chroot "$R" $SETSID /usr/bin/env -i "$@" /bin/sh -c "$START$CMD"
+  exec "$bb" chroot "$R" $SETSID /usr/bin/env -i "$@" /bin/sh -c "$START$CMD"
 fi
 # Apps run as the launcher app's own uid (APP_UID), not Debian's usual 1000: on Android, 1000 is
 # "system", which system services trust. The app's uid carries no rights beyond the app's, and
@@ -161,6 +165,6 @@ done | grep -vx 1000 | sort -u | tr '\n' ',' | sed 's/,$//')
 [ -n "$DEV_GROUPS" ] && GROUPS_LIST=${GROUPS_LIST:+$GROUPS_LIST,}$DEV_GROUPS
 if [ -n "$GROUPS_LIST" ]; then GROUP_ARG="--groups=$GROUPS_LIST"; else GROUP_ARG=--clear-groups; fi
 # setpriv is in util-linux (essential on Debian). --no-new-privs keeps setuid binaries inert.
-exec chroot "$R" $SETSID /usr/bin/setpriv --reuid="$U" --regid="$U" \
+exec "$bb" chroot "$R" $SETSID /usr/bin/setpriv --reuid="$U" --regid="$U" \
   "$GROUP_ARG" --no-new-privs --inh-caps=-all \
   /usr/bin/env -i "$@" /bin/sh -c "$START$CMD"

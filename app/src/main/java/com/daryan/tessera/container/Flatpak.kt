@@ -52,24 +52,55 @@ object Flatpak {
     /**
      * Installs [id] for aarch64. Flatpak's post-install steps (icon caches) need bubblewrap and
      * fail; the app is there all the same, so success is its deployed files, not the exit code.
+     * Not --noninteractive: that prints no progress, and [FlatpakProgress] reads the bar it draws.
+     * [bwrap] is Tessera's stand-in for bubblewrap (assets/flatpak/bwrap.sh), which apps whose
+     * maker ships them separately (VS Code) need to unpack them, and the triggers to run.
      */
-    fun installScript(id: String): String {
+    fun installScript(id: String, fsync: Boolean = true, bwrap: String? = null): String {
         require(validId(id)) { "not a Flathub id: $id" }
-        return "flatpak install -y --noninteractive --arch=aarch64 $REMOTE $id; " +
+        return fsyncScript(fsync) + bwrap?.let(::bwrapScript).orEmpty() +
+            "flatpak install -y --arch=aarch64 $REMOTE $id; " +
             "test -e $ROOT/app/$id/current/active/metadata"
     }
 
+    /** Where the install's own /tmp gets the bubblewrap stand-in. */
+    const val BWRAP = "/tmp/.tessera-bwrap"
+
+    /** Writes [script] to [BWRAP] and tells flatpak to run it in bubblewrap's place. */
+    internal fun bwrapScript(script: String): String {
+        require("\nTESSERA_BWRAP\n" !in "\n$script\n") { "the stand-in can't contain its heredoc's end" }
+        return "cat > $BWRAP <<'TESSERA_BWRAP'\n${script.trimEnd('\n')}\nTESSERA_BWRAP\n" +
+            "chmod 755 $BWRAP; export FLATPAK_BWRAP=$BWRAP; "
+    }
+
     /** Removes [id] and any runtime no app uses any more. */
-    fun uninstallScript(id: String): String {
+    fun uninstallScript(id: String, fsync: Boolean = true): String {
         require(validId(id)) { "not a Flathub id: $id" }
-        return "flatpak uninstall -y --noninteractive $id; flatpak uninstall -y --noninteractive --unused; " +
+        return fsyncScript(fsync) + "flatpak uninstall -y --noninteractive $id; flatpak uninstall -y --noninteractive --unused; " +
             "test ! -e $ROOT/app/$id/current"
     }
+
+    /**
+     * Sets whether OSTree flushes each file it writes to storage ([core] fsync in the repo's
+     * config). Off is much faster, in PRoot above all, where every call goes through ptrace, but a
+     * power cut mid-install can leave that install broken, to be installed again.
+     */
+    internal fun fsyncScript(fsync: Boolean): String =
+        "sed -i '/^fsync=/d' $REPO_CONFIG; " +
+            (if (fsync) "" else "sed -i 's/^\\[core\\]\$/[core]\\nfsync=false/' $REPO_CONFIG; ")
 
     /** Whether Flathub is set up in a container, from its repo config. */
     fun isSetUp(repoConfig: String?): Boolean = repoConfig?.contains("[remote \"$REMOTE\"]") == true
 
     const val REPO_CONFIG = "$ROOT/repo/config"
+
+    /** The XDG base folders [env] sets, under the home. */
+    private val XDG_DIRS = listOf(
+        "XDG_CONFIG_HOME" to ".config",
+        "XDG_DATA_HOME" to ".local/share",
+        "XDG_CACHE_HOME" to ".cache",
+        "XDG_STATE_HOME" to ".local/state",
+    )
 
     /** An app's metadata file, which names its runtime and command. */
     fun appMetadata(id: String) = "$ROOT/app/$id/current/active/metadata"
@@ -118,7 +149,15 @@ object Flatpak {
     fun env(ref: FlatpakRef, gpu: Boolean, sessionEnv: Map<String, String>): Map<String, String> = buildMap {
         // What the runtime and app ask for, under what Tessera sets (the cursor, the theme).
         putAll(ref.env.filterKeys { it !in sessionEnv })
-        put("PATH", "/app/bin:/usr/bin")
+        // The app's own PATH when it sets one (AAT puts its Java there: /app/jre/bin), with the
+        // usual two in it all the same.
+        val path = ref.env["PATH"]?.split(':')?.filter { it.isNotEmpty() }.orEmpty()
+        put("PATH", (path + listOf("/app/bin", "/usr/bin")).distinct().joinToString(":"))
+        // flatpak run always sets these, and launchers build paths on them: VS Code's put its
+        // settings and extensions under / without. The usual places in the home, where these
+        // apps' data has been all along.
+        val home = sessionEnv["HOME"] ?: "/home/user"
+        XDG_DIRS.forEach { (k, dir) -> if (k !in sessionEnv) put(k, "$home/$dir") }
         // ld.so.cache in the runtime doesn't know /app/lib (flatpak run regenerates it).
         val gl = ref.glMount
         put(

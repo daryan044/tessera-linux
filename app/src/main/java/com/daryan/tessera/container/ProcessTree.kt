@@ -79,8 +79,9 @@ object ProcessTree {
         val marker = if (sessionId == null) "^$SESSION_ENV=" else "^$SESSION_ENV=$sessionId${'$'}"
         // Through cat: toybox tr reading the environ of a process that has just exited (likely,
         // while killing) never returns, and kept a core busy long after the app was gone.
+        // grep -z reads its NUL-separated entries itself: some phones have no tr at all (#5).
         return "for e in /proc/[0-9]*/environ; do p=${'$'}{e%/environ}; p=${'$'}{p#/proc/}; " +
-            "cat ${'$'}e 2>/dev/null | tr '\\0' '\\n' | grep -q '$marker' && kill -9 ${'$'}p 2>/dev/null; done; true"
+            "cat ${'$'}e 2>/dev/null | grep -qz '$marker' && kill -9 ${'$'}p 2>/dev/null; done; true"
     }
 
     private fun ByteArray.split(sep: Byte): List<ByteArray> {

@@ -75,13 +75,34 @@ class FlatpakTest {
         val gpu = Flatpak.env(ref, gpu = true, sessionEnv = session)
         assertEquals("/opt/tessera-gpu/lib:/app/lib", gpu["LD_LIBRARY_PATH"])
         assertFalse("__EGL_VENDOR_LIBRARY_DIRS" in gpu)
+        // The XDG base folders flatpak run sets, under the session's home, unless it set them.
+        assertEquals("/home/user/.config", env["XDG_CONFIG_HOME"])
+        assertEquals("/home/user/.local/share", env["XDG_DATA_HOME"])
+        val root = Flatpak.env(ref, gpu = false, sessionEnv = mapOf("HOME" to "/root", "XDG_CACHE_HOME" to "/tmp/cache"))
+        assertEquals("/root/.local/state", root["XDG_STATE_HOME"])
+        assertFalse("XDG_CACHE_HOME" in root)
+        // The app's own PATH, as AAT sets it for its bundled Java; the usual two otherwise.
+        assertEquals("/app/bin:/usr/bin", env["PATH"])
+        val java = Flatpak.env(ref.copy(env = mapOf("PATH" to "/app/jre/bin:/app/bin:/usr/bin")), gpu = false, sessionEnv = session)
+        assertEquals("/app/jre/bin:/app/bin:/usr/bin", java["PATH"])
+        val partial = Flatpak.env(ref.copy(env = mapOf("PATH" to "/app/jre/bin")), gpu = false, sessionEnv = session)
+        assertEquals("/app/jre/bin:/app/bin:/usr/bin", partial["PATH"])
     }
 
     @Test fun `setup and install scripts`() {
         assertTrue(Flatpak.isSetUp("[core]\nrepo_version=1\n\n[remote \"flathub\"]\nurl=https://dl.flathub.org/repo/\n"))
         assertFalse(Flatpak.isSetUp("[core]\n"))
         assertFalse(Flatpak.isSetUp(null))
-        assertTrue("flatpak install -y --noninteractive --arch=aarch64 flathub io.mpv.Mpv;" in Flatpak.installScript("io.mpv.Mpv"))
+        assertTrue("flatpak install -y --arch=aarch64 flathub io.mpv.Mpv;" in Flatpak.installScript("io.mpv.Mpv"))
+        // Flushing each file: back on unless switched off, then off in the repo's [core].
+        assertTrue(Flatpak.installScript("io.mpv.Mpv").startsWith("sed -i '/^fsync=/d' /var/lib/flatpak/repo/config; flatpak install"))
+        assertTrue("""s/^\[core\]$/[core]\nfsync=false/""" in Flatpak.installScript("io.mpv.Mpv", fsync = false))
+        assertTrue("fsync=false" in Flatpak.uninstallScript("io.mpv.Mpv", fsync = false))
+        // The bubblewrap stand-in, written out and named to flatpak before it runs.
+        val withStandIn = Flatpak.installScript("io.mpv.Mpv", bwrap = "#!/bin/sh\necho stand-in\n")
+        assertTrue("cat > /tmp/.tessera-bwrap <<'TESSERA_BWRAP'\n#!/bin/sh\necho stand-in\nTESSERA_BWRAP\n" in withStandIn)
+        assertTrue(withStandIn.indexOf("export FLATPAK_BWRAP=/tmp/.tessera-bwrap") < withStandIn.indexOf("flatpak install"))
+        assertFalse("FLATPAK_BWRAP" in Flatpak.installScript("io.mpv.Mpv"))
         assertFalse(Flatpak.validId("io.mpv.Mpv; rm -rf /"))
         assertFalse(Flatpak.validId("mpv"))
     }

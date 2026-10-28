@@ -75,13 +75,29 @@ class ChrootBackend(
 
 /** Starts [vars] in a fresh namespace with [script]; network namespace too unless [network]. */
 private fun suLaunch(su: String, vars: Map<String, String>, network: Boolean, script: java.io.File): LaunchSpec {
-    val unshare = if (network) "unshare -m" else "unshare -m -n"
+    val flags = if (network) "-m" else "-m -n"
     val line = buildString {
         vars.forEach { (k, v) -> append("export $k=${shellQuote(v)}; ") }
-        append("exec $unshare /system/bin/sh ${shellQuote(script.invariantSeparatorsPath)}")
+        append(FIND_UNSHARE)
+        append("exec \$UNSHARE $flags /system/bin/sh ${shellQuote(script.invariantSeparatorsPath)}")
     }
     return LaunchSpec(listOf(su, "-c", line), emptyMap(), "/")
 }
+
+/**
+ * Sets UNSHARE: the phone's, when it has one that can make a mount namespace, else Debian's from
+ * the chroot system at $R, started by Debian's loader with Debian's libc. Some phones have none
+ * anywhere (a Galaxy Z Fold5 on One UI 7 with KernelSU, #5); every Debian system has util-linux.
+ */
+internal const val FIND_UNSHARE =
+    "if unshare -m true 2>/dev/null; then UNSHARE=unshare; else " +
+        "for ld in \"\$R\"/lib/ld-linux-aarch64.so.1 \"\$R\"/lib/ld-linux-armhf.so.3 \"\$R\"/lib64/ld-linux-x86-64.so.2; do " +
+        "[ -e \"\$ld\" ] && break; done; " +
+        "[ -e \"\$ld\" ] && [ -x \"\$R/usr/bin/unshare\" ] || " +
+        "{ echo \"unshare not found, on the phone or in Linux at \$R (util-linux)\" >&2; exit 127; }; " +
+        // The library path with the shell alone: such phones may lack the rest too (tr, on a Fold5).
+        "lp=; for d in \"\$R\"/usr/lib/*-linux-gnu*; do lp=\${lp:+\$lp:}\$d; done; " +
+        "UNSHARE=\"\$ld --library-path \$lp \$R/usr/bin/unshare\"; fi; "
 
 /** Single-quotes [s] for POSIX sh. */
 internal fun shellQuote(s: String): String =
