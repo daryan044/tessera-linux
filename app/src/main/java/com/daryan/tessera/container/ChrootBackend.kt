@@ -95,7 +95,9 @@ internal const val FIND_UNSHARE =
         "[ -e \"\$ld\" ] && break; done; " +
         "[ -e \"\$ld\" ] && [ -x \"\$R/usr/bin/unshare\" ] || " +
         "{ echo \"unshare not found, on the phone or in Linux at \$R (util-linux)\" >&2; exit 127; }; " +
-        "UNSHARE=\"\$ld --library-path \$(echo \"\$R\"/usr/lib/*-linux-gnu* | tr ' ' :) \$R/usr/bin/unshare\"; fi; "
+        // The library path with the shell alone: such phones may lack the rest too (tr, on a Fold5).
+        "lp=; for d in \"\$R\"/usr/lib/*-linux-gnu*; do lp=\${lp:+\$lp:}\$d; done; " +
+        "UNSHARE=\"\$ld --library-path \$lp \$R/usr/bin/unshare\"; fi; "
 
 /** Single-quotes [s] for POSIX sh. */
 internal fun shellQuote(s: String): String =
