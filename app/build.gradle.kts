@@ -39,8 +39,8 @@ android {
         // Deliberately 28: from 29 on, SELinux forbids exec() of files in the app's data dir,
         // which is where the rootfs lives. Same trade-off as Termux; blocks Play Store, not F-Droid.
         targetSdk = 28
-        versionCode = 9
-        versionName = "0.5.1"
+        versionCode = 10
+        versionName = "0.5.2"
 
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=none" } }

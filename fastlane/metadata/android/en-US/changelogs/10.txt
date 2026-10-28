@@ -1,0 +1,4 @@
+0.5.2 (alpha)
+- Flathub Electron apps start and stay open: VS Code, Discord, Obsidian.
+- Apps whose launcher starts them and exits (VS Code's code) no longer close at once.
+- Flathub apps get the usual settings folders, so VS Code keeps its settings and extensions.
