@@ -16,7 +16,11 @@ for bb in /data/adb/magisk/busybox /data/adb/ksu/bin/busybox /data/adb/ap/bin/bu
   if [ -x "$bb" ]; then break; fi
 done
 [ -x "$bb" ] || { echo "busybox from Magisk/KernelSU/APatch not found" >&2; exit 1; }
-mount() { "$bb" mount "$@"; }
+# Every tool from busybox, never the phone's: some phones' root shell reaches none of toybox's
+# (no unshare, tr or touch on a Galaxy Z Fold5 with KernelSU, #5).
+for c in mount touch mkdir ln rm sed grep head cat chmod chown stat dirname find ls sort tr chroot; do
+  eval "$c() { \"\$bb\" $c \"\$@\"; }"
+done
 # Shares host path $1 at $2 with what's mounted inside it (rbind: the phone's / alone is
 # Android's read-only root, its /data and /storage empty), read-only when $3 is ro.
 share() {
