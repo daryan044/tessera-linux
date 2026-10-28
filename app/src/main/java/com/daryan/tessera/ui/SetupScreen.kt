@@ -329,7 +329,8 @@ private fun DroidspacesContainerItem(status: HostStatus, actions: DroidspacesAct
                     "Tessera adds two folders to this container's settings in Droidspaces, so it can start apps inside it; " +
                         "a copy of the original settings is kept. " +
                         (if (picked.running) "The container restarts now, which ends everything running in it. " else "") +
-                        "Tessera then installs graphics and app libraries in it with apt.\n\n" +
+                        "Tessera then installs graphics and app libraries in it with apt, and its GPU driver and theme files " +
+                        "in /opt/tessera-gpu and /opt/tessera-theme.\n\n" +
                         "Apps run as Tessera's own user, so the container's \"user\" account takes Tessera's uid and " +
                         "/home/user is handed over to it. Best on a container made for Tessera, not one you work in.",
                 )
