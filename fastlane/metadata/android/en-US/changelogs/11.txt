@@ -1,0 +1,2 @@
+0.5.3 (alpha)
+- Chroot mode works on phones that lack tr as well as unshare (Galaxy Z Fold5 with KernelSU): every session, terminals included, failed with "-m: cannot open shared object file".
