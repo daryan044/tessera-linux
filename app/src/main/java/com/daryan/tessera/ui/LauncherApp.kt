@@ -204,6 +204,14 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
 
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    // Once what an app was missing is installed: open it again from here.
+    LaunchedEffect(Unit) {
+        vm.reopen.collect { app ->
+            val r = snackbar.showSnackbar("${app.name} has what it was missing now", actionLabel = "Open", duration = SnackbarDuration.Long)
+            if (r == SnackbarResult.ActionPerformed) startApp(app)
+        }
+    }
+    val missingPrompt by vm.missingPrompt.collectAsStateWithLifecycle()
     // The Files tab follows the engine: PRoot's system or chroot's, once it's usable.
     LaunchedEffect(status, mode) { vm.files.useEngine(vm.filesEngine(status, mode)) }
     // Search belongs to the Apps tab; leaving it closes the search.
@@ -253,6 +261,10 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val scope = rememberCoroutineScope()
     val motion = MaterialTheme.motionScheme
     val blocker = vm.blocker(status, mode)
+    val installMissing: (PermissionManifest, com.daryan.tessera.store.Missing) -> Unit = { app, missing ->
+        val ok = vm.installMissing(app, missing)
+        scope.launch { snackbar.showSnackbar(if (ok) "Looking for ${missing.label}; follow it under Installs" else blocker ?: "Linux isn't ready yet") }
+    }
     val running = sessions.count { it.exitCode == null }
     val config = LocalConfiguration.current
     val shortScreen = config.screenHeightDp < 480
@@ -507,6 +519,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     processes = processes,
                     onCloseAll = vm.sessions::stopAll,
                     onEndProcess = { p -> scope.launch { com.daryan.tessera.container.ProcessMonitor.end(p.pid, p.uid, monitorSu) } },
+                    missingFor = vm::missingFor,
+                    onInstallMissing = installMissing,
                 )
                 Destination.Setup -> SetupScreen(
                     status = status,
@@ -640,6 +654,25 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
 
     editingShortcut?.let { s ->
         ShortcutDialog(s, onDismiss = { editingShortcut = null }, onSave = { vm.saveShortcut(it); editingShortcut = null })
+    }
+
+    missingPrompt?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = vm::dismissMissingPrompt,
+            icon = { AppGlyph(prompt.app, 28.dp, MaterialTheme.colorScheme.onSurface) },
+            title = { Text("${prompt.app.name} needs ${prompt.missing.label}") },
+            text = {
+                Text(
+                    "It stopped because Linux doesn't have ${prompt.missing.label}. Tessera can look up which Debian package " +
+                        "has it and install it, in the background under Installs. The first time, that downloads Debian's " +
+                        "lists of every package's files, a few tens of MB.",
+                )
+            },
+            confirmButton = { TextButton(onClick = { installMissing(prompt.app, prompt.missing) }) { Text("Find and install") } },
+            dismissButton = {
+                TextButton(onClick = { vm.dismissMissingPrompt(); logSession = prompt.sessionId }) { Text("Show log") }
+            },
+        )
     }
 
     uninstallApp?.let { app ->

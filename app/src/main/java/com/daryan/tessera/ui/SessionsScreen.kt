@@ -60,6 +60,9 @@ fun SessionsScreen(
     processes: List<GuestProcess>? = null,
     onCloseAll: () -> Unit = {},
     onEndProcess: (GuestProcess) -> Unit = {},
+    /** What an ended session said it was missing, when a package would bring it. */
+    missingFor: (RunningSession) -> com.daryan.tessera.store.Missing? = { null },
+    onInstallMissing: (com.daryan.tessera.container.PermissionManifest, com.daryan.tessera.store.Missing) -> Unit = { _, _ -> },
 ) {
     val ids = sessions.map { it.session.id }.toSet()
     // Linux work that isn't an app the user opened: the Files tab's shells, apt.
@@ -87,7 +90,7 @@ fun SessionsScreen(
         }
         items(sessions.asReversed(), key = { it.session.id }) { s ->
             val mine = processes?.filter { it.session == s.session.id }
-            SessionCard(s, mine, onOpen, onStop, onDismiss, onEndProcess, Modifier.animateItem())
+            SessionCard(s, mine, onOpen, onStop, onDismiss, onEndProcess, missingFor(s), onInstallMissing, Modifier.animateItem())
         }
         if (background.isNotEmpty()) {
             item(key = "background") {
@@ -119,6 +122,8 @@ private fun SessionCard(
     onStop: (String) -> Unit,
     onDismiss: (String) -> Unit,
     onEndProcess: (GuestProcess) -> Unit,
+    missing: com.daryan.tessera.store.Missing?,
+    onInstallMissing: (com.daryan.tessera.container.PermissionManifest, com.daryan.tessera.store.Missing) -> Unit,
     modifier: Modifier,
 ) {
     Surface(
@@ -163,6 +168,20 @@ private fun SessionCard(
                 SessionMeters(processes, gpu = s.session.gpu)
                 Spacer(Modifier.height(8.dp))
                 SessionLoad(processes, onEndProcess, totals = false)
+            }
+            // It stopped for want of something a package brings: name it, and offer to get it.
+            if (missing != null) {
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Missing ${missing.label}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    androidx.compose.material3.FilledTonalButton(onClick = { onInstallMissing(s.app, missing) }) { Text("Find and install") }
+                }
             }
         }
     }

@@ -15,6 +15,8 @@ import com.daryan.tessera.files.FileBrowser
 import com.daryan.tessera.files.FilesEngine
 import com.daryan.tessera.files.GuestFiles
 import com.daryan.tessera.store.CatalogState
+import com.daryan.tessera.store.Missing
+import com.daryan.tessera.store.MissingPackages
 import com.daryan.tessera.store.QueueAction
 import com.daryan.tessera.store.QueueJob
 import com.daryan.tessera.store.StoreApp
@@ -299,6 +301,56 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             installState.collect { if (it == InstallState.Done) refresh() }
         }
+    }
+
+    /** A Debian app that stopped, and what it said was missing; see [missingFor]. */
+    data class MissingPrompt(val sessionId: String, val app: PermissionManifest, val missing: Missing)
+
+    private val _missingPrompt = MutableStateFlow<MissingPrompt?>(null)
+    /** The latest app to stop for want of something a package would bring, until dismissed. */
+    val missingPrompt: StateFlow<MissingPrompt?> = _missingPrompt
+
+    fun dismissMissingPrompt() { _missingPrompt.value = null }
+
+    /**
+     * What [s] said it couldn't find as it stopped, when a Debian package would bring it: windowed
+     * apps that ended by themselves with an error, not Flathub's (their runtime brings what they
+     * need) nor terminals (where "command not found" is just a typo).
+     */
+    fun missingFor(s: RunningSession): Missing? =
+        if (s.running || s.endedBy != null || s.exitCode == 0 || s.terminal != null || s.app.flatpak != null) null
+        else MissingPackages.find(s.output)
+
+    private val _reopen = Channel<PermissionManifest>(Channel.BUFFERED)
+    /** Apps whose missing package was just installed, to offer opening again. */
+    val reopen = _reopen.receiveAsFlow()
+
+    init {
+        // An app that stopped on its own, saying what it couldn't find: offer the package once.
+        viewModelScope.launch {
+            val seen = mutableSetOf<String>()
+            sessions.sessions.collect { list ->
+                list.filter { !it.running && seen.add(it.session.id) }.firstNotNullOfOrNull { s ->
+                    missingFor(s)?.let { MissingPrompt(s.session.id, s.app, it) }
+                }?.let { _missingPrompt.value = it }
+            }
+        }
+    }
+
+    /** Finds the package with [missing] and installs it, in the queue; false when no system is ready. */
+    fun installMissing(app: PermissionManifest, missing: Missing): Boolean {
+        val backend = backend() ?: return false
+        if (blocker(_status.value, _mode.value) != null) return false
+        val store = configStore(_status.value, _mode.value)
+        _missingPrompt.value = null
+        container.queue.enqueue(
+            "What ${app.name} needs: ${missing.label}", listOf("missing:${missing.pattern}"), QueueAction.INSTALL, app.iconFile, backend,
+            script = MissingPackages.script(missing),
+        ) {
+            container.registry.refreshInstalled(store)
+            _reopen.send(app)
+        }
+        return true
     }
 
     /** Installs Linux for the current mode: into app storage for PRoot, as root for chroot. */
