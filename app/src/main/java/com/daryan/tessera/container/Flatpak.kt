@@ -94,6 +94,14 @@ object Flatpak {
 
     const val REPO_CONFIG = "$ROOT/repo/config"
 
+    /** The XDG base folders [env] sets, under the home. */
+    private val XDG_DIRS = listOf(
+        "XDG_CONFIG_HOME" to ".config",
+        "XDG_DATA_HOME" to ".local/share",
+        "XDG_CACHE_HOME" to ".cache",
+        "XDG_STATE_HOME" to ".local/state",
+    )
+
     /** An app's metadata file, which names its runtime and command. */
     fun appMetadata(id: String) = "$ROOT/app/$id/current/active/metadata"
 
@@ -142,6 +150,11 @@ object Flatpak {
         // What the runtime and app ask for, under what Tessera sets (the cursor, the theme).
         putAll(ref.env.filterKeys { it !in sessionEnv })
         put("PATH", "/app/bin:/usr/bin")
+        // flatpak run always sets these, and launchers build paths on them: VS Code's put its
+        // settings and extensions under / without. The usual places in the home, where these
+        // apps' data has been all along.
+        val home = sessionEnv["HOME"] ?: "/home/user"
+        XDG_DIRS.forEach { (k, dir) -> if (k !in sessionEnv) put(k, "$home/$dir") }
         // ld.so.cache in the runtime doesn't know /app/lib (flatpak run regenerates it).
         val gl = ref.glMount
         put(

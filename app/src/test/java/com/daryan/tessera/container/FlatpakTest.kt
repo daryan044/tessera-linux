@@ -75,6 +75,12 @@ class FlatpakTest {
         val gpu = Flatpak.env(ref, gpu = true, sessionEnv = session)
         assertEquals("/opt/tessera-gpu/lib:/app/lib", gpu["LD_LIBRARY_PATH"])
         assertFalse("__EGL_VENDOR_LIBRARY_DIRS" in gpu)
+        // The XDG base folders flatpak run sets, under the session's home, unless it set them.
+        assertEquals("/home/user/.config", env["XDG_CONFIG_HOME"])
+        assertEquals("/home/user/.local/share", env["XDG_DATA_HOME"])
+        val root = Flatpak.env(ref, gpu = false, sessionEnv = mapOf("HOME" to "/root", "XDG_CACHE_HOME" to "/tmp/cache"))
+        assertEquals("/root/.local/state", root["XDG_STATE_HOME"])
+        assertFalse("XDG_CACHE_HOME" in root)
     }
 
     @Test fun `setup and install scripts`() {

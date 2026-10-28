@@ -48,6 +48,15 @@ mount --bind "$R$FP_RUNTIME" usr
 mount -o remount,bind,ro usr
 mount --bind "$R$FP_APP" app
 mount -o remount,bind,ro app
+# zypak (Flathub's Electron apps: VS Code, Discord, Obsidian) sandboxes Electron through
+# Flatpak's own services, which aren't here: it aborts ("Assertion failed: bus"). A stand-in runs
+# the app straight; Electron's own sandbox needs user namespaces, so it's off too.
+ZYPAK=
+for z in zypak-wrapper.sh zypak-wrapper; do
+  [ -e "app/bin/$z" ] || continue
+  [ -n "$ZYPAK" ] || { ZYPAK=run/host/tessera-zypak; printf '#!/bin/sh\nexec "$@"\n' > "$ZYPAK"; chmod 755 "$ZYPAK"; }
+  mount --bind "$ZYPAK" "app/bin/$z"
+done
 if [ -n "$FP_GL" ] && [ -d "$R$FP_GL" ]; then
   # The extension's folder doesn't exist in the read-only runtime; a tmpfs over its parent
   # makes room for it.
@@ -134,6 +143,7 @@ set --
 while IFS= read -r kv; do [ -n "$kv" ] && set -- "$@" "$kv"; done <<ENVEOF
 $GUEST_ENV
 ENVEOF
+[ -n "$ZYPAK" ] && set -- "$@" ELECTRON_DISABLE_SANDBOX=1
 
 # The runtime has no setpriv; the container's chroot (run with the container's own loader,
 # since this is still Android's side) changes root and drops to the app's uid in one go.
@@ -142,6 +152,19 @@ LD="$R/usr/lib/ld-linux-aarch64.so.1"
 GROUPS_ARG=
 [ -n "$NET_GROUPS" ] && GROUPS_ARG="--groups=$NET_GROUPS"
 cd /
+# The app's own processes carry TESSERA_APP_RUN, and the app lasts while any of them runs, not
+# just the first: VS Code's `code` starts the editor apart and exits at once. Not the session's
+# own mark, which the process holding the session open (FLATPAK_HOLD) carries too.
+RUN=$$
 exec "$LD" --library-path "$R/usr/lib/aarch64-linux-gnu" "$R/usr/sbin/chroot" \
   --userspec="$U:$U" $GROUPS_ARG "$F" \
-  /usr/bin/env -i "$@" /bin/sh -c "cd \"\$HOME\" 2>/dev/null; exec $CMD"
+  /usr/bin/env -i "$@" TESSERA_APP_RUN=$RUN /bin/sh -c "cd \"\$HOME\" 2>/dev/null; $CMD; s=\$?
+    while :; do
+      left=0
+      for p in /proc/[0-9]*; do
+        [ \"\${p#/proc/}\" = \$\$ ] && continue
+        tr '\0' '\n' 2>/dev/null < \$p/environ | grep -qx TESSERA_APP_RUN=$RUN && { left=1; break; }
+      done
+      [ \$left = 0 ] && exit \$s
+      sleep 1
+    done"
