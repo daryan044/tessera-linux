@@ -1,0 +1,7 @@
+0.5.1 (alpha)
+- Flathub apps whose maker ships them separately install now: VS Code, 1Password.
+- Flathub installs show real progress, naming each runtime they bring.
+- Settings: Faster Flathub installs, much quicker in PRoot mode.
+- Chroot mode works on phones with no unshare anywhere (Galaxy Z Fold5 with KernelSU).
+- Fixed: the launcher crashing when an install added a new category tab.
+- The Store says apps install from a terminal too: apt, wget, curl.
