@@ -3,8 +3,6 @@
 
 package com.daryan.tessera.container
 
-import java.io.File
-
 /**
  * Root backend for a container of Droidspaces (https://github.com/ravindu644/Droidspaces-OSS):
  * a whole system with its own init, which the user made and runs beside Tessera. An app is
@@ -15,8 +13,8 @@ import java.io.File
  *
  * The container is its own mount namespace, so it sees only what Droidspaces put in it. Tessera's
  * session folders and the script are bound into it at its boot ([Droidspaces.bridgeBinds]); the
- * settings of each launch go into a file in the session's folder, which the script reads, so no
- * command line is long and no environment has to survive `droidspaces run`.
+ * settings of each launch go to the script as an argument, so no environment has to survive
+ * `droidspaces run`. Not as a file in the session's folder: apps run as the uid that owns it.
  */
 class DroidspacesBackend(
     private val paths: ContainerPaths,
@@ -28,11 +26,6 @@ class DroidspacesBackend(
     private val container: DroidspacesContainer,
     /** The uid apps run as inside: the launcher's own (not 1000, which is Android's "system"). */
     private val appUid: Int = android.os.Process.myUid(),
-    /** Where a launch's settings are written; a test replaces it. */
-    private val writeLaunchFile: (File, String) -> Unit = { file, text ->
-        file.parentFile?.mkdirs()
-        file.writeText(text)
-    },
 ) : ContainerBackend {
     override val name = NAME
 
@@ -52,6 +45,13 @@ class DroidspacesBackend(
         app.permissions.filesystem.filter { DroidspacesView.visibleAt(container.config, it.path) == null }
 
     override fun buildLaunch(app: PermissionManifest, session: Session): LaunchSpec {
+        val line = "exec ${shellQuote(binary)} --name=${shellQuote(container.name)} run -- " +
+            "/bin/sh ${shellQuote(Droidspaces.GUEST_SCRIPT)} ${shellQuote(session.id)} ${shellQuote(settings(app, session))}"
+        return LaunchSpec(listOf(su, "-c", line), emptyMap(), "/")
+    }
+
+    /** What enter.sh needs to know of [app]'s launch, as shell assignments, one per line. */
+    internal fun settings(app: PermissionManifest, session: Session): String {
         val p = app.permissions
         val vars = linkedMapOf(
             // One "src:dst:ro|rw" per line, the source as the container sees it; folders the
@@ -72,12 +72,6 @@ class DroidspacesBackend(
             "GUEST_ENV" to guestEnv(app, session).map { (k, v) -> "$k=$v" }.joinToString("\n"),
             "CMD" to guestCommand(app).joinToString(" ") { shellQuote(it) },
         )
-        writeLaunchFile(
-            File(paths.sessionDir(session), Droidspaces.LAUNCH_FILE),
-            vars.entries.joinToString("\n", postfix = "\n") { (k, v) -> "$k=${shellQuote(v)}" },
-        )
-        val line = "exec ${shellQuote(binary)} --name=${shellQuote(container.name)} run -- " +
-            "/bin/sh ${shellQuote(Droidspaces.GUEST_SCRIPT)} ${shellQuote(session.id)}"
-        return LaunchSpec(listOf(su, "-c", line), emptyMap(), "/")
+        return vars.entries.joinToString("\n", postfix = "\n") { (k, v) -> "$k=${shellQuote(v)}" }
     }
 }

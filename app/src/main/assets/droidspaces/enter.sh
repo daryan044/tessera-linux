@@ -1,19 +1,23 @@
 # Copyright (C) 2026 Daryan Kamaran Karim
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Runs as root INSIDE a Droidspaces container, started by DroidspacesBackend via:
-#   su -c 'exec droidspaces --name=NAME run -- /bin/sh /mnt/tessera/bin/enter.sh SESSION'
+#   su -c 'exec droidspaces --name=NAME run -- /bin/sh /mnt/tessera/bin/enter.sh SESSION SETTINGS'
 #
-# The app writes the session's settings to /mnt/tessera/sessions/SESSION/launch.env just before:
+# SETTINGS is the session's settings as shell assignments, one per line:
 #   BINDS, DEVICES, USB_ALL, GPU_DEVICE, X11, RUN_AS_ROOT, APP_UID, NO_NET, NET_GROUPS, GUEST_ENV, CMD
+# They come from root's command line, not a file in the session's folder: apps run as the uid
+# that owns those folders, so one could rewrite the next session's file before this script, as
+# root, read it.
 # /mnt/tessera/sessions and /mnt/tessera/bin are Tessera's folders, bound into the container at
 # its boot. Everything mounted here lives in a mount namespace this script makes for itself and
 # vanishes with it; the container's own mounts are never touched.
 set -e
 
 SID=${1:?session id missing}
+SETTINGS=${2?settings missing}
 SHARE=/mnt/tessera
-[ -f "$SHARE/sessions/$SID/launch.env" ] || { echo "Tessera's folders aren't in this container; prepare it in Tessera's Setup" >&2; exit 1; }
-. "$SHARE/sessions/$SID/launch.env"
+[ -d "$SHARE/sessions/$SID" ] || { echo "Tessera's folders aren't in this container; prepare it in Tessera's Setup" >&2; exit 1; }
+eval "$SETTINGS"
 
 # A mount namespace of its own, and a network namespace with nothing in it when the app has no
 # network permission; then this script again, inside it.
@@ -22,7 +26,7 @@ if [ -z "$TESSERA_NS" ]; then
   if [ "$NO_NET" = 1 ]; then NS="$NS -n"; fi
   command -v unshare >/dev/null 2>&1 || { echo "unshare (util-linux) isn't in this container" >&2; exit 127; }
   export TESSERA_NS=1
-  exec unshare $NS /bin/sh "$0" "$SID"
+  exec unshare $NS /bin/sh "$0" "$SID" "$SETTINGS"
 fi
 
 # The container's mounts may be shared with the rest of it: keep ours to this namespace.
@@ -69,6 +73,10 @@ if [ -n "$X11" ]; then
   mkdir -p /tmp/.X11-unix
   mount --bind "$SHARE/sessions/$SID/tmp/.X11-unix" /tmp/.X11-unix
 fi
+
+# Tessera's folders hold every session's X server socket: left in view, any app could reach the
+# others' windows and keystrokes. What this one needs is bound above, so hide the rest.
+mount -t tmpfs -o mode=755,nosuid,nodev tmpfs "$SHARE"
 
 # GUEST_ENV is one KEY=VALUE per line; turn it into positional args for env -i.
 set --

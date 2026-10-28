@@ -205,44 +205,45 @@ class DroidspacesTest {
         ),
     )
 
-    private fun launch(app: PermissionManifest, uid: Int = 10484, c: DroidspacesContainer = container): Pair<LaunchSpec, Pair<File, String>> {
-        var written: Pair<File, String>? = null
-        val backend = DroidspacesBackend(paths, su, binary, c, appUid = uid, writeLaunchFile = { f, t -> written = f to t })
-        return backend.buildLaunch(app, session) to written!!
+    /** The launch of [app], and the settings it hands enter.sh. */
+    private fun launch(app: PermissionManifest, uid: Int = 10484, c: DroidspacesContainer = container): Pair<LaunchSpec, String> {
+        val backend = DroidspacesBackend(paths, su, binary, c, appUid = uid)
+        return backend.buildLaunch(app, session) to backend.settings(app, session)
     }
 
     @Test fun `an app starts through droidspaces run around the in-container script`() {
-        val (spec, _) = launch(notes)
+        val (spec, settings) = launch(notes)
         assertEquals(su, spec.executable)
         assertEquals(listOf(su, "-c"), spec.argv.take(2))
         assertEquals(
-            "exec $binary --name=debian run -- /bin/sh /mnt/tessera/bin/enter.sh s3",
+            "exec $binary --name=debian run -- /bin/sh /mnt/tessera/bin/enter.sh s3 ${shellQuote(settings)}",
             spec.argv[2],
         )
     }
 
-    @Test fun `the launch settings go to the sessions own file`() {
-        val (_, written) = launch(notes)
-        assertEquals(File("/app/cache/sessions/s3/launch.env"), written.first)
+    @Test fun `the launch settings come from root's command line, not a file the apps could rewrite`() {
+        val (spec, settings) = launch(notes)
+        assertTrue(settings.startsWith("BINDS="))
+        assertFalse("launch.env" in spec.argv[2])
     }
 
     @Test fun `settings follow the manifest`() {
-        val env = parseEnv(launch(notes).second.second)
+        val env = parseEnv(launch(notes).second)
         assertEquals("1", env["X11"])
         assertEquals("1", env["NO_NET"])
         assertEquals("", env["NET_GROUPS"])
         assertEquals("0", env["RUN_AS_ROOT"])
         assertEquals("10484", env["APP_UID"])
         assertTrue("LAUNCHER_SESSION=s3" in env.getValue("GUEST_ENV").lines())
-        val online = parseEnv(launch(notes.copy(permissions = notes.permissions.copy(network = true))).second.second)
+        val online = parseEnv(launch(notes.copy(permissions = notes.permissions.copy(network = true))).second)
         assertEquals("", online["NO_NET"])
         assertEquals("3003,3004", online["NET_GROUPS"])
-        val root = parseEnv(launch(notes.copy(permissions = notes.permissions.copy(root = true))).second.second)
+        val root = parseEnv(launch(notes.copy(permissions = notes.permissions.copy(root = true))).second)
         assertEquals("1", root["RUN_AS_ROOT"])
     }
 
     @Test fun `folders the container can't see are left out and reported`() {
-        val env = parseEnv(launch(notes).second.second)
+        val env = parseEnv(launch(notes).second)
         assertEquals(
             listOf(
                 "/storage/emulated/0/Download:/home/user/Downloads:rw",
@@ -269,13 +270,12 @@ class DroidspacesTest {
         assertEquals(Enforcement.ADVISORY, b.enforcement(Capability.FILESYSTEM, root))
     }
 
-    @Test fun `the settings file survives a real shell to the byte`() {
+    @Test fun `the settings survive a real shell to the byte`() {
         assumeTrue(File("/bin/sh").exists())
         val tricky = notes.copy(exec = listOf("/bin/sh", "-c", "echo \"a b\" 'c'; echo \$HOME \\ `x` \$(y)", "it's"))
-        val text = launch(tricky).second.second
-        val file = File.createTempFile("launch", ".env").apply { writeText(text); deleteOnExit() }
-        // Sourced the way enter.sh does, printing each variable NUL-terminated.
-        val script = ". '${file.path}'; printf '%s\\0' \"\$CMD\" \"\$GUEST_ENV\" \"\$BINDS\""
+        val text = launch(tricky).second
+        // Handed over and read the way enter.sh gets them, printing each variable NUL-terminated.
+        val script = "set -- s3 ${shellQuote(text)}; eval \"\$2\"; printf '%s\\0' \"\$CMD\" \"\$GUEST_ENV\" \"\$BINDS\""
         val p = ProcessBuilder("/bin/sh", "-c", script).redirectErrorStream(true).start()
         val parts = p.inputStream.readBytes().toString(Charsets.UTF_8).split('\u0000')
         p.waitFor()
@@ -284,7 +284,7 @@ class DroidspacesTest {
         assertEquals(parseEnv(text).getValue("BINDS"), parts[2])
     }
 
-    /** The KEY='value' lines of a launch file, unquoted the way sh does (single quotes, '\'' for one inside). */
+    /** The KEY='value' lines of a launch's settings, unquoted the way sh does (single quotes, '\'' for one inside). */
     private fun parseEnv(text: String): Map<String, String> {
         val out = HashMap<String, String>()
         var rest = text

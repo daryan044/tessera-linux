@@ -38,20 +38,23 @@ folders; and **Hardware access** or **GPU** if you want GPU acceleration or USB 
 | `/mnt/tessera/sessions` | the app's session folders (`cache/sessions`) | each app's X server socket and the files it and Tessera exchange |
 | `/mnt/tessera/bin` (read-only) | `enter.sh` | the script that starts each app |
 
-Nothing else of Tessera's is visible to the container.
+Nothing else of Tessera's is visible to the container, and the apps themselves don't see
+`/mnt/tessera` at all: `enter.sh` hides it before the app starts, once the app's own X socket is
+bound (it holds every session's socket).
 
 ## How an app starts
 
-`su -c 'droidspaces --name=<container> run -- /bin/sh /mnt/tessera/bin/enter.sh <session>'`
+`su -c 'droidspaces --name=<container> run -- /bin/sh /mnt/tessera/bin/enter.sh <session> <settings>'`
 
-Tessera writes the app's settings to `sessions/<session>/launch.env` first (shell-quoted; read by
-`enter.sh`, so no command line is long and nothing has to survive `droidspaces run`'s environment).
+`<settings>` is the app's settings as shell assignments, one per line, so nothing has to survive
+`droidspaces run`'s environment. They come on root's command line rather than in a file in the
+session's folder, because apps run as the uid that owns those folders and could rewrite it.
 `enter.sh`, running as root inside the container:
 
 1. makes a private mount namespace, and a private network namespace when the app has no network
    permission, with `unshare`;
 2. gives the app its own `/tmp` and `/dev/shm`, binds the app's session folder at `/tmp/.X11-unix`,
-   and shares the folders it was granted;
+   shares the folders it was granted, and hides `/mnt/tessera`;
 3. gives the app's uid a name (`user`), and drops to that uid with `setpriv`, with no new
    privileges and no capabilities.
 
@@ -69,6 +72,10 @@ namespace.
 - **USB and GPU** need the device nodes inside the container: turn on hardware access or GPU in
   Droidspaces. Without them the permission has nothing to hand over.
 - Restarting or stopping the container ends every app running in it.
+- **The container's `user` account becomes Tessera's.** Apps run as Tessera's own uid, so the
+  first launch sets `user`'s uid and group in `/etc/passwd` and `/etc/group` to it (adding `user`
+  if there's none) and hands `/home/user` over to it. Tessera's GPU driver and theme pack are
+  installed into the container too. Use a container made for Tessera rather than one you work in.
 - A running container's saved config is read from the copy it booted with, so "set up" shows as
   needed until the container has been restarted after being prepared.
 

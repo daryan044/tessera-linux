@@ -43,9 +43,6 @@ object Droidspaces {
     const val GUEST_BIN = "$GUEST_SHARE/bin"
     const val GUEST_SCRIPT = "$GUEST_BIN/enter.sh"
 
-    /** The file in a session's folder that the in-container script reads its settings from. */
-    const val LAUNCH_FILE = "launch.env"
-
     /** What a container needs bound to run Tessera's apps: every session's files, and the script. */
     fun bridgeBinds(paths: ContainerPaths) = listOf(
         DroidspacesBind(paths.sessionsDir.invariantSeparatorsPath, GUEST_SESSIONS),
