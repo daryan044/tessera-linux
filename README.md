@@ -260,6 +260,9 @@ even ones left behind by an earlier run.
   - **PRoot mode** works on any phone, no root. Its limits are best-effort.
   - **Chroot mode** (Magisk, KernelSU or APatch) enforces every permission with kernel
     namespaces and an unprivileged user, and runs faster.
+  - **Droidspaces mode** *(new, experimental; root)* runs apps inside a container you made with
+    [Droidspaces](https://github.com/ravindu644/Droidspaces-OSS), which you pick in Setup, with the
+    same kernel-enforced permissions. See [docs/DROIDSPACES.md](docs/DROIDSPACES.md).
 
 ### 📺 Cast to a TV, use the phone as the trackpad *(new)*
 - Send an app to a TV or monitor, by cable or wireless display, at a resolution that suits it.
@@ -325,6 +328,7 @@ makes).
 | Store, installs, apps installed with apt or .deb | ✅ Works |
 | GPU acceleration (Turnip + Zink) in PRoot mode | ✅ Works on Adreno 740 |
 | Chroot mode with root | ✅ Works; GPU in chroot mode is new |
+| Droidspaces mode (pick a Droidspaces container) | 🧪 New; no Flathub apps or phone adb yet |
 | Flathub apps (install from the Store, launch, GPU) | ✅ Works in PRoot and chroot mode |
 | Desktop (xfwm4, dock, Start menu, wallpaper) | 🧪 New; first runs on a Snapdragon 8 Gen 2 in chroot mode |
 | Material You theming, live dark mode (GTK, libadwaita, Qt, LibreOffice, Firefox) | ✅ Works |

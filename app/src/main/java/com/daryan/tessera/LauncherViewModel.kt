@@ -28,6 +28,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import com.daryan.tessera.container.ChrootBackend
 import com.daryan.tessera.container.ContainerBackend
+import com.daryan.tessera.container.Droidspaces
+import com.daryan.tessera.container.DroidspacesBackend
+import com.daryan.tessera.container.DroidspacesContainer
+import com.daryan.tessera.container.DroidspacesHost
 import com.daryan.tessera.container.DirectConfigStore
 import com.daryan.tessera.container.BASE_LIBRARIES
 import com.daryan.tessera.container.GUI_HELPER_PACKAGES
@@ -62,7 +66,12 @@ import java.io.File
 /** Where USB drives and SD cards appear in apps allowed to see them. */
 private const val DRIVES = "/media/user"
 
-enum class BackendMode(val label: String) { PROOT("PRoot"), CHROOT("Chroot (root)") }
+enum class BackendMode(val label: String, val short: String) {
+    PROOT("PRoot", "PRoot"),
+    CHROOT("Chroot (root)", "Chroot"),
+    /** A container the user made with Droidspaces; which one is [LauncherViewModel.selectContainer]'s. */
+    DROIDSPACES("Droidspaces (root)", "Droidspaces"),
+}
 
 /** A launcher tab: either a category from the manifests or one the user made. */
 data class LauncherTab(val title: String, val apps: List<PermissionManifest>, val custom: Boolean)
@@ -112,9 +121,16 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val status = _status.value ?: return
         // Each mode lists its own system's apps; chroot's is read through su.
         val su = status.su
+        val dsRoot = droidspacesRoot(status)
         when {
             _mode.value == BackendMode.PROOT && status.prootRootfs ->
                 viewModelScope.launch { container.systemApps.scan(paths.prootRootfs) }
+            _mode.value == BackendMode.DROIDSPACES && su != null && dsRoot != null -> {
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (!force && now - chrootScannedAt < 60_000) return
+                chrootScannedAt = now
+                viewModelScope.launch { container.systemApps.scanAsRoot(su, dsRoot, File(getApplication<Application>().cacheDir, "chroot-icons")) }
+            }
             _mode.value == BackendMode.CHROOT && su != null && status.chrootRootfs == true -> {
                 val now = android.os.SystemClock.elapsedRealtime()
                 if (!force && now - chrootScannedAt < 60_000) return
@@ -262,6 +278,11 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             appendLine("- ABI: ${android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"}")
             appendLine("- Engine: ${_mode.value.label}${if (status?.su != null) " (root available)" else " (no root)"}")
             appendLine("- Debian installed: PRoot ${status?.prootRootfs}, chroot ${status?.chrootRootfs}")
+            if (_mode.value == BackendMode.DROIDSPACES) {
+                val c = status?.droidspacesSelected
+                appendLine("- Droidspaces: ${status?.droidspacesBinary ?: "not found"}, container ${c?.name ?: "none picked"}" +
+                    (c?.let { " (${if (it.running) "running" else "stopped"}, Tessera's folders ${if (it.bridged) "bound" else "not bound"}, net ${it.config.netMode}, Android storage ${it.config.androidStorage})" } ?: ""))
+            }
             appendLine("- PRoot binary present: ${status?.prootBinary}")
             appendLine("- Background process limit on: ${status?.phantomProcessLimit} (on means Android may kill apps in the background)")
             appendLine("- GPU driver available: ${gpuAvailable()}, acceleration on: ${_gpuEnabled.value}")
@@ -419,20 +440,23 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                         phantomProcessLimit = PhantomLimit.lifted(getApplication(), s.su) != true,
                         // Only in chroot mode: it takes su, which PRoot users shouldn't be asked for.
                         chrootRootfs = if (_mode.value == BackendMode.CHROOT && s.su != null) probe.chrootInstalled(s.su) else null,
-                    )
+                    ).let { base ->
+                        // Likewise Droidspaces: its containers are found through su.
+                        if (_mode.value == BackendMode.DROIDSPACES && s.su != null) discoverDroidspaces(base, s.su) else base
+                    }
                 }
             }
             _status.value = s
             // su answered (chroot mode found or didn't find its system): root was granted, so
             // the task manager may use it in PRoot mode too, without a prompt nobody asked for.
-            if (s.chrootRootfs != null && !rootGranted) {
+            if ((s.chrootRootfs != null || s.droidspacesContainers != null) && !rootGranted) {
                 rootGranted = true
                 prefs.edit().putBoolean(KEY_ROOT_GRANTED, true).apply()
             }
-            if (s.su == null && _mode.value == BackendMode.CHROOT) _mode.value = BackendMode.PROOT
+            if (s.su == null && _mode.value != BackendMode.PROOT) _mode.value = BackendMode.PROOT
             // Chroot sessions an earlier run of the app left behind (an update, being killed):
             // once a run, before anything starts. Only root can see them.
-            if (_mode.value == BackendMode.CHROOT && s.su != null && !container.chrootSwept && sessions.sessions.value.none { it.running }) {
+            if (_mode.value != BackendMode.PROOT && s.su != null && !container.chrootSwept && sessions.sessions.value.none { it.running }) {
                 container.chrootSwept = true
                 withContext(Dispatchers.IO) { ProcessTree.killSessionAsRoot(s.su, null) }
             }
@@ -452,6 +476,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             if (_mode.value == BackendMode.CHROOT && s.su != null && s.chrootRootfs == true && ThemePack.bundle.available(getApplication())) {
                 withContext(Dispatchers.IO) { ThemePack.bundle.installAsRoot(getApplication(), paths.chrootRootfs, s.su) }
             }
+            // A Droidspaces container Tessera was set up in: the same driver and theme files.
+            val dsRoot = droidspacesRoot(s)
+            if (dsRoot != null && s.su != null && GpuDriver.available(getApplication())) {
+                withContext(Dispatchers.IO) { GpuDriver.installAsRoot(getApplication(), File(dsRoot), s.su) }
+            }
+            if (dsRoot != null && s.su != null && ThemePack.bundle.available(getApplication())) {
+                withContext(Dispatchers.IO) { ThemePack.bundle.installAsRoot(getApplication(), File(dsRoot), s.su) }
+            }
             addBaseLibraries()
             addMissingGuiHelpers()
             configStore(_status.value, _mode.value)?.let { container.registry.refreshInstalled(it) }
@@ -464,13 +496,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      * after Linux is installed, and once for systems installed before them.
      */
     private suspend fun addBaseLibraries() {
-        if (_mode.value.name in container.baseLibrariesChecked) return
+        if (checkKey() in container.baseLibrariesChecked) return
         val store = configStore(_status.value, _mode.value) ?: return
         val backend = backend() ?: return
         container.registry.refreshInstalled(store)
         // Unread (no Linux yet, or dpkg's status unreadable): check again next time.
         val installed = container.registry.installed.value ?: return
-        container.baseLibrariesChecked += _mode.value.name
+        container.baseLibrariesChecked += checkKey()
         val missing = BASE_LIBRARIES.filterNot { it in installed }
         if (missing.isEmpty()) return
         container.queue.enqueue("Graphics and app libraries", missing, QueueAction.INSTALL, null, backend) {
@@ -484,10 +516,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      * Theme companions ([THEME_COMPANIONS]) of installed toolkits come along.
      */
     private suspend fun addMissingGuiHelpers() {
-        if (_mode.value.name in container.guiHelpersChecked) return
+        if (checkKey() in container.guiHelpersChecked) return
         val store = configStore(_status.value, _mode.value) ?: return
         val backend = backend() ?: return
-        container.guiHelpersChecked += _mode.value.name
+        container.guiHelpersChecked += checkKey()
         container.registry.refreshInstalled(store)
         val installed = container.registry.installed.value ?: return
         if ("matchbox-window-manager" !in installed) return
@@ -499,6 +531,78 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         container.queue.enqueue("Sound, keyboard and theme helpers", missing, QueueAction.INSTALL, null, backend) {
             container.registry.refreshInstalled(store)
         }
+    }
+
+    // ---------------------------------------------------------------- Droidspaces
+
+    private val _containerBusy = MutableStateFlow<String?>(null)
+
+    /** What the Droidspaces container is doing now ("Starting web"), while it does it. */
+    val containerBusy: StateFlow<String?> = _containerBusy
+
+    /** Where the running, set-up Droidspaces container's files are, as root sees them; null when there's no such. */
+    private fun droidspacesRoot(status: HostStatus): String? =
+        if (_mode.value == BackendMode.DROIDSPACES) status.droidspacesSelected?.takeIf { it.running && it.bridged }?.hostRoot else null
+
+    /** What the first-run checks of libraries and helpers are remembered under: per container in Droidspaces mode. */
+    private fun checkKey(): String =
+        if (_mode.value == BackendMode.DROIDSPACES) "DROIDSPACES:${_status.value?.droidspacesName}" else _mode.value.name
+
+    /**
+     * [status] with Droidspaces' containers found through [su]. The one the user picked stays
+     * picked while it exists; with none picked, a single container is picked for them. Blocks.
+     */
+    private fun discoverDroidspaces(status: HostStatus, su: String): HostStatus {
+        val host = DroidspacesHost(su)
+        val binary = host.binary() ?: return status.copy(droidspacesContainers = emptyList(), droidspacesName = null)
+        val found = host.containers(binary, Droidspaces.bridgeBinds(paths)) ?: return status.copy(droidspacesBinary = binary, droidspacesContainers = emptyList())
+        val chosen = prefs.getString(KEY_DS_CONTAINER, null)
+        val name = chosen?.takeIf { c -> found.any { it.name == c } } ?: found.singleOrNull()?.name
+        if (name != null && name != chosen) prefs.edit().putString(KEY_DS_CONTAINER, name).apply()
+        return status.copy(droidspacesBinary = binary, droidspacesContainers = found, droidspacesName = name)
+    }
+
+    /** Uses [name] for Linux apps in Droidspaces mode. Each container is its own system: it's checked, and what's installed in it. */
+    fun selectContainer(name: String) {
+        prefs.edit().putString(KEY_DS_CONTAINER, name).apply()
+        _flathubReady.value = null
+        refresh()
+    }
+
+    fun startContainer() = controlContainer("Starting") { host, binary, c -> host.start(binary, c.name) }
+
+    fun stopContainer() = controlContainer("Stopping") { host, binary, c -> host.stop(binary, c.name) }
+
+    /**
+     * Shares Tessera's folders into the picked container (its saved config) and restarts it if it
+     * runs: Droidspaces binds folders when a container boots, not into a running one.
+     */
+    fun prepareContainer() = controlContainer("Setting up") { host, binary, c ->
+        host.prepare(binary, c.name, Droidspaces.bridgeBinds(paths), restart = c.running)
+    }
+
+    private fun controlContainer(verb: String, action: (DroidspacesHost, String, DroidspacesContainer) -> DroidspacesHost.Result) {
+        val s = _status.value ?: return
+        val su = s.su
+        val binary = s.droidspacesBinary
+        val target = s.droidspacesSelected
+        if (su == null || binary == null || target == null || _containerBusy.value != null) return
+        viewModelScope.launch {
+            _containerBusy.value = "$verb ${target.name}"
+            val result = withContext(Dispatchers.IO) { action(DroidspacesHost(su), binary, target) }
+            if (!result.ok) {
+                failed("$verb ${target.name} failed: ${result.output.lineSequence().lastOrNull { it.isNotBlank() }?.trim() ?: "Droidspaces gave no reason"}")
+            }
+            _containerBusy.value = null
+            refresh()
+        }
+    }
+
+    /** Flathub apps need a root of their own that the Droidspaces backend doesn't make yet. */
+    private fun flathubBlocked(): Boolean {
+        if (_mode.value != BackendMode.DROIDSPACES) return false
+        viewModelScope.launch { failed("Flathub apps can't run in Droidspaces containers yet; use the Debian store") }
+        return true
     }
 
     fun setMode(mode: BackendMode) {
@@ -513,6 +617,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun backend(mode: BackendMode = _mode.value): ContainerBackend? = when (mode) {
         BackendMode.PROOT -> container.proot()
         BackendMode.CHROOT -> _status.value?.su?.let { container.chroot(it) }
+        BackendMode.DROIDSPACES -> _status.value?.let { s ->
+            val target = s.droidspacesSelected
+            val binary = s.droidspacesBinary
+            // Only a running container that has Tessera's folders: apps start inside it.
+            if (s.su != null && binary != null && target != null && target.running && target.bridged) {
+                container.droidspaces(s.su, binary, target)
+            } else null
+        }
     }
 
     /** Why [mode] cannot launch apps yet, or null when it can. */
@@ -522,6 +634,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         mode == BackendMode.PROOT && !status.prootRootfs -> "No Linux system installed yet"
         mode == BackendMode.CHROOT && status.su == null -> "Root access not found"
         mode == BackendMode.CHROOT && status.chrootRootfs == false -> "No Linux system for chroot mode yet"
+        mode == BackendMode.DROIDSPACES && status.su == null -> "Root access not found"
+        mode == BackendMode.DROIDSPACES && status.droidspacesContainers == null -> "Checking Droidspaces"
+        mode == BackendMode.DROIDSPACES && status.droidspacesBinary == null -> "Droidspaces isn't installed"
+        mode == BackendMode.DROIDSPACES && status.droidspacesContainers?.isEmpty() == true -> "No Droidspaces containers found"
+        mode == BackendMode.DROIDSPACES && status.droidspacesSelected == null -> "Pick a Droidspaces container in Setup"
+        mode == BackendMode.DROIDSPACES && status.droidspacesSelected?.bridged != true -> "Set the container up for Tessera in Setup"
+        mode == BackendMode.DROIDSPACES && status.droidspacesSelected?.running != true -> "${status.droidspacesName} is stopped; start it in Setup"
         else -> null
     }
 
@@ -538,7 +657,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             else container.registry.installed.value?.let { have -> app.packages.all { it in have } }
         mode == BackendMode.PROOT && status?.prootRootfs == true -> PackageInstall.isInstalled(app, paths.prootRootfs)
         // Chroot mode has its own system, read through su: its dpkg status says what's there.
-        mode == BackendMode.CHROOT && app.packages.isNotEmpty() ->
+        mode != BackendMode.PROOT && app.packages.isNotEmpty() ->
             container.registry.installed.value?.let { have -> app.packages.all { it in have } }
         else -> null
     }
@@ -551,6 +670,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         status == null -> null
         mode == BackendMode.PROOT && status.prootRootfs -> DirectConfigStore(paths.prootRootfs)
         mode == BackendMode.CHROOT && status.su != null -> SuConfigStore(status.su, paths.chrootRootfs.path)
+        // The container's files as root sees them; its normal user is the app's own uid.
+        mode == BackendMode.DROIDSPACES && status.su != null ->
+            status.droidspacesSelected?.hostRoot?.let { SuConfigStore(status.su, it, android.os.Process.myUid()) }
         else -> null
     }
 
@@ -598,6 +720,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      * helpers, in the install queue. Then its catalog loads. False when no container is ready.
      */
     fun setupFlathub(): Boolean {
+        if (flathubBlocked()) return false
         val backend = backend() ?: return false
         if (blocker(_status.value, _mode.value) != null) return false
         val store = configStore(_status.value, _mode.value)
@@ -627,6 +750,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         if (blocker(_status.value, _mode.value) != null) return false
         val store = configStore(_status.value, _mode.value)
         if (app.source == StoreSource.FLATHUB) {
+            if (flathubBlocked()) return false
             if (!Flatpak.validId(app.id) || store == null) return false
             container.queue.enqueue(
                 app.name, listOf(flatpakJob(app.id)), QueueAction.INSTALL, container.flathub.iconFile(app)?.path, backend,
@@ -690,9 +814,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      */
     suspend fun uninstallSystemApp(app: PermissionManifest): Boolean {
         val su = _status.value?.su
+        val dsRoot = _status.value?.let(::droidspacesRoot)
         val pkg = (
-            if (_mode.value == BackendMode.CHROOT && su != null) container.systemApps.packageOfAsRoot(app, su, paths.chrootRootfs.path)
-            else container.systemApps.packageOf(app, paths.prootRootfs)
+            when {
+                _mode.value == BackendMode.CHROOT && su != null -> container.systemApps.packageOfAsRoot(app, su, paths.chrootRootfs.path)
+                _mode.value == BackendMode.DROIDSPACES -> if (su != null && dsRoot != null) container.systemApps.packageOfAsRoot(app, su, dsRoot) else null
+                else -> container.systemApps.packageOf(app, paths.prootRootfs)
+            }
         ) ?: return false
         return uninstall(app.copy(packages = listOf(pkg)))
     }
@@ -708,6 +836,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val backend = backend() ?: return false
         val store = configStore(_status.value, _mode.value)
         app.flatpak?.let { ref ->
+            if (flathubBlocked()) return false
             if (!Flatpak.validId(ref.app) || store == null) return false
             container.queue.enqueue(
                 app.name, listOf(flatpakJob(ref.app)), QueueAction.INSTALL, app.iconFile, backend,
@@ -822,6 +951,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val su = _status.value?.su
         val problem = when {
             su == null -> "needs root"
+            backend is DroidspacesBackend -> "not available in Droidspaces containers yet"
             // A chroot app without network has a network of its own, and the phone isn't in it.
             backend is ChrootBackend && !app.permissions.network -> "needs the Network permission too"
             else -> null
@@ -873,6 +1003,12 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             } else null
+            if (backend is DroidspacesBackend) {
+                val missing = backend.unreachableGrants(app)
+                if (missing.isNotEmpty()) {
+                    failed("${app.name} won't see ${missing.joinToString { it.mountAt }}: that isn't in the Droidspaces container (its Android storage option shares /storage/emulated/0)")
+                }
+            }
             if (app.permissions.adb || app.permissions.usb) addAdbPackages()
             val adb = if (app.permissions.adb) phoneAdb(app, backend) else null
             // Main thread: TerminalSession binds to the caller's Looper. Spawning is a quick fork.
@@ -906,6 +1042,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val TAG = "Launcher"
         const val KEY_MODE = "backend_mode"
+        const val KEY_DS_CONTAINER = "droidspaces_container"
         const val KEY_ROOT_GRANTED = "root_granted"
         const val KEY_STORE_SOURCE = "store_source"
         /** What stands for Flathub's setup and its apps in the install queue's package lists. */

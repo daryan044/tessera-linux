@@ -83,6 +83,13 @@ data class ContainerPaths(
     /** The empty root a PRoot Flathub app's runtime and app are bound into. */
     val flatpakSkeleton get() = File(filesDir, "flatpak-root")
 
+    /** Every session's folder; Droidspaces containers get all of them bound in ([Droidspaces.bridgeBinds]). */
+    val sessionsDir get() = File(cacheDir, "sessions")
+    fun sessionDir(session: Session) = File(sessionsDir, session.id)
+    /** What a Droidspaces container runs of ours: [droidspacesScript], bound in read-only. */
+    val droidspacesDir get() = File(filesDir, "droidspaces")
+    val droidspacesScript get() = File(droidspacesDir, "enter.sh")
+
     /** Private /tmp per session, so apps cannot see each other's sockets. */
     fun sessionTmp(session: Session) = File(cacheDir, "sessions/${session.id}/tmp")
     fun x11SocketDir(session: Session) = File(sessionTmp(session), ".X11-unix")

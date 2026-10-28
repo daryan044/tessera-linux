@@ -48,9 +48,11 @@ data class MenuStatus(
     val blocker: String?,
     val running: Int,
     val activeInstalls: Int,
-    /** Root was found, so chroot mode is on offer. */
+    /** Root was found, so chroot and Droidspaces modes are on offer. */
     val rootAvailable: Boolean,
     val destination: Destination,
+    /** In Droidspaces mode, the picked container and how it is ("web, running"); null otherwise. */
+    val container: String? = null,
 )
 
 /** Everything the side menu can do; each closes the menu first. */
@@ -125,14 +127,17 @@ fun SideMenu(status: MenuStatus, actions: MenuActions) {
                     SegmentedButton(
                         selected = status.mode == m,
                         onClick = { actions.setMode(m) },
-                        enabled = m != BackendMode.CHROOT || status.rootAvailable,
+                        enabled = m == BackendMode.PROOT || status.rootAvailable,
                         shape = SegmentedButtonDefaults.itemShape(i, BackendMode.entries.size),
-                    ) { Text(if (m == BackendMode.PROOT) "PRoot" else "Chroot") }
+                    ) { Text(m.short, maxLines = 1) }
                 }
             }
             Text(
-                if (status.rootAvailable) "Each engine has its own Linux system."
-                else "Chroot needs root (Magisk, KernelSU or APatch).",
+                when {
+                    status.container != null -> "Container: ${status.container}. Change it under Setup."
+                    status.rootAvailable -> "Each engine has its own Linux system."
+                    else -> "Chroot and Droidspaces need root (Magisk, KernelSU or APatch)."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 28.dp, vertical = 4.dp),

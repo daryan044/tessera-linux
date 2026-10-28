@@ -194,6 +194,7 @@ class LauncherContainer(private val app: Application) {
             // Whatever a previous run of the app left behind can't be in use any more.
             ProcessTree.killLeftovers(Process.myPid(), Process.myUid())
             HostProbe.installChrootScript(app, paths)
+            HostProbe.installDroidspacesScript(app, paths)
             // Refreshed every start so btime and the CPU count stay current.
             FakeProc.write(paths.fakeProcDir)
             runCatching { FakeProc.clearSveShaders(paths.prootRootfs) }
@@ -230,6 +231,8 @@ class LauncherContainer(private val app: Application) {
 
     fun proot() = ProotBackend(paths, FakeProc.NAMES, appId = Process.myUid() to Process.myUid(), dns = { HostDns.servers(app) })
     fun chroot(su: String) = ChrootBackend(paths, su, dns = { HostDns.servers(app) })
+    fun droidspaces(su: String, binary: String, target: com.daryan.tessera.container.DroidspacesContainer) =
+        com.daryan.tessera.container.DroidspacesBackend(paths, su, binary, target)
 
     companion object {
         const val PREFS = "launcher"

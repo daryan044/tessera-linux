@@ -261,6 +261,7 @@ class FileBrowser(
         val at = when {
             android -> path
             engine?.key == "CHROOT" -> paths.chrootRootfs.parentFile?.path ?: "/data"
+            engine?.key == "DROIDSPACES" -> "/data/local"
             else -> paths.prootRootfs.path
         }
         val s = StatFs(at)
