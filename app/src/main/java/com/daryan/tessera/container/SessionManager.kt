@@ -84,8 +84,10 @@ class SessionManager(
     private val x11 = X11Server(context, paths)
 
     init {
-        // Nothing from a previous process is still running; its session dirs are just litter.
-        java.io.File(paths.cacheDir, "sessions").deleteRecursively()
+        // Droidspaces bind-mounts this directory at container boot. Keep its inode stable: deleting
+        // the directory itself and recreating it later leaves that mount pointing at the old inode.
+        paths.sessionsDir.mkdirs()
+        paths.sessionsDir.listFiles()?.forEach { it.deleteRecursively() }
     }
     /** Running X servers, by session id. */
     private val servers = ConcurrentHashMap<String, Process>()

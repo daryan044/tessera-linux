@@ -14,9 +14,10 @@
 set -e
 
 SID=${1:?session id missing}
-SETTINGS=${2?settings missing}
+SETTINGS_B64=${2:?settings missing}
 SHARE=/mnt/tessera
 [ -d "$SHARE/sessions/$SID" ] || { echo "Tessera's folders aren't in this container; prepare it in Tessera's Setup" >&2; exit 1; }
+SETTINGS=$(printf '%s' "$SETTINGS_B64" | base64 -d) || { echo "Invalid Tessera launch settings" >&2; exit 2; }
 eval "$SETTINGS"
 
 # A mount namespace of its own, and a network namespace with nothing in it when the app has no
@@ -26,7 +27,7 @@ if [ -z "$TESSERA_NS" ]; then
   if [ "$NO_NET" = 1 ]; then NS="$NS -n"; fi
   command -v unshare >/dev/null 2>&1 || { echo "unshare (util-linux) isn't in this container" >&2; exit 127; }
   export TESSERA_NS=1
-  exec unshare $NS /bin/sh "$0" "$SID" "$SETTINGS"
+  exec unshare $NS /bin/sh "$0" "$SID" "$SETTINGS_B64"
 fi
 
 # The container's mounts may be shared with the rest of it: keep ours to this namespace.

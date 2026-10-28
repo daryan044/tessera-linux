@@ -183,6 +183,10 @@ class DroidspacesTest {
 
     private val su = "/system/bin/su"
     private val binary = "/data/local/Droidspaces/bin/droidspaces"
+    // Android's android.util.Base64 is mocked in local JVM tests; use the JDK encoder here.
+    private val testEncodeSettings: (String) -> String = {
+        java.util.Base64.getEncoder().encodeToString(it.toByteArray(Charsets.UTF_8))
+    }
     private val container = DroidspacesContainer(
         name = "debian",
         config = DroidspacesConfig("debian", androidStorage = true, hwAccess = true),
@@ -207,7 +211,7 @@ class DroidspacesTest {
 
     /** The launch of [app], and the settings it hands enter.sh. */
     private fun launch(app: PermissionManifest, uid: Int = 10484, c: DroidspacesContainer = container): Pair<LaunchSpec, String> {
-        val backend = DroidspacesBackend(paths, su, binary, c, appUid = uid)
+        val backend = DroidspacesBackend(paths, su, binary, c, appUid = uid, encodeSettings = testEncodeSettings)
         return backend.buildLaunch(app, session) to backend.settings(app, session)
     }
 
@@ -216,9 +220,11 @@ class DroidspacesTest {
         assertEquals(su, spec.executable)
         assertEquals(listOf(su, "-c"), spec.argv.take(2))
         assertEquals(
-            "exec $binary --name=debian run -- /bin/sh /mnt/tessera/bin/enter.sh s3 ${shellQuote(settings)}",
+            "exec $binary --name=debian run -- /bin/sh /mnt/tessera/bin/enter.sh s3 ${shellQuote(testEncodeSettings(settings))}",
             spec.argv[2],
         )
+        assertFalse('\n' in spec.argv[2])
+        assertEquals(settings, String(java.util.Base64.getDecoder().decode(testEncodeSettings(settings)), Charsets.UTF_8))
     }
 
     @Test fun `the launch settings come from root's command line, not a file the apps could rewrite`() {

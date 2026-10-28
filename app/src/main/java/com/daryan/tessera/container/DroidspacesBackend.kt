@@ -3,6 +3,8 @@
 
 package com.daryan.tessera.container
 
+import android.util.Base64
+
 /**
  * Root backend for a container of Droidspaces (https://github.com/ravindu644/Droidspaces-OSS):
  * a whole system with its own init, which the user made and runs beside Tessera. An app is
@@ -26,6 +28,10 @@ class DroidspacesBackend(
     private val container: DroidspacesContainer,
     /** The uid apps run as inside: the launcher's own (not 1000, which is Android's "system"). */
     private val appUid: Int = android.os.Process.myUid(),
+    /** Encodes the launch payload as one line; replaceable by a JVM-safe encoder in tests. */
+    private val encodeSettings: (String) -> String = { text ->
+        Base64.encodeToString(text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+    },
 ) : ContainerBackend {
     override val name = NAME
 
@@ -45,8 +51,11 @@ class DroidspacesBackend(
         app.permissions.filesystem.filter { DroidspacesView.visibleAt(container.config, it.path) == null }
 
     override fun buildLaunch(app: PermissionManifest, session: Session): LaunchSpec {
+        // su and/or the Droidspaces daemon may reject literal newlines in a command request.
+        // Base64 keeps the settings a single argv element without reintroducing launch.env.
+        val payload = encodeSettings(settings(app, session))
         val line = "exec ${shellQuote(binary)} --name=${shellQuote(container.name)} run -- " +
-            "/bin/sh ${shellQuote(Droidspaces.GUEST_SCRIPT)} ${shellQuote(session.id)} ${shellQuote(settings(app, session))}"
+            "/bin/sh ${shellQuote(Droidspaces.GUEST_SCRIPT)} ${shellQuote(session.id)} ${shellQuote(payload)}"
         return LaunchSpec(listOf(su, "-c", line), emptyMap(), "/")
     }
 

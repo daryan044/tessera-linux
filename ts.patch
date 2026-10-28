@@ -1,0 +1,108 @@
+--- a/app/src/main/java/com/daryan/tessera/container/DroidspacesBackend.kt
++++ b/app/src/main/java/com/daryan/tessera/container/DroidspacesBackend.kt
+@@ -2,6 +2,8 @@
+ // SPDX-License-Identifier: GPL-3.0-or-later
+ 
+ package com.daryan.tessera.container
++
++import android.util.Base64
+ 
+ /**
+  * Root backend for a container of Droidspaces (https://github.com/ravindu644/Droidspaces-OSS):
+@@ -26,6 +28,10 @@
+     private val container: DroidspacesContainer,
+     /** The uid apps run as inside: the launcher's own (not 1000, which is Android's "system"). */
+     private val appUid: Int = android.os.Process.myUid(),
++    /** Encodes the launch payload as one line; replaceable by a JVM-safe encoder in tests. */
++    private val encodeSettings: (String) -> String = { text ->
++        Base64.encodeToString(text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
++    },
+ ) : ContainerBackend {
+     override val name = NAME
+ 
+@@ -45,8 +51,11 @@
+         app.permissions.filesystem.filter { DroidspacesView.visibleAt(container.config, it.path) == null }
+ 
+     override fun buildLaunch(app: PermissionManifest, session: Session): LaunchSpec {
++        // su and/or the Droidspaces daemon may reject literal newlines in a command request.
++        // Base64 keeps the settings a single argv element without reintroducing launch.env.
++        val payload = encodeSettings(settings(app, session))
+         val line = "exec ${shellQuote(binary)} --name=${shellQuote(container.name)} run -- " +
+-            "/bin/sh ${shellQuote(Droidspaces.GUEST_SCRIPT)} ${shellQuote(session.id)} ${shellQuote(settings(app, session))}"
++            "/bin/sh ${shellQuote(Droidspaces.GUEST_SCRIPT)} ${shellQuote(session.id)} ${shellQuote(payload)}"
+         return LaunchSpec(listOf(su, "-c", line), emptyMap(), "/")
+     }
+ 
+--- a/app/src/main/assets/droidspaces/enter.sh
++++ b/app/src/main/assets/droidspaces/enter.sh
+@@ -14,9 +14,10 @@
+ set -e
+ 
+ SID=${1:?session id missing}
+-SETTINGS=${2?settings missing}
++SETTINGS_B64=${2:?settings missing}
+ SHARE=/mnt/tessera
+ [ -d "$SHARE/sessions/$SID" ] || { echo "Tessera's folders aren't in this container; prepare it in Tessera's Setup" >&2; exit 1; }
++SETTINGS=$(printf '%s' "$SETTINGS_B64" | base64 -d) || { echo "Invalid Tessera launch settings" >&2; exit 2; }
+ eval "$SETTINGS"
+ 
+ # A mount namespace of its own, and a network namespace with nothing in it when the app has no
+@@ -26,7 +27,7 @@
+   if [ "$NO_NET" = 1 ]; then NS="$NS -n"; fi
+   command -v unshare >/dev/null 2>&1 || { echo "unshare (util-linux) isn't in this container" >&2; exit 127; }
+   export TESSERA_NS=1
+-  exec unshare $NS /bin/sh "$0" "$SID" "$SETTINGS"
++  exec unshare $NS /bin/sh "$0" "$SID" "$SETTINGS_B64"
+ fi
+ 
+ # The container's mounts may be shared with the rest of it: keep ours to this namespace.
+--- a/app/src/main/java/com/daryan/tessera/container/SessionManager.kt
++++ b/app/src/main/java/com/daryan/tessera/container/SessionManager.kt
+@@ -84,8 +84,10 @@
+     private val x11 = X11Server(context, paths)
+ 
+     init {
+-        // Nothing from a previous process is still running; its session dirs are just litter.
+-        java.io.File(paths.cacheDir, "sessions").deleteRecursively()
++        // Droidspaces bind-mounts this directory at container boot. Keep its inode stable: deleting
++        // the directory itself and recreating it later leaves that mount pointing at the old inode.
++        paths.sessionsDir.mkdirs()
++        paths.sessionsDir.listFiles()?.forEach { it.deleteRecursively() }
+     }
+     /** Running X servers, by session id. */
+     private val servers = ConcurrentHashMap<String, Process>()
+--- a/app/src/test/java/com/daryan/tessera/container/DroidspacesTest.kt
++++ b/app/src/test/java/com/daryan/tessera/container/DroidspacesTest.kt
+@@ -183,6 +183,10 @@
+ 
+     private val su = "/system/bin/su"
+     private val binary = "/data/local/Droidspaces/bin/droidspaces"
++    // Android's android.util.Base64 is mocked in local JVM tests; use the JDK encoder here.
++    private val testEncodeSettings: (String) -> String = {
++        java.util.Base64.getEncoder().encodeToString(it.toByteArray(Charsets.UTF_8))
++    }
+     private val container = DroidspacesContainer(
+         name = "debian",
+         config = DroidspacesConfig("debian", androidStorage = true, hwAccess = true),
+@@ -207,7 +211,7 @@
+ 
+     /** The launch of [app], and the settings it hands enter.sh. */
+     private fun launch(app: PermissionManifest, uid: Int = 10484, c: DroidspacesContainer = container): Pair<LaunchSpec, String> {
+-        val backend = DroidspacesBackend(paths, su, binary, c, appUid = uid)
++        val backend = DroidspacesBackend(paths, su, binary, c, appUid = uid, encodeSettings = testEncodeSettings)
+         return backend.buildLaunch(app, session) to backend.settings(app, session)
+     }
+ 
+@@ -216,9 +220,11 @@
+         assertEquals(su, spec.executable)
+         assertEquals(listOf(su, "-c"), spec.argv.take(2))
+         assertEquals(
+-            "exec $binary --name=debian run -- /bin/sh /mnt/tessera/bin/enter.sh s3 ${shellQuote(settings)}",
++            "exec $binary --name=debian run -- /bin/sh /mnt/tessera/bin/enter.sh s3 ${shellQuote(testEncodeSettings(settings))}",
+             spec.argv[2],
+         )
++        assertFalse('\n' in spec.argv[2])
++        assertEquals(settings, String(java.util.Base64.getDecoder().decode(testEncodeSettings(settings)), Charsets.UTF_8))
+     }
+ 
+     @Test fun `the launch settings come from root's command line, not a file the apps could rewrite`() {
