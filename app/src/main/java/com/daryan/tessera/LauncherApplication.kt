@@ -10,6 +10,8 @@ import android.os.Process
 import com.termux.x11.LorieApp
 import kotlin.math.roundToInt
 import com.daryan.tessera.container.ChrootBackend
+import com.daryan.tessera.container.DroidspacesBackend
+import com.daryan.tessera.container.DroidspacesContainer
 import com.daryan.tessera.container.HostDns
 import com.daryan.tessera.container.FakeProc
 import com.daryan.tessera.container.HostProbe
@@ -231,8 +233,8 @@ class LauncherContainer(private val app: Application) {
 
     fun proot() = ProotBackend(paths, FakeProc.NAMES, appId = Process.myUid() to Process.myUid(), dns = { HostDns.servers(app) })
     fun chroot(su: String) = ChrootBackend(paths, su, dns = { HostDns.servers(app) })
-    fun droidspaces(su: String, binary: String, target: com.daryan.tessera.container.DroidspacesContainer) =
-        com.daryan.tessera.container.DroidspacesBackend(paths, su, binary, target)
+    fun droidspaces(su: String, binary: String, target: DroidspacesContainer) =
+        DroidspacesBackend(paths, su, binary, target)
 
     companion object {
         const val PREFS = "launcher"
