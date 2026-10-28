@@ -59,7 +59,7 @@ class DirectConfigStore(private val root: File) : ConfigStore {
 class SuConfigStore(private val su: String, private val root: String) : ConfigStore {
     override suspend fun read(path: String): String? = withContext(Dispatchers.IO) {
         val p = shellQuote(guest(path))
-        val proc = ProcessBuilder(su, "-c", "if [ -f $p ]; then cat $p; else exit $MISSING; fi").start()
+        val proc = ProcessBuilder(su, "-c", RootShell.line("if [ -f $p ]; then cat $p; else exit $MISSING; fi")).start()
         val text = proc.inputStream.bufferedReader().readText()
         val err = proc.errorStream.bufferedReader().readText()
         when (proc.waitFor()) {
@@ -77,7 +77,7 @@ class SuConfigStore(private val su: String, private val root: String) : ConfigSt
             "mkdir -p $dir && cat > $p && " +
             // Files in the normal user's home must stay theirs (uid 1000 in chroot sessions).
             "case $p in */home/user/*) chown 1000:1000 $p;; esac"
-        val proc = ProcessBuilder(su, "-c", script).start()
+        val proc = ProcessBuilder(su, "-c", RootShell.line(script)).start()
         proc.outputStream.use { it.write(text.toByteArray()) }
         val err = proc.errorStream.bufferedReader().readText()
         if (proc.waitFor() != 0) throw IOException("su: ${err.ifBlank { "write failed" }.trim()}")

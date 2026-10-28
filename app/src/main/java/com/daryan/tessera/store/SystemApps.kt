@@ -6,6 +6,7 @@ package com.daryan.tessera.store
 import com.daryan.tessera.container.FsGrant
 import com.daryan.tessera.container.PermissionManifest
 import com.daryan.tessera.container.Permissions
+import com.daryan.tessera.container.RootShell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -156,7 +157,7 @@ class SystemApps {
         }
 
         private fun runSu(su: String, script: String): String? = runCatching {
-            val p = ProcessBuilder(su, "-c", script).start()
+            val p = ProcessBuilder(su, "-c", RootShell.line(script)).start()
             val out = p.inputStream.bufferedReader().readText()
             if (!p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)) { p.destroy(); return null }
             out

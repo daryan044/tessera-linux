@@ -6,6 +6,7 @@ package com.daryan.tessera.input
 import android.content.Context
 import android.util.Log
 import com.daryan.tessera.MouseButton
+import com.daryan.tessera.container.RootShell
 import java.io.File
 import java.io.OutputStream
 import java.util.concurrent.ArrayBlockingQueue
@@ -239,7 +240,7 @@ class UsbHidSink private constructor(
          * rather than leaving a sink that silently swallows every gesture.
          */
         private fun writer(su: String, node: String): Writer {
-            val process = ProcessBuilder(su, "-c", "cat > $node")
+            val process = ProcessBuilder(su, "-c", RootShell.line("cat > $node"))
                 .redirectErrorStream(true)
                 .start()
             if (!process.isAlive) {
@@ -251,7 +252,7 @@ class UsbHidSink private constructor(
         }
 
         private fun run(su: String, command: String): String {
-            val process = ProcessBuilder(su, "-c", command).redirectErrorStream(true).start()
+            val process = ProcessBuilder(su, "-c", RootShell.line(command)).redirectErrorStream(true).start()
             val out = process.inputStream.bufferedReader().use { it.readText() }.trim()
             process.waitFor(20, TimeUnit.SECONDS)
             return out

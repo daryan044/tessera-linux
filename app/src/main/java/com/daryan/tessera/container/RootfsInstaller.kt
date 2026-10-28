@@ -85,7 +85,7 @@ class RootfsInstaller(
         val script = File(paths.cacheDir, "chroot-install.sh")
         script.writeText(ChrootSetup.script(paths.chrootRootfs.path, tarball.path, "${distro.name} ${layer.digest}"))
         runInterruptible {
-            val proc = ProcessBuilder(su, "-c", "/system/bin/sh ${script.path}").redirectErrorStream(true).start()
+            val proc = ProcessBuilder(su, "-c", RootShell.line("/system/bin/sh ${script.path}")).redirectErrorStream(true).start()
             try {
                 val output = proc.inputStream.bufferedReader().readLines()
                 if (proc.waitFor() != 0) throw InstallFailure(output.lastOrNull { it.isNotBlank() } ?: "chroot install failed", output.joinToString("\n"))

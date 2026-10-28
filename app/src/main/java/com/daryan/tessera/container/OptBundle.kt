@@ -92,7 +92,7 @@ class OptBundle(
     }.onFailure { Log.w(tag, "couldn't unpack $asset as root", it) }.getOrDefault(false)
 
     private fun runSu(su: String, script: String): String? {
-        val p = ProcessBuilder(su, "-c", script).redirectErrorStream(true).start()
+        val p = ProcessBuilder(su, "-c", RootShell.line(script)).redirectErrorStream(true).start()
         val out = p.inputStream.bufferedReader().readText()
         if (!p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)) { p.destroy(); return null }
         return out.takeIf { p.exitValue() == 0 }

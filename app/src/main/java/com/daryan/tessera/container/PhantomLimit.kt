@@ -42,7 +42,7 @@ object PhantomLimit {
 
     /** [command]'s output, or null when it failed or su was refused. */
     private fun runSu(su: String, command: String): String? = runCatching {
-        val p = ProcessBuilder(su, "-c", command).redirectErrorStream(true).start()
+        val p = ProcessBuilder(su, "-c", RootShell.line(command)).redirectErrorStream(true).start()
         val out = p.inputStream.bufferedReader().readText()
         if (!p.waitFor(20, TimeUnit.SECONDS)) {
             p.destroy()

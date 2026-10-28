@@ -68,7 +68,7 @@ object ProcessTree {
      */
     fun killSessionAsRoot(su: String, sessionId: String?) {
         runCatching {
-            val p = ProcessBuilder(su, "-c", rootKillScript(sessionId)).redirectErrorStream(true).start()
+            val p = ProcessBuilder(su, "-c", RootShell.line(rootKillScript(sessionId))).redirectErrorStream(true).start()
             p.inputStream.readBytes()
             p.waitFor()
         }

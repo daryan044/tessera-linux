@@ -17,10 +17,11 @@ for bb in /data/adb/magisk/busybox /data/adb/ksu/bin/busybox /data/adb/ap/bin/bu
 done
 [ -x "$bb" ] || { echo "busybox from Magisk/KernelSU/APatch not found" >&2; exit 1; }
 # Every tool from busybox, never the phone's: some phones' root shell reaches none of toybox's
-# (no unshare, tr or touch on a Galaxy Z Fold5 with KernelSU, #5).
-for c in mount touch mkdir ln rm sed grep head cat chmod chown stat dirname find ls sort tr chroot; do
-  eval "$c() { \"\$bb\" $c \"\$@\"; }"
-done
+# (no unshare, tr, touch or printf on a Galaxy Z Fold5 with KernelSU, #5; no printf on a Redmi Pad 2
+# with SukiSU, #7). RootShell links every busybox applet into /dev/tessera-busybox before this
+# runs; first on PATH, those are what every command here finds, so none can be left out.
+[ -x /dev/tessera-busybox/mount ] || { echo "busybox's tools aren't linked in /dev/tessera-busybox" >&2; exit 1; }
+PATH=/dev/tessera-busybox:$PATH
 # Shares host path $1 at $2 with what's mounted inside it (rbind: the phone's / alone is
 # Android's read-only root, its /data and /storage empty), read-only when $3 is ro.
 share() {

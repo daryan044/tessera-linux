@@ -39,7 +39,7 @@ class HostProbe(private val paths: ContainerPaths) {
      * look under /data/local itself; null when su refused or failed.
      */
     fun chrootInstalled(su: String): Boolean? = runCatching {
-        val p = ProcessBuilder(su, "-c", "test -e '${paths.chrootRootfs.path}/usr/bin/env' && echo yes || echo no")
+        val p = ProcessBuilder(su, "-c", RootShell.line("test -e '${paths.chrootRootfs.path}/usr/bin/env' && echo yes || echo no"))
             .redirectErrorStream(true).start()
         val out = p.inputStream.bufferedReader().readText().trim()
         if (!p.waitFor(15, java.util.concurrent.TimeUnit.SECONDS)) { p.destroy(); return@runCatching null }

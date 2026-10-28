@@ -104,7 +104,7 @@ object PhoneAdb {
     /** [script]'s exit status and output, run through [su] from stdin; null when su failed. */
     private fun runSu(su: String, script: String): Pair<Int, String>? = runCatching {
         val p = ProcessBuilder(su).redirectErrorStream(true).start()
-        p.outputStream.bufferedWriter().use { it.write(script); it.write("\n") }
+        p.outputStream.bufferedWriter().use { it.write(RootShell.PRELUDE); it.write("\n"); it.write(script); it.write("\n") }
         val out = p.inputStream.bufferedReader().readText()
         if (!p.waitFor(20, TimeUnit.SECONDS)) {
             p.destroy()

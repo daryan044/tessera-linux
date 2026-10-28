@@ -81,7 +81,7 @@ private fun suLaunch(su: String, vars: Map<String, String>, network: Boolean, sc
         append(FIND_UNSHARE)
         append("exec \$UNSHARE $flags /system/bin/sh ${shellQuote(script.invariantSeparatorsPath)}")
     }
-    return LaunchSpec(listOf(su, "-c", line), emptyMap(), "/")
+    return LaunchSpec(listOf(su, "-c", RootShell.line(line)), emptyMap(), "/")
 }
 
 /**

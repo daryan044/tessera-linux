@@ -132,7 +132,7 @@ class ProcessMonitor(private val su: String?, private val intervalMs: Long = 200
         private val out: BufferedReader = process.inputStream.bufferedReader()
 
         init {
-            process.outputStream.write((SCRIPT + "\n").toByteArray())
+            process.outputStream.write((RootShell.PRELUDE + "\n" + SCRIPT + "\n").toByteArray())
             process.outputStream.flush()
         }
 
@@ -215,7 +215,7 @@ class ProcessMonitor(private val su: String?, private val intervalMs: Long = 200
             val own = uid == android.os.Process.myUid()
             fun signal(sig: Int) {
                 if (own) android.os.Process.sendSignal(pid, sig)
-                else if (su != null) runCatching { ProcessBuilder(su, "-c", "kill -$sig $pid").start().waitFor() }
+                else if (su != null) runCatching { ProcessBuilder(su, "-c", RootShell.line("kill -$sig $pid")).start().waitFor() }
             }
             signal(15)
             delay(1500)
