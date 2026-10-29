@@ -142,6 +142,10 @@ class BackendTest {
         assertEquals(Enforcement.ADVISORY, chroot.enforcement(Capability.NETWORK, rootApp))
     }
 
+    @Test fun `software-only GUI sessions use GTK 4 Cairo renderer`() {
+        assertEquals("cairo", guestEnv(firefox, session.copy(gpu = false))["GSK_RENDERER"])
+    }
+
     @Test fun `themed sessions get the theme's directory and data dirs`() {
         val env = guestEnv(firefox, session.copy(theme = true))
         assertEquals(ThemeFiles.GUEST_DIR, env["TESSERA_THEME"])
