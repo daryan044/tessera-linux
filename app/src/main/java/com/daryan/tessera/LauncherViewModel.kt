@@ -516,6 +516,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             _status.value = s
+            // If Droidspaces is the persisted mode, bring its selected, already-prepared container
+            // up automatically. Do this once per selected name per ViewModel lifetime: refresh()
+            // runs for many reasons, and a failed start must not create a retry loop.
+            maybeAutoStartDroidspaces(s)
             // su answered (chroot mode found or didn't find its system): root was granted, so
             // the task manager may use it in PRoot mode too, without a prompt nobody asked for.
             if ((s.chrootRootfs != null || s.droidspacesContainers != null) && !rootGranted) {
@@ -606,6 +610,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _containerBusy = MutableStateFlow<String?>(null)
 
+    // Prevent repeated refreshes from repeatedly trying to start a container that failed to start.
+    // This resets with the ViewModel, so the persisted selection is auto-started on the next app launch.
+    private val autoStartAttempted = mutableSetOf<String>()
+
     /** What the Droidspaces container is doing now ("Starting web"), while it does it. */
     val containerBusy: StateFlow<String?> = _containerBusy
 
@@ -629,6 +637,15 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val name = chosen?.takeIf { c -> found.any { it.name == c } } ?: found.singleOrNull()?.name
         if (name != null && name != chosen) prefs.edit().putString(KEY_DS_CONTAINER, name).apply()
         return status.copy(droidspacesBinary = binary, droidspacesContainers = found, droidspacesName = name)
+    }
+
+    private fun maybeAutoStartDroidspaces(status: HostStatus) {
+        if (_mode.value != BackendMode.DROIDSPACES || status.su == null || status.droidspacesBinary == null) return
+        val target = status.droidspacesSelected ?: return
+        // Don't start an unprepared container: without Tessera's bridge binds it cannot launch apps.
+        if (target.running || !target.bridged || _containerBusy.value != null) return
+        if (!autoStartAttempted.add(target.name)) return
+        startContainer()
     }
 
     /** Uses [name] for Linux apps in Droidspaces mode. Each container is its own system: it's checked, and what's installed in it. */
