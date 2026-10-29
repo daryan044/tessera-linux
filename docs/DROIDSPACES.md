@@ -5,9 +5,26 @@ Tessera can run its apps inside a container you made with
 init, which keeps running beside Tessera. Pick the **Droidspaces** engine in the side menu or in
 Setup, pick which container to use, and apps start in it.
 
-This is the third engine, next to PRoot and chroot. Like chroot it needs root, and like chroot the
-kernel enforces each app's permissions. Unlike chroot, the Linux system is yours: its distro, its
-network setup, its other services (systemd, sshd, a web server) are the container's own.
+This is the third engine, next to PRoot and chroot. Like chroot it needs root, and each app gets
+its own namespaces and uid. Unlike chroot, the Linux system is yours: its distro, its network
+setup, its other services (systemd, sshd, a web server) are the container's own. That makes it
+**less secure than chroot mode**; see [Security](#security).
+
+## Security
+
+Use chroot mode for apps you don't trust. In Droidspaces mode:
+
+- **The rest of the container isn't confined.** `/mnt/tessera/sessions` holds every app's X server
+  socket, and only the apps Tessera starts have it hidden. The container's own services, and
+  anyone logged into it, can connect to any app's X server and read its windows and keystrokes.
+- **Apps see the container's whole `/dev`** (Flathub apps excepted, which get a minimal one).
+  Which devices an app can open comes down to each node's file mode, not the app's device grants,
+  so Tessera shows the Devices permission as not enforced.
+- **Tessera runs its launch script as root with the container's own programs** (`sh`, `mount`,
+  `unshare`, `setpriv`). Whoever can change the container's system files can change what runs as
+  root at every launch.
+- **Read-only folders** need a kernel with recursive read-only bind mounts. On older ones, folders
+  mounted inside a read-only grant stay writable (Tessera says so when the app starts).
 
 ## What you need
 

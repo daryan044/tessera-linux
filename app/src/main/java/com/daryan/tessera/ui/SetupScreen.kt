@@ -242,10 +242,16 @@ private fun DroidspacesEngineItem(status: HostStatus) {
             status.droidspacesContainers == null -> "Looking for Droidspaces."
             found == null -> "Couldn't find Droidspaces. Install it (github.com/ravindu644/Droidspaces-OSS), " +
                 "make a Debian or Ubuntu container in it, then check again."
-            else -> "Found at $found."
+            else -> "Found at $found.\n\n$DROIDSPACES_WARNING"
         },
     )
 }
+
+/** Why Droidspaces mode is less safe than chroot; shown where the engine and its container are picked. */
+internal const val DROIDSPACES_WARNING =
+    "Less secure than chroot mode. Everything else running in the container (its services, your logins " +
+        "into it) can reach every app's windows and keystrokes, and apps see all of the container's devices. " +
+        "Use chroot mode for apps you don't trust."
 
 @Composable
 private fun DroidspacesContainerItem(status: HostStatus, actions: DroidspacesActions?, busy: String?) {
@@ -332,7 +338,8 @@ private fun DroidspacesContainerItem(status: HostStatus, actions: DroidspacesAct
                         "Tessera then installs graphics and app libraries in it with apt, and its GPU driver and theme files " +
                         "in /opt/tessera-gpu and /opt/tessera-theme.\n\n" +
                         "Apps run as Tessera's own user, so the container's \"user\" account takes Tessera's uid and " +
-                        "/home/user is handed over to it. Best on a container made for Tessera, not one you work in.",
+                        "/home/user is handed over to it. Best on a container made for Tessera, not one you work in.\n\n" +
+                        DROIDSPACES_WARNING,
                 )
             },
             confirmButton = {

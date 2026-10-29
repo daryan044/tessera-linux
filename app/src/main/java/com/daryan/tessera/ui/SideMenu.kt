@@ -134,7 +134,8 @@ fun SideMenu(status: MenuStatus, actions: MenuActions) {
             }
             Text(
                 when {
-                    status.container != null -> "Container: ${status.container}. Change it under Setup."
+                    status.container != null -> "Container: ${status.container}. Change it under Setup, " +
+                        "which also says why this mode is less secure than chroot."
                     status.rootAvailable -> "Each engine has its own Linux system."
                     else -> "Chroot and Droidspaces need root (Magisk, KernelSU or APatch)."
                 },

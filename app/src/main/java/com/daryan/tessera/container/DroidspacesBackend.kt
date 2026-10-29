@@ -11,7 +11,8 @@ import android.util.Base64
  * started inside the running container with `droidspaces run`, around assets/droidspaces/enter.sh,
  * which gives it a private mount namespace (and network namespace when network is not granted),
  * the way [ChrootBackend] does on the phone's side, and drops it to an unprivileged uid. So the
- * manifest is enforced by the kernel just the same.
+ * kernel enforces the manifest, except devices: the app sees the container's whole /dev. Less
+ * secure than chroot all the same, since the rest of the container isn't confined (docs/DROIDSPACES.md).
  *
  * The container is its own mount namespace, so it sees only what Droidspaces put in it. Tessera's
  * session folders and the script are bound into it at its boot ([Droidspaces.bridgeBinds]); the
@@ -45,9 +46,14 @@ class DroidspacesBackend(
     /** The container's GPU node is among its devices, so hardware graphics can work in it. */
     val hasGpuDevice: Boolean get() = container.config.hasGpuDevice
 
-    override fun enforcement(capability: Capability, app: PermissionManifest) =
+    override fun enforcement(capability: Capability, app: PermissionManifest) = when {
         // Root inside the container can mount and walk out of the app's namespaces.
-        if (app.permissions.root) Enforcement.ADVISORY else Enforcement.ENFORCED
+        app.permissions.root -> Enforcement.ADVISORY
+        // Debian apps see the container's whole /dev: what they can open is down to each node's
+        // own mode, not the grant. Flathub apps get a minimal /dev of their own.
+        capability == Capability.DEVICES && app.flatpak == null -> Enforcement.ADVISORY
+        else -> Enforcement.ENFORCED
+    }
 
     /** The folders [app] is granted that the container can't see, so they won't be there. */
     fun unreachableGrants(app: PermissionManifest): List<FsGrant> =

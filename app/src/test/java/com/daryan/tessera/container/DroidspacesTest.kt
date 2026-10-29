@@ -331,6 +331,11 @@ class DroidspacesTest {
         assertEquals(Enforcement.ADVISORY, b.enforcement(Capability.FILESYSTEM, root))
     }
 
+    @Test fun `devices are advisory since debian apps see the container's whole dev`() {
+        val b = DroidspacesBackend(paths, su, binary, container, appUid = 1)
+        assertEquals(Enforcement.ADVISORY, b.enforcement(Capability.DEVICES, notes))
+    }
+
     @Test fun `the settings survive a real shell to the byte`() {
         assumeTrue(File("/bin/sh").exists())
         val tricky = notes.copy(exec = listOf("/bin/sh", "-c", "echo \"a b\" 'c'; echo \$HOME \\ `x` \$(y)", "it's"))

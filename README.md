@@ -262,8 +262,10 @@ even ones left behind by an earlier run.
   - **Chroot mode** (Magisk, KernelSU or APatch) enforces every permission with kernel
     namespaces and an unprivileged user, and runs faster.
   - **Droidspaces mode** *(new, experimental; root)* runs apps inside a container you made with
-    [Droidspaces](https://github.com/ravindu644/Droidspaces-OSS), which you pick in Setup, with the
-    same kernel-enforced permissions. See [docs/DROIDSPACES.md](docs/DROIDSPACES.md).
+    [Droidspaces](https://github.com/ravindu644/Droidspaces-OSS), which you pick in Setup. Each app
+    still gets its own namespaces and uid, but it's **less secure than chroot mode**: the rest of
+    the container can reach every app's windows, and apps see all of its devices. See
+    [docs/DROIDSPACES.md](docs/DROIDSPACES.md#security).
 
 ### 📺 Cast to a TV, use the phone as the trackpad *(new)*
 - Send an app to a TV or monitor, by cable or wireless display, at a resolution that suits it.
