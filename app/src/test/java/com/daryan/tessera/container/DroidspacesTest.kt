@@ -298,7 +298,7 @@ class DroidspacesTest {
         val p = ProcessBuilder("/bin/sh", "-c", script).redirectErrorStream(true).start()
         val parts = p.inputStream.readBytes().toString(Charsets.UTF_8).split('\u0000')
         p.waitFor()
-        assertEquals(tricky.exec.joinToString(" ") { shellQuote(it) }, parts[0])
+        assertEquals(guestCommand(tricky).joinToString(" ") { shellQuote(it) }, parts[0])
         assertEquals(parseEnv(text).getValue("GUEST_ENV"), parts[1])
         assertEquals(parseEnv(text).getValue("BINDS"), parts[2])
     }
