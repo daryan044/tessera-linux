@@ -246,6 +246,48 @@ class DroidspacesTest {
         assertFalse("launch.env" in spec.argv[2])
     }
 
+    @Test fun `Flathub app launch builds a private-root request and keeps each argument under the daemon cap`() {
+        val flatpak = notes.copy(
+            exec = listOf("/app/bin/notes", "--new", "it's"),
+            permissions = notes.permissions.copy(network = true, usb = true, devices = listOf("/dev/kgsl-3d0")),
+            flatpak = FlatpakRef(
+                app = "org.example.Notes",
+                appDir = "/var/lib/flatpak/app/org.example.Notes/current/active/files",
+                runtimeDir = "/var/lib/flatpak/runtime/org.freedesktop.Platform/aarch64/24.08/active/files",
+                glDir = "/var/lib/flatpak/runtime/org.freedesktop.Platform.GL.default/aarch64/24.08/active/files",
+                glMount = "/usr/lib/aarch64-linux-gnu/GL/default",
+                command = "notes",
+            ),
+        )
+        val env = mapOf("HOME" to "/home/user", "DISPLAY" to ":3", "FLATPAK_ID" to "org.example.Notes")
+        val backend = DroidspacesBackend(paths, su, binary, container, appUid = 10484, encodeSettings = testEncodeSettings)
+        val spec = backend.buildFlatpakLaunch(flatpak, session.copy(gpu = true), env)
+        val payload = spec.argv[2].substringAfter("${Droidspaces.GUEST_SCRIPT} s3 ")
+        val chunks = payload.split(' ')
+        assertTrue(chunks.isNotEmpty())
+        assertTrue(chunks.all { it.length <= DroidspacesBackend.SETTINGS_ARG_CHUNK_SIZE && it.length < 8192 })
+        val settings = String(java.util.Base64.getDecoder().decode(chunks.joinToString("")), Charsets.UTF_8)
+        val parsed = parseEnv(settings)
+        assertEquals("1", parsed["FLATPAK_MODE"])
+        assertEquals(flatpak.flatpak?.runtimeDir, parsed["FP_RUNTIME"])
+        assertEquals(flatpak.flatpak?.appDir, parsed["FP_APP"])
+        assertEquals(flatpak.flatpak?.glDir, parsed["FP_GL"])
+        assertEquals(flatpak.flatpak?.glMount, parsed["FP_GL_MOUNT"])
+        assertEquals("1", parsed["X11"])
+        assertEquals("", parsed["NO_NET"])
+        assertEquals("3003,3004", parsed["NET_GROUPS"])
+        assertEquals("10484", parsed["APP_UID"])
+        assertEquals("/dev/kgsl-3d0", parsed["DEVICES"])
+        assertEquals("1", parsed["USB_ALL"])
+        assertTrue("HOME=/home/user" in parsed.getValue("GUEST_ENV").lines())
+        assertEquals(flatpak.exec.joinToString(" ") { shellQuote(it) }, parsed["CMD"])
+    }
+
+    @Test fun `a regular launch doesn't enter the Flatpak-only code path`() {
+        val (_, settings) = launch(notes)
+        assertFalse("FLATPAK_MODE=" in settings)
+    }
+
     @Test fun `settings follow the manifest`() {
         val env = parseEnv(launch(notes).second)
         assertEquals("1", env["X11"])

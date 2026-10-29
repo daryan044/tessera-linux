@@ -79,6 +79,9 @@ class HostProbe(private val paths: ContainerPaths) {
             context.assets.open("droidspaces/enter.sh").use { input ->
                 paths.droidspacesScript.outputStream().use { input.copyTo(it) }
             }
+            context.assets.open("droidspaces/flatpak.sh").use { input ->
+                File(paths.droidspacesDir, "flatpak.sh").outputStream().use { input.copyTo(it) }
+            }
         }
 
         /** Copies the root-side launch script out of the APK so `su` can run it. */

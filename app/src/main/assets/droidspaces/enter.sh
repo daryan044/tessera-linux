@@ -7,6 +7,7 @@
 # Droidspaces v7 rejects any individual argument longer than 8192 bytes.
 # Decoded SETTINGS are shell assignments, one per line:
 #   BINDS, DEVICES, USB_ALL, GPU_DEVICE, X11, RUN_AS_ROOT, APP_UID, NO_NET, NET_GROUPS, GUEST_ENV, CMD
+# Flatpak launches additionally set FLATPAK_MODE and FP_RUNTIME, FP_APP, FP_GL, FP_GL_MOUNT.
 # They come from root's command line, not a file in the session's folder: apps run as the uid
 # that owns those folders, so one could rewrite the next session's file before this script, as
 # root, read it.
@@ -69,6 +70,16 @@ mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /tmp
 mkdir -p /dev/shm
 # Keep POSIX shared-memory files on a private tmpfs instead of the container-wide /dev/shm.
 mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /dev/shm
+
+# Hiding /mnt/tessera below removes the shared script directory too. Keep a private copy of the
+# Flatpak launcher in this app's /tmp before hiding it; the helper's mounts stay in our namespace.
+FLATPAK_SCRIPT=
+if [ "${FLATPAK_MODE:-}" = 1 ]; then
+  [ -r "$SHARE/bin/flatpak.sh" ] || { echo "Tessera's Flatpak launcher isn't installed; reopen Setup" >&2; exit 1; }
+  FLATPAK_SCRIPT=/tmp/.tessera-flatpak.sh
+  cat "$SHARE/bin/flatpak.sh" > "$FLATPAK_SCRIPT"
+  chmod 700 "$FLATPAK_SCRIPT"
+fi
 
 # LLVM (llvmpipe's shader JIT) picks instructions by core model, not by what the kernel enables:
 # Cortex-X3 and A715 have SVE, Android kernels leave it off, and OpenGL apps drawing in software
@@ -167,6 +178,15 @@ DEV_GROUPS=$({
 done | grep -vx 1000 | sort -u | tr '\n' ',' | sed 's/,$//')
 [ -n "$DEV_GROUPS" ] && GROUPS_LIST=${GROUPS_LIST:+$GROUPS_LIST,}$DEV_GROUPS
 if [ -n "$GROUPS_LIST" ]; then GROUP_ARG="--groups=$GROUPS_LIST"; else GROUP_ARG=--clear-groups; fi
+
+# Flatpak apps need a separate root (runtime at /usr, app at /app). Build it in this launch's
+# private /tmp and pass through only the values assembled from the app manifest/session.
+if [ "${FLATPAK_MODE:-}" = 1 ]; then
+  export FLATPAK_MODE FP_RUNTIME FP_APP FP_GL FP_GL_MOUNT BINDS DEVICES USB_ALL GPU_DEVICE X11 APP_UID
+  export NET_GROUPS GUEST_ENV CMD GROUPS_LIST
+  exec $SETSID /bin/sh "$FLATPAK_SCRIPT"
+fi
+
 # --no-new-privs keeps setuid binaries inert.
 exec $SETSID "$SETPRIV" --reuid="$U" --regid="$U" "$GROUP_ARG" --no-new-privs --inh-caps=-all \
   "$ENVBIN" -i "$@" /bin/sh -c "$START$CMD"

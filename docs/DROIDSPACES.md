@@ -36,7 +36,7 @@ folders; and **Hardware access** or **GPU** if you want GPU acceleration or USB 
 | Where in the container | What | Why |
 |---|---|---|
 | `/mnt/tessera/sessions` | the app's session folders (`cache/sessions`) | each app's X server socket and the files it and Tessera exchange |
-| `/mnt/tessera/bin` (read-only) | `enter.sh` | the script that starts each app |
+| `/mnt/tessera/bin` (read-only) | `enter.sh` and `flatpak.sh` | the ordinary app entry point and the Flatpak root builder |
 
 Nothing else of Tessera's is visible to the container, and the apps themselves don't see
 `/mnt/tessera` at all: `enter.sh` hides it before the app starts, once the app's own X socket is
@@ -66,7 +66,11 @@ namespace.
 - **Folders.** A grant is shared only if the container can see the folder: the phone's storage (when
   the container has Android storage on) or a path in the container's own `bind_mounts`. Others are
   skipped, and Tessera says so when the app starts.
-- **Flathub apps** don't run in this engine yet. Use the Debian store.
+- **Flathub apps** use Tessera's custom Flatpak launcher, which builds a root with the installed
+  runtime at `/usr` and app at `/app` inside each launch's private mount namespace. It does not run
+  `flatpak run` or enable Droidspaces' broader `--allow-sandboxing` option. As in PRoot/chroot,
+  this is not Flatpak's own bubblewrap sandbox; Tessera's per-app permissions apply instead. The
+  Droidspaces path still needs broader device-level testing.
 - **Controlling this phone with adb** (the adb permission) isn't available yet.
 - **DNS** is the container's own (Droidspaces' `dns_servers`); Tessera doesn't rewrite it.
 - **USB and GPU** need the device nodes inside the container: turn on hardware access or GPU in

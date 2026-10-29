@@ -182,7 +182,8 @@ have. So `flatpak run` simply can't work on a phone. Tessera runs Flathub apps a
 - **Flatpak installs, Tessera runs.** `flatpak` downloads apps and runtimes as usual; Tessera then
   builds each app's world itself: the runtime mounted at `/usr`, the app at `/app`, the runtime's
   GL drivers where it expects them. In PRoot mode that's done with path translation, **no root
-  at all**; in chroot mode with a private mount namespace.
+  at all**; in chroot mode with a private mount namespace; in Droidspaces, inside each launch's
+  private mount namespace in the selected container.
 - **Full integration, not a side door.** A Flathub app gets the same window, Recents cards,
   keyboard, sound, clipboard, theme and per-app permissions as every Debian app.
 - **On the GPU.** Tessera's own Turnip driver loads inside Flathub's runtimes: OpenGL 4.6 on
@@ -328,8 +329,8 @@ makes).
 | Store, installs, apps installed with apt or .deb | ✅ Works |
 | GPU acceleration (Turnip + Zink) in PRoot mode | ✅ Works on Adreno 740 |
 | Chroot mode with root | ✅ Works; GPU in chroot mode is new |
-| Droidspaces mode (pick a Droidspaces container) | 🧪 New; no Flathub apps or phone adb yet |
-| Flathub apps (install from the Store, launch, GPU) | ✅ Works in PRoot and chroot mode |
+| Droidspaces mode (pick a Droidspaces container) | 🧪 New; phone adb not yet; Flathub launch support added |
+| Flathub apps (install from the Store, launch, GPU) | ✅ Works in PRoot and chroot; Droidspaces implementation added, device testing pending |
 | Desktop (xfwm4, dock, Start menu, wallpaper) | 🧪 New; first runs on a Snapdragon 8 Gen 2 in chroot mode |
 | Material You theming, live dark mode (GTK, libadwaita, Qt, LibreOffice, Firefox) | ✅ Works |
 | Live per-app scaling, white pointer, window panel | ✅ Works |
@@ -376,7 +377,8 @@ flowchart LR
   each its own Android task.
 - **Flathub apps:** Debian's flatpak installs them; Tessera runs them in a root of their own
   (runtime at /usr, app at /app) beside the session's helpers, sharing its X socket, D-Bus and
-  sound, with no bubblewrap.
+  sound, with no bubblewrap. Droidspaces builds that root inside the selected container's private
+  per-app mount namespace; this code path is implemented but still needs device-level testing.
 - **Theming:** a per-session theme (adw-gtk3 recolored from Android's Material colors), xsettingsd,
   and a small settings portal on the session bus; rewritten live when Android's colors change.
 - **Graphics:** frames from Zink reach the X server as images (Kopper and Vulkan's software
@@ -456,8 +458,8 @@ install with apt or as a .deb for arm64. Electron apps like VS Code work.
 
 **Flatpak needs bubblewrap. How does Flathub work here?** Flatpak only installs; Tessera runs the
 apps itself, building each one's file system (runtime at /usr, app at /app) with PRoot or a mount
-namespace instead of bubblewrap. That also means no Flatpak sandbox: Tessera's own per-app
-permissions apply instead.
+namespace instead of bubblewrap. Droidspaces does the same inside its per-app namespace. That also
+means no Flatpak sandbox: Tessera's own per-app permissions apply instead.
 
 **Why isn't it on Google Play?** Play requires a newer target API level, and those forbid running
 programs from app storage, which is what Linux needs. F-Droid has no such rule.

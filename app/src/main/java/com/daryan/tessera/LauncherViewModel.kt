@@ -684,13 +684,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Flathub apps need a root of their own that the Droidspaces backend doesn't make yet. */
-    private fun flathubBlocked(): Boolean {
-        if (_mode.value != BackendMode.DROIDSPACES) return false
-        viewModelScope.launch { failed("Flathub apps can't run in Droidspaces containers yet; use the Debian store") }
-        return true
-    }
-
     fun setMode(mode: BackendMode) {
         _mode.value = mode
         // Each mode's system has its own Flathub setup.
@@ -806,7 +799,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
      * helpers, in the install queue. Then its catalog loads. False when no container is ready.
      */
     fun setupFlathub(): Boolean {
-        if (flathubBlocked()) return false
         val backend = backend() ?: return false
         if (blocker(_status.value, _mode.value) != null) return false
         val store = configStore(_status.value, _mode.value)
@@ -836,7 +828,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         if (blocker(_status.value, _mode.value) != null) return false
         val store = configStore(_status.value, _mode.value)
         if (app.source == StoreSource.FLATHUB) {
-            if (flathubBlocked()) return false
             if (!Flatpak.validId(app.id) || store == null) return false
             container.queue.enqueue(
                 app.name, listOf(flatpakJob(app.id)), QueueAction.INSTALL, container.flathub.iconFile(app)?.path, backend,
@@ -922,7 +913,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val backend = backend() ?: return false
         val store = configStore(_status.value, _mode.value)
         app.flatpak?.let { ref ->
-            if (flathubBlocked()) return false
             if (!Flatpak.validId(ref.app) || store == null) return false
             container.queue.enqueue(
                 app.name, listOf(flatpakJob(ref.app)), QueueAction.INSTALL, app.iconFile, backend,

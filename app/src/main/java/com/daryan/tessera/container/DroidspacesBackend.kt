@@ -53,12 +53,47 @@ class DroidspacesBackend(
     fun unreachableGrants(app: PermissionManifest): List<FsGrant> =
         app.permissions.filesystem.filter { DroidspacesView.visibleAt(container.config, it.path) == null }
 
-    override fun buildLaunch(app: PermissionManifest, session: Session): LaunchSpec {
-        // Droidspaces v7's daemon rejects any individual argv element above 8192 bytes.
-        // GUI CMD includes the wrapper and embedded Python helpers, so even xterm's settings
-        // exceed that limit. Base64 prevents literal newlines, and each quoted chunk stays below
-        // the daemon's cap. enter.sh reassembles them without a mutable launch.env file.
-        val payloadArgs = encodeSettings(settings(app, session))
+    override fun buildLaunch(app: PermissionManifest, session: Session): LaunchSpec =
+        launchSpec(session, settings(app, session))
+
+    override fun buildFlatpakLaunch(
+        app: PermissionManifest,
+        session: Session,
+        env: Map<String, String>,
+    ): LaunchSpec {
+        val ref = requireNotNull(app.flatpak) { "${app.id} isn't a Flathub app" }
+        val p = app.permissions
+        val vars = linkedMapOf(
+            "FLATPAK_MODE" to "1",
+            "FP_RUNTIME" to ref.runtimeDir,
+            "FP_APP" to ref.appDir,
+            "FP_GL" to ref.glDir.orEmpty(),
+            "FP_GL_MOUNT" to ref.glMount.orEmpty(),
+            "BINDS" to p.filesystem.mapNotNull { g ->
+                DroidspacesView.visibleAt(container.config, g.path)?.let {
+                    "$it:${g.mountAt}:${if (g.readOnly) "ro" else "rw"}"
+                }
+            }.joinToString("\n"),
+            "DEVICES" to p.devices.joinToString("\n"),
+            "USB_ALL" to if (p.usb) "1" else "",
+            "GPU_DEVICE" to if (session.gpu) GpuDriver.KGSL else "",
+            "X11" to if (p.display) "1" else "",
+            "RUN_AS_ROOT" to "0",
+            "APP_UID" to appUid.toString(),
+            // Use the same network namespace policy as ordinary apps in this container.
+            "NO_NET" to if (p.network) "" else "1",
+            "NET_GROUPS" to if (p.network) "3003,3004" else "",
+            "GUEST_ENV" to env.map { (k, v) -> "$k=$v" }.joinToString("\n"),
+            "CMD" to app.exec.joinToString(" ") { shellQuote(it) },
+        )
+        return launchSpec(session, vars.entries.joinToString("\n", postfix = "\n") { (k, v) ->
+            "$k=${shellQuote(v)}"
+        })
+    }
+
+    /** Droidspaces caps individual argv values, so every launch uses the same chunked protocol. */
+    private fun launchSpec(session: Session, settings: String): LaunchSpec {
+        val payloadArgs = encodeSettings(settings)
             .chunked(SETTINGS_ARG_CHUNK_SIZE)
             .joinToString(" ") { shellQuote(it) }
         val line = "exec ${shellQuote(binary)} --name=${shellQuote(container.name)} run -- " +
