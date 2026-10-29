@@ -28,7 +28,7 @@ This matters, because it is unusual:
 
 ## How Tessera runs an app
 
-One container per app, started by Tessera's session manager, in one of two engines:
+One container per app, started by Tessera's session manager, in one of three engines:
 
 **PRoot mode** (the default, no root). A `proot` process rewrites filesystem paths with ptrace.
 Every process still runs as the Android app's own uid, so it confines what an app *sees*, not what
@@ -39,6 +39,16 @@ app was granted. Anything else on the phone is simply absent.
 **Chroot mode** (needs root: Magisk, KernelSU or APatch). A private mount namespace, a network
 namespace when network is not granted, a minimal `/dev`, and the app dropped to an unprivileged uid
 with `setpriv`. Here the kernel enforces the manifest. Faster, too.
+
+**Droidspaces mode** (needs root and [Droidspaces](https://github.com/ravindu644/Droidspaces-OSS)).
+The apps run inside a container the user made with Droidspaces and picked in Setup; Tessera starts
+each with `droidspaces --name=<container> run`, around `enter.sh` (assets/droidspaces), which does
+what chroot mode does but inside the container: a private mount namespace (and network namespace
+without network), then `setpriv` to the app's uid. Tessera's session folders are bound into the
+container at `/mnt/tessera` when it boots (set up once from Setup, which edits the container's
+`bind_mounts` and restarts it). Folder grants only reach the app if the container can see them
+(Android storage on, or its own binds). No Flathub apps and no phone adb in this engine yet. See
+docs/DROIDSPACES.md.
 
 In both modes a GUI app gets **its own X server** (a Termux:X11 fork) and its own `DISPLAY`, with
 `matchbox-window-manager` keeping it fullscreen. Tessera follows the X windows and gives each one an

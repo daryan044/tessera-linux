@@ -56,7 +56,12 @@ class DirectConfigStore(private val root: File) : ConfigStore {
 }
 
 /** Chroot mode: the rootfs is root-owned, so every access goes through su. */
-class SuConfigStore(private val su: String, private val root: String) : ConfigStore {
+class SuConfigStore(
+    private val su: String,
+    private val root: String,
+    /** The normal user's uid inside: 1000 in a chroot system, the app's own in a Droidspaces container. */
+    private val userUid: Int = 1000,
+) : ConfigStore {
     override suspend fun read(path: String): String? = withContext(Dispatchers.IO) {
         val p = shellQuote(guest(path))
         val proc = ProcessBuilder(su, "-c", "if [ -f $p ]; then cat $p; else exit $MISSING; fi").start()
@@ -75,8 +80,8 @@ class SuConfigStore(private val su: String, private val root: String) : ConfigSt
         val dir = shellQuote(full.substringBeforeLast('/'))
         val script = "if [ -f $p ] && [ ! -f $p$BACKUP ]; then cp -p $p $p$BACKUP; fi; " +
             "mkdir -p $dir && cat > $p && " +
-            // Files in the normal user's home must stay theirs (uid 1000 in chroot sessions).
-            "case $p in */home/user/*) chown 1000:1000 $p;; esac"
+            // Files in the normal user's home must stay theirs.
+            "case $p in */home/user/*) chown $userUid:$userUid $p;; esac"
         val proc = ProcessBuilder(su, "-c", script).start()
         proc.outputStream.use { it.write(text.toByteArray()) }
         val err = proc.errorStream.bufferedReader().readText()

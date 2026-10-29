@@ -83,6 +83,13 @@ data class ContainerPaths(
     /** The empty root a PRoot Flathub app's runtime and app are bound into. */
     val flatpakSkeleton get() = File(filesDir, "flatpak-root")
 
+    /** Every session's folder; Droidspaces containers get all of them bound in ([Droidspaces.bridgeBinds]). */
+    val sessionsDir get() = File(cacheDir, "sessions")
+    fun sessionDir(session: Session) = File(sessionsDir, session.id)
+    /** What a Droidspaces container runs of ours: [droidspacesScript], bound in read-only. */
+    val droidspacesDir get() = File(filesDir, "droidspaces")
+    val droidspacesScript get() = File(droidspacesDir, "enter.sh")
+
     /** Private /tmp per session, so apps cannot see each other's sockets. */
     fun sessionTmp(session: Session) = File(cacheDir, "sessions/${session.id}/tmp")
     fun x11SocketDir(session: Session) = File(sessionTmp(session), ".X11-unix")
@@ -195,8 +202,8 @@ private fun guiWrapper(wm: String) =
     listOf("/bin/sh", "-c", GUI_WRAPPER, "launch", FOCUS_WATCHER, FOCUS_FILE_GUEST, WINDOW_WATCHER, WINDOWS_FILE_GUEST, THEME_DAEMON, wm, NOTIFY_DAEMON)
 
 private const val GUI_WRAPPER = """
-watcher=${'$'}1; out=${'$'}2; windows=${'$'}3; windows_out=${'$'}4; theme=${'$'}5; wm=${'$'}6; notify=${'$'}7; shift 7
-if { [ -n "${'$'}TESSERA_FLATPAK" ] || [ "${'$'}wm" = desktop ]; } && [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-daemon >/dev/null 2>&1; then
+watcher=${'$'}1; out=${'$'}2; windows=${'$'}3; windows_out=${'$'}4; theme=${'$'}5; wm_mode=${'$'}6; notify=${'$'}7; wm_pid=; shift 7
+if { [ -n "${'$'}TESSERA_FLATPAK" ] || [ "${'$'}wm_mode" = desktop ]; } && [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-daemon >/dev/null 2>&1; then
   # A Flathub app runs in a root of its own, which shares only the X11 directory with this
   # one: the bus lives there. So does a desktop's, which Flathub apps open in it share.
   bus=${'$'}(dbus-daemon --session --address=unix:path=/tmp/.X11-unix/bus --fork --print-pid)
@@ -259,7 +266,7 @@ if [ -n "${'$'}LAUNCHER_AUDIO" ] && command -v pulseaudio >/dev/null 2>&1; then
   # Apps that find no server at startup stay silent, so give it a moment.
   for i in 1 2 3 4 5 6 7 8 9 10; do [ -S "${'$'}PULSE_RUNTIME_PATH/native" ] && break; sleep 0.2; done
 fi
-if [ "${'$'}wm" = desktop ]; then
+if [ "${'$'}wm_mode" = desktop ]; then
   # The desktop's own window manager starts with it, below; the watcher follows its windows
   # for the taskbar once it owns the screen.
   if [ -d /usr/lib/python3/dist-packages/Xlib ]; then
@@ -268,7 +275,7 @@ if [ "${'$'}wm" = desktop ]; then
 elif command -v matchbox-window-manager >/dev/null 2>&1; then
   # With a cursor of its own on the screen: "-use_cursor no" blanks it, and apps that don't
   # set one (most outside GTK and Qt) then showed no pointer, even in the touchpad modes.
-  matchbox-window-manager -use_titlebar no -use_cursor yes & wm=${'$'}!
+  matchbox-window-manager -use_titlebar no -use_cursor yes & wm_pid=${'$'}!
   if [ -d /usr/lib/python3/dist-packages/Xlib ]; then
     # Once the manager owns the screen, or the window list it keeps isn't there yet.
     ( sleep 0.5; exec python3 -c "${'$'}windows" "${'$'}windows_out" ) & ww=${'$'}!
@@ -278,12 +285,12 @@ started=${'$'}(date +%s)
 "${'$'}@"; status=${'$'}?
 # Launchers such as VS Code's `code` start the real app in the background and exit at once.
 # After such a quick, clean exit, the session lasts while the app's windows are open.
-if [ "${'$'}wm" = app ] && [ "${'$'}status" = 0 ] && [ -n "${'$'}ww" ] && [ ${'$'}((${'$'}(date +%s) - started)) -lt 5 ]; then
+if [ "${'$'}wm_mode" = app ] && [ "${'$'}status" = 0 ] && [ -n "${'$'}ww" ] && [ ${'$'}((${'$'}(date +%s) - started)) -lt 5 ]; then
   i=0
   while [ ${'$'}i -lt 30 ] && ! grep -q '"id"' "${'$'}windows_out" 2>/dev/null; do sleep 0.5; i=${'$'}((i + 1)); done
   while grep -q '"id"' "${'$'}windows_out" 2>/dev/null; do sleep 1; done
 fi
-kill ${'$'}ww ${'$'}wm ${'$'}fw ${'$'}pa ${'$'}td ${'$'}nd ${'$'}bus 2>/dev/null
+kill ${'$'}ww ${'$'}wm_pid ${'$'}fw ${'$'}pa ${'$'}td ${'$'}nd ${'$'}bus 2>/dev/null
 exit ${'$'}status
 """
 

@@ -89,7 +89,11 @@ class OptBundle(
         }
         chrootVersion = version
         true
-    }.onFailure { Log.w(tag, "couldn't unpack $asset as root", it) }.getOrDefault(false)
+    }.onFailure {
+        // Not in this system, whatever the last one (another container's) had.
+        chrootVersion = null
+        Log.w(tag, "couldn't unpack $asset as root", it)
+    }.getOrDefault(false)
 
     private fun runSu(su: String, script: String): String? {
         val p = ProcessBuilder(su, "-c", script).redirectErrorStream(true).start()

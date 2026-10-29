@@ -15,9 +15,18 @@ data class HostStatus(
     val su: String?,
     /** Android 12+ kills apps with more than 32 child processes unless the user disables it. */
     val phantomProcessLimit: Boolean,
+    /** Droidspaces' binary, once found through su (Droidspaces mode only); null when not there. */
+    val droidspacesBinary: String? = null,
+    /** Its containers; null = not checked yet (needs a root shell). */
+    val droidspacesContainers: List<DroidspacesContainer>? = null,
+    /** The container the user picked, whether or not it's still there. */
+    val droidspacesName: String? = null,
 ) {
     val prootReady get() = prootBinary && prootRootfs
     val chrootReady get() = su != null && chrootRootfs != false
+
+    /** The picked Droidspaces container, as found by the last check. */
+    val droidspacesSelected: DroidspacesContainer? get() = droidspacesContainers?.firstOrNull { it.name == droidspacesName }
 }
 
 class HostProbe(private val paths: ContainerPaths) {
@@ -59,6 +68,21 @@ class HostProbe(private val paths: ContainerPaths) {
             prootRootfs = File(context.filesDir, "rootfs/$distro"),
             chrootRootfs = File("/data/local/linux/$distro"),
         )
+
+        /**
+         * Copies the script a Droidspaces container runs for each app out of the APK, where the
+         * container gets it bound in ([Droidspaces.bridgeBinds]); and makes the folder it needs.
+         */
+        fun installDroidspacesScript(context: Context, paths: ContainerPaths) {
+            paths.sessionsDir.mkdirs()
+            paths.droidspacesScript.parentFile?.mkdirs()
+            context.assets.open("droidspaces/enter.sh").use { input ->
+                paths.droidspacesScript.outputStream().use { input.copyTo(it) }
+            }
+            context.assets.open("droidspaces/flatpak.sh").use { input ->
+                File(paths.droidspacesDir, "flatpak.sh").outputStream().use { input.copyTo(it) }
+            }
+        }
 
         /** Copies the root-side launch script out of the APK so `su` can run it. */
         fun installChrootScript(context: Context, paths: ContainerPaths) {

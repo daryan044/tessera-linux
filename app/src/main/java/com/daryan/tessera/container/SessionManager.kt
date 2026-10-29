@@ -84,8 +84,10 @@ class SessionManager(
     private val x11 = X11Server(context, paths)
 
     init {
-        // Nothing from a previous process is still running; its session dirs are just litter.
-        java.io.File(paths.cacheDir, "sessions").deleteRecursively()
+        // Droidspaces bind-mounts this directory at container boot. Keep its inode stable: deleting
+        // the directory itself and recreating it later leaves that mount pointing at the old inode.
+        paths.sessionsDir.mkdirs()
+        paths.sessionsDir.listFiles()?.forEach { it.deleteRecursively() }
     }
     /** Running X servers, by session id. */
     private val servers = ConcurrentHashMap<String, Process>()
@@ -168,6 +170,8 @@ class SessionManager(
         val gpu = app.gui && gpuFor(app.id) && when (backend) {
             is ProotBackend -> GpuDriver.installed(context, paths.prootRootfs)
             is ChrootBackend -> GpuDriver.installedAsRoot(context)
+            // The container needs the GPU's device node too (hardware or GPU access on).
+            is DroidspacesBackend -> backend.hasGpuDevice && GpuDriver.installedAsRoot(context)
             else -> false
         }
         val session = Session(
@@ -208,6 +212,7 @@ class SessionManager(
 
         if (app.desktop) desktopBackends[session.id] = backend
         if (backend is ChrootBackend) rootKill[session.id] = backend.su
+        if (backend is DroidspacesBackend) rootKill[session.id] = backend.su
         val running = if (app.gui) launchGui(app, backend, session, spec) else launchTerminal(app, backend, session, spec)
         _sessions.update { it + running }
         return running
@@ -349,7 +354,7 @@ class SessionManager(
     private fun writeTheme(app: PermissionManifest, session: Session, backend: String) {
         val look = appearance?.forApp(app.id) ?: return
         // In chroot mode the pack's presence is only known through su, as refresh() left it.
-        val pack = if (backend == ChrootBackend.NAME) ThemePack.bundle.installedAsRoot(context)
+        val pack = if (backend == ChrootBackend.NAME || backend == DroidspacesBackend.NAME) ThemePack.bundle.installedAsRoot(context)
             else ThemePack.bundle.installed(context, paths.prootRootfs)
         runCatching {
             // An imported theme (its light or dark variant), else the phone's own colors.

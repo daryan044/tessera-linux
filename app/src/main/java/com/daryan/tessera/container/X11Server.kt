@@ -30,6 +30,11 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
             setExecutable(true, false)
         }
 
+        // Drain stdout/stderr from the start. Leaving ProcessBuilder's pipe unread after the
+        // server becomes ready can fill the pipe and stall Xorg later, freezing every X client.
+        // Keep only a bounded tail for diagnostics so a noisy server cannot grow memory forever.
+        val log = StringBuilder()
+        val logLock = Any()
         val proc = ProcessBuilder(
             "/system/bin/app_process", "/", CmdEntryPoint::class.java.name,
             ":$display", "-tag", windowTag(session),
@@ -40,6 +45,20 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
             environment()["TMPDIR"] = paths.sessionTmp(session).path
             environment()["XKB_CONFIG_ROOT"] = xkb.path
         }.start()
+        val logReader = Thread({
+            proc.inputStream.use { input ->
+                val bytes = ByteArray(1024)
+                while (true) {
+                    val count = try { input.read(bytes) } catch (_: IOException) { break }
+                    if (count < 0) break
+                    synchronized(logLock) {
+                        log.append(String(bytes, 0, count, Charsets.UTF_8))
+                        if (log.length > MAX_LOG_CHARS) log.delete(0, log.length - MAX_LOG_CHARS)
+                    }
+                }
+            }
+        }, "tessera-x11-log-${session.id}").apply { isDaemon = true; start() }
+        fun logTail(): String = synchronized(logLock) { log.toString().trim().lines().takeLast(3).joinToString(" / ") }
 
         val socket = File(paths.x11SocketDir(session), "X$display")
         repeat(100) {
@@ -48,13 +67,14 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
             // that; chroot clients are quick enough to hit it ("Can't open display").
             if (socket.exists() && accepts(socket)) return proc
             if (!proc.isAlive) {
-                val out = proc.inputStream.bufferedReader().readText().trim().lines().takeLast(3)
-                throw IOException("X server exited (${proc.exitValue()}): ${out.joinToString(" / ")}")
+                logReader.join(250)
+                throw IOException("X server exited (${proc.exitValue()}): ${logTail()}")
             }
             delay(50)
         }
         proc.destroy()
-        throw IOException("X server didn't create $socket within 5 s")
+        logReader.join(250)
+        throw IOException("X server didn't create $socket within 5 s: ${logTail()}")
     }
 
     private fun accepts(socket: File): Boolean = runCatching {
@@ -110,6 +130,7 @@ class X11Server(private val context: Context, private val paths: ContainerPaths)
         /** Our window class (a Termux:X11 tagged window with Material 3 controls on top). */
         const val TAGGED_WINDOW = "com.daryan.tessera.X11Window"
         private const val ACTION_STOP = "com.termux.x11.ACTION_STOP"
+        private const val MAX_LOG_CHARS = 8192
 
         /** Identifies a session's Termux:X11 window (its `-tag` and document data). */
         fun windowTag(session: Session) = "linux-${session.id}"

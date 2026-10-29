@@ -46,6 +46,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.daryan.tessera.container.ChrootBackend
+import com.daryan.tessera.container.DroidspacesBackend
 import com.daryan.tessera.container.HostDevices
 import com.daryan.tessera.container.UsbBridge
 import com.daryan.tessera.container.X11Server
@@ -243,7 +244,7 @@ class X11Window : MainActivity.MainActivityTagged() {
             val state = when {
                 running == null || d.path !in granted -> UsbState.NOT_SHARED
                 // PRoot apps get what was opened for them at launch; chroot apps the device itself.
-                d.path in running.session.usbFds || running.backend == ChrootBackend.NAME -> UsbState.IN_USE
+                d.path in running.session.usbFds || running.backend == ChrootBackend.NAME || running.backend == DroidspacesBackend.NAME -> UsbState.IN_USE
                 else -> UsbState.NEXT_LAUNCH
             }
             UsbEntry(d.path, d.label, d.detail, state)

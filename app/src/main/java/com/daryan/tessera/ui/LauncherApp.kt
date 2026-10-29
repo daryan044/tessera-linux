@@ -108,6 +108,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val customTabs by vm.tabStore.tabs.collectAsStateWithLifecycle()
     val sessions by vm.sessions.sessions.collectAsStateWithLifecycle()
     val install by vm.installState.collectAsStateWithLifecycle()
+    val containerBusy by vm.containerBusy.collectAsStateWithLifecycle()
     val apps by vm.apps.collectAsStateWithLifecycle()
     // Apps installed from a terminal while the launcher was away show up when it's back.
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.scanSystemApps() }
@@ -220,7 +221,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     // The task manager samples only while Sessions is on screen. It reads as root wherever root
     // has been granted, to see what runs as root (chroot apps, and Tessera's own root helpers,
     // which outlive a switch to PRoot mode).
-    val monitorSu = if (mode == BackendMode.CHROOT || vm.rootGranted) status?.su else null
+    val monitorSu = if (mode != BackendMode.PROOT || vm.rootGranted) status?.su else null
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     val processes by androidx.compose.runtime.produceState<List<com.daryan.tessera.container.GuestProcess>?>(null, destination, monitorSu, lifecycle) {
         value = null
@@ -287,6 +288,9 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     activeInstalls = queue.count { it.active },
                     rootAvailable = status?.su != null,
                     destination = destination,
+                    container = if (mode == BackendMode.DROIDSPACES) {
+                        status?.droidspacesSelected?.let { "${it.name}, ${if (it.running) "running" else "stopped"}" } ?: "none picked"
+                    } else null,
                 ),
                 actions = MenuActions(
                     go = { d -> scope.launch { drawerState.close() }; destination = d },
@@ -329,7 +333,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                         onMenu = { scope.launch { drawerState.open() } },
                         onMessage = filesMessage,
                         onTerminalHere = terminalHere,
-                        realRoot = mode == BackendMode.CHROOT,
+                        realRoot = mode != BackendMode.PROOT,
                     )
                     AnimatedVisibility(
                         visible = queue.any { it.active },
@@ -543,6 +547,13 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                         }
                     },
                     onShowIntro = { vm.setIntroSeen(false) },
+                    droidspaces = DroidspacesActions(
+                        select = vm::selectContainer,
+                        start = vm::startContainer,
+                        stop = vm::stopContainer,
+                        prepare = vm::prepareContainer,
+                    ),
+                    containerBusy = containerBusy,
                 )
             }
         }
@@ -558,6 +569,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             filesUnavailable = when {
                 store != null -> null
                 mode == BackendMode.CHROOT -> "Root access is needed to edit the chroot container"
+                mode == BackendMode.DROIDSPACES -> "Pick a Droidspaces container in Setup to edit its files"
                 else -> "Install Linux in Setup to edit its files"
             },
             onOpenFile = { openConfig = it },

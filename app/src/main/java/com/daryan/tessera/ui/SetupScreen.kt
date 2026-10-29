@@ -10,6 +10,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,10 +30,15 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -76,6 +82,10 @@ fun SetupScreen(
     /** Puts the notes and recent session logs on the clipboard, for any assistant. */
     onCopyDiagnostics: () -> Unit,
     onShowIntro: () -> Unit,
+    /** What Droidspaces mode can do with its containers; null where there's no such mode. */
+    droidspaces: DroidspacesActions? = null,
+    /** What the picked Droidspaces container is being made to do ("Starting web"), while it does it. */
+    containerBusy: String? = null,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(
@@ -96,7 +106,7 @@ fun SetupScreen(
                         onClick = { onMode(m) },
                         enabled = m == BackendMode.PROOT || status?.su != null,
                         shape = SegmentedButtonDefaults.itemShape(i, BackendMode.entries.size),
-                    ) { Text(m.label) }
+                    ) { Text(m.short, maxLines = 1) }
                 }
             }
         }
@@ -123,7 +133,10 @@ fun SetupScreen(
                 else "This build doesn't include libproot.so yet. See docs/native-binaries.md.",
             )
         }
-        item {
+        if (mode == BackendMode.DROIDSPACES) {
+            item { DroidspacesEngineItem(status) }
+            item { DroidspacesContainerItem(status, droidspaces, containerBusy) }
+        } else item {
             val distro = Distro.DEBIAN
             // Each mode has its own system: in app storage for PRoot, under /data/local for chroot.
             val chroot = mode == BackendMode.CHROOT
@@ -150,7 +163,7 @@ fun SetupScreen(
             SetupItem(
                 state = if (status.su != null) ItemState.Done else ItemState.Warn,
                 title = "Root access (optional)",
-                body = if (status.su != null) "Found ${status.su}. Chroot mode can enforce every permission with the kernel."
+                body = if (status.su != null) "Found ${status.su}. Chroot and Droidspaces modes can enforce every permission with the kernel."
                 else "Not rooted. PRoot mode still works, but its permissions are best-effort.",
             )
         }
@@ -203,6 +216,130 @@ fun SetupScreen(
                 }
             }
         }
+    }
+}
+
+/** What Setup can do with Droidspaces containers; the view model's. */
+class DroidspacesActions(
+    val select: (String) -> Unit,
+    val start: () -> Unit,
+    val stop: () -> Unit,
+    val prepare: () -> Unit,
+)
+
+@Composable
+private fun DroidspacesEngineItem(status: HostStatus) {
+    val found = status.droidspacesBinary
+    SetupItem(
+        state = when {
+            found != null -> ItemState.Done
+            status.droidspacesContainers == null -> ItemState.Todo
+            else -> ItemState.Warn
+        },
+        title = "Droidspaces",
+        body = when {
+            status.su == null -> "Droidspaces needs root, and none was found."
+            status.droidspacesContainers == null -> "Looking for Droidspaces."
+            found == null -> "Couldn't find Droidspaces. Install it (github.com/ravindu644/Droidspaces-OSS), " +
+                "make a Debian or Ubuntu container in it, then check again."
+            else -> "Found at $found."
+        },
+    )
+}
+
+@Composable
+private fun DroidspacesContainerItem(status: HostStatus, actions: DroidspacesActions?, busy: String?) {
+    var confirm by remember { mutableStateOf(false) }
+    if (status.droidspacesBinary == null || actions == null) return
+    val containers = status.droidspacesContainers.orEmpty()
+    val picked = status.droidspacesSelected
+    SetupItem(
+        state = when {
+            picked != null && picked.bridged && picked.running -> ItemState.Done
+            picked != null -> ItemState.Warn
+            else -> ItemState.Todo
+        },
+        title = "Container",
+        body = when {
+            containers.isEmpty() -> "Droidspaces has no containers yet. Make a Debian or Ubuntu one in the Droidspaces app, then check again."
+            picked == null -> "Pick the container Tessera runs apps in."
+            !picked.bridged -> "${picked.name} needs a one-time setup before Tessera can use it."
+            !picked.running -> "${picked.name} is stopped."
+            else -> "${picked.name} is running. Apps open inside it."
+        },
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Spacer(Modifier.height(8.dp))
+            containers.forEach { c ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable(enabled = busy == null) { actions.select(c.name) }
+                        .padding(vertical = 4.dp),
+                ) {
+                    RadioButton(selected = c.name == status.droidspacesName, onClick = null)
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(c.name, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            listOf(
+                                if (c.running) "running" else "stopped",
+                                if (c.bridged) "set up" else "needs setup",
+                                c.config.netMode,
+                            ).joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            if (busy != null) {
+                Spacer(Modifier.height(8.dp))
+                Text("$busy…", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(8.dp))
+                LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
+            } else if (picked != null) {
+                Spacer(Modifier.height(8.dp))
+                when {
+                    !picked.bridged -> Button(onClick = { confirm = true }) { Text("Set up for Tessera") }
+                    !picked.running -> Button(onClick = actions.start) { Text("Start") }
+                    else -> FilledTonalButton(onClick = actions.stop) { Text("Stop") }
+                }
+                val hints = listOfNotNull(
+                    "Phone storage isn't in this container, so apps won't see Android folders. Turn on Android storage for it in Droidspaces."
+                        .takeIf { !picked.config.androidStorage },
+                    "This container has no network, so apps in it won't either.".takeIf { picked.config.netMode == "none" },
+                    "Tessera installs apps with apt: use a Debian or Ubuntu container.",
+                )
+                hints.forEach {
+                    Spacer(Modifier.height(6.dp))
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+    if (confirm && picked != null) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Set up ${picked.name}?") },
+            text = {
+                Text(
+                    "Tessera adds two folders to this container's settings in Droidspaces, so it can start apps inside it; " +
+                        "a copy of the original settings is kept. " +
+                        (if (picked.running) "The container restarts now, which ends everything running in it. " else "") +
+                        "Tessera then installs graphics and app libraries in it with apt, and its GPU driver and theme files " +
+                        "in /opt/tessera-gpu and /opt/tessera-theme.\n\n" +
+                        "Apps run as Tessera's own user, so the container's \"user\" account takes Tessera's uid and " +
+                        "/home/user is handed over to it. Best on a container made for Tessera, not one you work in.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirm = false; actions.prepare() }) { Text(if (picked.running) "Set up and restart" else "Set up") }
+            },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+        )
     }
 }
 
