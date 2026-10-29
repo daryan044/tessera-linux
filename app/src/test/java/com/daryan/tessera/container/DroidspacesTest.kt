@@ -73,6 +73,14 @@ class DroidspacesTest {
         )
     }
 
+    @Test fun `a writable script bind does not count as a prepared bridge`() {
+        val wrong = bridge.map { bind ->
+            if (bind.dest == Droidspaces.GUEST_BIN) bind.copy(readOnly = false) else bind
+        }
+        assertFalse(DroidspacesConfig("web", binds = wrong).hasBinds(bridge))
+        assertTrue(DroidspacesConfig("web", binds = bridge).hasBinds(bridge))
+    }
+
     @Test fun `adding the bridge keeps every other line and the existing binds`() {
         val out = DroidspacesConfig.withBinds(sample, bridge)
         val lines = out.lines()
@@ -198,6 +206,7 @@ class DroidspacesTest {
         id = "notes",
         name = "Notes",
         exec = listOf("/usr/bin/notes", "--new", "it's"),
+        gui = true,
         permissions = Permissions(
             network = false,
             display = true,
@@ -219,12 +228,16 @@ class DroidspacesTest {
         val (spec, settings) = launch(notes)
         assertEquals(su, spec.executable)
         assertEquals(listOf(su, "-c"), spec.argv.take(2))
+        val chunks = testEncodeSettings(settings).chunked(DroidspacesBackend.SETTINGS_ARG_CHUNK_SIZE)
+        val chunkArgs = chunks.joinToString(" ") { shellQuote(it) }
         assertEquals(
-            "exec $binary --name=debian run -- /bin/sh /mnt/tessera/bin/enter.sh s3 ${shellQuote(testEncodeSettings(settings))}",
+            "exec $binary --name=debian run -- /bin/sh /mnt/tessera/bin/enter.sh s3 $chunkArgs",
             spec.argv[2],
         )
         assertFalse('\n' in spec.argv[2])
-        assertEquals(settings, String(java.util.Base64.getDecoder().decode(testEncodeSettings(settings)), Charsets.UTF_8))
+        assertTrue(chunks.all { it.length <= 6000 && it.length < 8192 })
+        assertTrue(chunks.size > 1) // GUI helper sources make one settings argument exceed 8 KiB.
+        assertEquals(settings, String(java.util.Base64.getDecoder().decode(chunks.joinToString("")), Charsets.UTF_8))
     }
 
     @Test fun `the launch settings come from root's command line, not a file the apps could rewrite`() {

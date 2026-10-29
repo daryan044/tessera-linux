@@ -31,7 +31,7 @@ data class DroidspacesConfig(
 
     /** Whether every one of [needed] is bound (same place both sides) in this config. */
     fun hasBinds(needed: List<DroidspacesBind>): Boolean =
-        needed.all { n -> binds.any { it.src == n.src && it.dest == n.dest } }
+        needed.all { n -> binds.any { it.src == n.src && it.dest == n.dest && it.readOnly == n.readOnly } }
 
     /** The GPU's device node is among what the container has. */
     val hasGpuDevice: Boolean get() = gpu || hwAccess

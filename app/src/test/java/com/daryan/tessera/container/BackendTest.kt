@@ -146,6 +146,14 @@ class BackendTest {
         assertEquals("cairo", guestEnv(firefox, session.copy(gpu = false))["GSK_RENDERER"])
     }
 
+    @Test fun `GUI wrapper keeps its mode separate from the window manager pid`() {
+        val wrapper = guestCommand(firefox)[2]
+        assertTrue("wm_mode=${'$'}6" in wrapper)
+        assertTrue("wm_pid=${'$'}!" in wrapper)
+        assertTrue("[ \"${'$'}wm_mode\" = app ]" in wrapper)
+        assertFalse("wm=${'$'}!" in wrapper)
+    }
+
     @Test fun `themed sessions get the theme's directory and data dirs`() {
         val env = guestEnv(firefox, session.copy(theme = true))
         assertEquals(ThemeFiles.GUEST_DIR, env["TESSERA_THEME"])

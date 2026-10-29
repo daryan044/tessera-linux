@@ -1,9 +1,11 @@
 # Copyright (C) 2026 Daryan Kamaran Karim
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Runs as root INSIDE a Droidspaces container, started by DroidspacesBackend via:
-#   su -c 'exec droidspaces --name=NAME run -- /bin/sh /mnt/tessera/bin/enter.sh SESSION SETTINGS'
+#   su -c 'exec droidspaces --name=NAME run -- /bin/sh /mnt/tessera/bin/enter.sh SESSION CHUNK...'
 #
-# SETTINGS is the session's settings as shell assignments, one per line:
+# CHUNK... are the pieces of a Base64-encoded settings payload. Keep them separate because
+# Droidspaces v7 rejects any individual argument longer than 8192 bytes.
+# Decoded SETTINGS are shell assignments, one per line:
 #   BINDS, DEVICES, USB_ALL, GPU_DEVICE, X11, RUN_AS_ROOT, APP_UID, NO_NET, NET_GROUPS, GUEST_ENV, CMD
 # They come from root's command line, not a file in the session's folder: apps run as the uid
 # that owns those folders, so one could rewrite the next session's file before this script, as
@@ -14,7 +16,19 @@
 set -e
 
 SID=${1:?session id missing}
-SETTINGS_B64=${2:?settings missing}
+shift
+# The re-exec marker is an argv token, not an inherited environment variable: a container-wide
+# TESSERA_NS=1 must never make this privileged script skip its private mount namespace.
+IN_NAMESPACE=
+if [ "${1-}" = "--tessera-internal-namespace" ]; then
+  IN_NAMESPACE=1
+  shift
+fi
+[ "$#" -gt 0 ] || { echo "Tessera launch settings are missing" >&2; exit 2; }
+# Reconstruct the payload in the guest. Do not pass it as one CLI argument: the daemon's
+# per-argument cap is 8192 bytes, while GUI helper source makes the full payload much larger.
+SETTINGS_B64=
+for chunk do SETTINGS_B64=$SETTINGS_B64$chunk; done
 SHARE=/mnt/tessera
 [ -d "$SHARE/sessions/$SID" ] || { echo "Tessera's folders aren't in this container; prepare it in Tessera's Setup" >&2; exit 1; }
 SETTINGS=$(printf '%s' "$SETTINGS_B64" | base64 -d) || { echo "Invalid Tessera launch settings" >&2; exit 2; }
@@ -22,29 +36,39 @@ eval "$SETTINGS"
 
 # A mount namespace of its own, and a network namespace with nothing in it when the app has no
 # network permission; then this script again, inside it.
-if [ -z "$TESSERA_NS" ]; then
+if [ "$IN_NAMESPACE" != 1 ]; then
   NS=-m
   if [ "$NO_NET" = 1 ]; then NS="$NS -n"; fi
   command -v unshare >/dev/null 2>&1 || { echo "unshare (util-linux) isn't in this container" >&2; exit 127; }
-  export TESSERA_NS=1
-  exec unshare $NS /bin/sh "$0" "$SID" "$SETTINGS_B64"
+  exec unshare $NS /bin/sh "$0" "$SID" --tessera-internal-namespace "$@"
 fi
 
 # The container's mounts may be shared with the rest of it: keep ours to this namespace.
-mount --make-rprivate / 2>/dev/null || true
+mount --make-rprivate /
 
-# Shares $1 at $2 (rbind), read-only when $3 is ro. ro=recursive needs a recent kernel and
-# util-linux; without it the folder alone is read-only.
+# Shares $1 at $2 (rbind), read-only when $3 is ro. Older kernels lack recursive read-only
+# remounts, so try the top bind as a compatibility fallback. Never leave the original writable
+# bind mounted if both read-only remounts fail.
 share() {
   mount -o rbind "$1" "$2" || return 1
-  if [ "$3" = ro ]; then
-    mount -o remount,bind,ro=recursive "$2" 2>/dev/null || mount -o remount,bind,ro "$2"
+  if [ "$3" = ro ] && ! mount -o remount,bind,ro=recursive "$2" 2>/dev/null; then
+    if ! mount -o remount,bind,ro "$2"; then
+      if ! umount -R "$2" 2>/dev/null && ! umount "$2" 2>/dev/null; then
+        echo "tessera: fatal: couldn't revoke a writable bind at $2; aborting launch" >&2
+        exit 1
+      fi
+      echo "tessera: couldn't enforce read-only access for $2; grant not mounted" >&2
+      return 1
+    fi
+    echo "tessera: recursive read-only unavailable for $2; nested mounts may remain writable" >&2
   fi
 }
 
 # Every app has its own /tmp and /dev/shm, so apps can't see each other's sockets.
 mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /tmp
-mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /dev/shm 2>/dev/null || true
+mkdir -p /dev/shm
+# Keep POSIX shared-memory files on a private tmpfs instead of the container-wide /dev/shm.
+mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /dev/shm
 
 # LLVM (llvmpipe's shader JIT) picks instructions by core model, not by what the kernel enables:
 # Cortex-X3 and A715 have SVE, Android kernels leave it off, and OpenGL apps drawing in software
@@ -59,6 +83,15 @@ if ! grep '^Features' /proc/cpuinfo | grep -qw sve; then
       rm -rf "$c/mesa_shader_cache" "$c/mesa_shader_cache_db"; touch "$c/.tessera-no-sve"
     fi
   done
+fi
+
+# Prepare the shared home before grants are mounted beneath it. Otherwise a recursive chown
+# of /home/user crosses into mounted Android storage (e.g. Downloads) and can fail or touch host files.
+U=
+if [ "$RUN_AS_ROOT" != 1 ]; then
+  U=${APP_UID:?APP_UID not set}
+  mkdir -p /home/user
+  [ "$(stat -c %u /home/user)" = "$U" ] || chown -R "$U:$U" /home/user
 fi
 
 # The folders the app was granted, as "src:dst:ro|rw" (src as this container sees it). One that
@@ -109,8 +142,6 @@ fi
 U=${APP_UID:?APP_UID not set}
 SETPRIV=$(command -v setpriv || true)
 [ -n "$SETPRIV" ] || { echo "setpriv (util-linux) isn't in this container" >&2; exit 127; }
-mkdir -p /home/user
-[ "$(stat -c %u /home/user)" = "$U" ] || chown -R "$U:$U" /home/user
 # Give the uid a name. Without one, D-Bus won't start ("Could not get password database
 # information for UID of current process") and other programs complain.
 if grep -q '^user:' /etc/passwd; then

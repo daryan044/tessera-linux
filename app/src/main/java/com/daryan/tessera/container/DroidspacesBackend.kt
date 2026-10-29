@@ -15,8 +15,9 @@ import android.util.Base64
  *
  * The container is its own mount namespace, so it sees only what Droidspaces put in it. Tessera's
  * session folders and the script are bound into it at its boot ([Droidspaces.bridgeBinds]); the
- * settings of each launch go to the script as an argument, so no environment has to survive
- * `droidspaces run`. Not as a file in the session's folder: apps run as the uid that owns it.
+ * settings of each launch go to the script as small, separate arguments, so no environment has
+ * to survive `droidspaces run`. Not as a file in the session's folder: apps run as the uid that
+ * owns it.
  */
 class DroidspacesBackend(
     private val paths: ContainerPaths,
@@ -37,6 +38,8 @@ class DroidspacesBackend(
 
     companion object {
         const val NAME = "Droidspaces"
+        /** Below Droidspaces v7's 8192-byte per-argument cap, with room for future protocol changes. */
+        internal const val SETTINGS_ARG_CHUNK_SIZE = 6000
     }
 
     /** The container's GPU node is among its devices, so hardware graphics can work in it. */
@@ -51,11 +54,15 @@ class DroidspacesBackend(
         app.permissions.filesystem.filter { DroidspacesView.visibleAt(container.config, it.path) == null }
 
     override fun buildLaunch(app: PermissionManifest, session: Session): LaunchSpec {
-        // su and/or the Droidspaces daemon may reject literal newlines in a command request.
-        // Base64 keeps the settings a single argv element without reintroducing launch.env.
-        val payload = encodeSettings(settings(app, session))
+        // Droidspaces v7's daemon rejects any individual argv element above 8192 bytes.
+        // GUI CMD includes the wrapper and embedded Python helpers, so even xterm's settings
+        // exceed that limit. Base64 prevents literal newlines, and each quoted chunk stays below
+        // the daemon's cap. enter.sh reassembles them without a mutable launch.env file.
+        val payloadArgs = encodeSettings(settings(app, session))
+            .chunked(SETTINGS_ARG_CHUNK_SIZE)
+            .joinToString(" ") { shellQuote(it) }
         val line = "exec ${shellQuote(binary)} --name=${shellQuote(container.name)} run -- " +
-            "/bin/sh ${shellQuote(Droidspaces.GUEST_SCRIPT)} ${shellQuote(session.id)} ${shellQuote(payload)}"
+            "/bin/sh ${shellQuote(Droidspaces.GUEST_SCRIPT)} ${shellQuote(session.id)} $payloadArgs"
         return LaunchSpec(listOf(su, "-c", line), emptyMap(), "/")
     }
 
