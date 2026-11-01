@@ -1,0 +1,2 @@
+0.6.1 (alpha)
+- Droidspaces: the Files tab opens the container's files. It stopped at once with "The Linux shell stopped", since Droidspaces doesn't pass piped input into a container.
