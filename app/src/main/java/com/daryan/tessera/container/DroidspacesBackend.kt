@@ -62,6 +62,15 @@ class DroidspacesBackend(
     override fun buildLaunch(app: PermissionManifest, session: Session): LaunchSpec =
         launchSpec(session, settings(app, session))
 
+    /**
+     * `droidspaces run` passes a terminal through but not piped input: the shell got end of input
+     * at once and the Files tab said "The Linux shell stopped". So root makes a FIFO in the
+     * container's /run (root's, where apps can't swap it), copies our stdin into it, and
+     * enter.sh reads from it. Not in the session's folder, which apps' uid owns.
+     */
+    override fun buildPipedLaunch(app: PermissionManifest, session: Session): LaunchSpec =
+        launchSpec(session, settings(app, session), pipedStdin = true)
+
     override fun buildFlatpakLaunch(
         app: PermissionManifest,
         session: Session,
@@ -98,12 +107,22 @@ class DroidspacesBackend(
     }
 
     /** Droidspaces caps individual argv values, so every launch uses the same chunked protocol. */
-    private fun launchSpec(session: Session, settings: String): LaunchSpec {
+    private fun launchSpec(session: Session, settings: String, pipedStdin: Boolean = false): LaunchSpec {
         val payloadArgs = encodeSettings(settings)
             .chunked(SETTINGS_ARG_CHUNK_SIZE)
             .joinToString(" ") { shellQuote(it) }
-        val line = "exec ${shellQuote(binary)} --name=${shellQuote(container.name)} run -- " +
-            "/bin/sh ${shellQuote(Droidspaces.GUEST_SCRIPT)} ${shellQuote(session.id)} $payloadArgs"
+        val ds = "${shellQuote(binary)} --name=${shellQuote(container.name)}"
+        val run = "$ds run -- /bin/sh ${shellQuote(Droidspaces.GUEST_SCRIPT)} ${shellQuote(session.id)}"
+        val line = if (!pipedStdin) "exec $run $payloadArgs" else {
+            val fifo = "/run/${Droidspaces.STDIN_FIFO_PREFIX}${session.id}"
+            // The copier ends with our stdin; killed too if the container side never opens it.
+            // Through fd 3: a background job's stdin is /dev/null, and "<&0" would copy that.
+            "p=\$($ds pid) && f=/proc/\$p/root${shellQuote(fifo)} && rm -f \"\$f\" && mkfifo -m 600 \"\$f\" " +
+                "|| { echo \"Couldn't make the input pipe in the container\" >&2; exit 1; }; " +
+                "exec 3<&0; cat <&3 > \"\$f\" & c=\$!; exec 3<&-; " +
+                "$run ${Droidspaces.STDIN_FIFO_FLAG} $payloadArgs; s=\$?; " +
+                "kill \$c 2>/dev/null; rm -f \"\$f\"; exit \$s"
+        }
         return LaunchSpec(listOf(su, "-c", line), emptyMap(), "/")
     }
 

@@ -127,7 +127,7 @@ class GuestShell private constructor(private val process: Process) : Closeable {
                     dir.deleteRecursively()
                     dir.mkdirs()
                 }
-                val spec = backend.buildLaunch(app.copy(exec = listOf("/bin/bash", "--noprofile", "--norc"), gui = false), session)
+                val spec = backend.buildPipedLaunch(app.copy(exec = listOf("/bin/bash", "--noprofile", "--norc"), gui = false), session)
                 val process = ProcessBuilder(spec.argv)
                     .directory(File(spec.cwd))
                     .apply { environment().putAll(spec.env) }

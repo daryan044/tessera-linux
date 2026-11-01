@@ -346,6 +346,12 @@ interface ContainerBackend {
     fun buildLaunch(app: PermissionManifest, session: Session): LaunchSpec
 
     /**
+     * Like [buildLaunch], for a process the launcher talks to over pipes rather than a terminal
+     * ([GuestShell]). The same unless the engine loses piped input on the way in.
+     */
+    fun buildPipedLaunch(app: PermissionManifest, session: Session): LaunchSpec = buildLaunch(app, session)
+
+    /**
      * Starts [app]'s Flathub files ([PermissionManifest.flatpak]) in a root of their own: its
      * runtime at /usr, the app at /app, the session's /tmp/.X11-unix shared, [env] as its whole
      * environment. Runs beside the session [buildLaunch] started around [FLATPAK_HOLD].

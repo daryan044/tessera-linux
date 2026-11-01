@@ -287,6 +287,20 @@ class DroidspacesTest {
         return backend.buildLaunch(app, session) to backend.settings(app, session)
     }
 
+    @Test fun `a piped launch feeds stdin through a FIFO in the container's run`() {
+        val backend = DroidspacesBackend(paths, su, binary, container, appUid = 10484, encodeSettings = testEncodeSettings)
+        val line = backend.buildPipedLaunch(notes, session).argv[2]
+        val chunkArgs = testEncodeSettings(backend.settings(notes, session))
+            .chunked(DroidspacesBackend.SETTINGS_ARG_CHUNK_SIZE).joinToString(" ") { shellQuote(it) }
+        assertTrue(line, line.startsWith("p=\$($binary --name=debian pid) && f=/proc/\$p/root/run/.tessera-stdin-s3 "))
+        assertTrue(line, "mkfifo -m 600 \"\$f\"" in line)
+        assertTrue(line, "exec 3<&0; cat <&3 > \"\$f\" & c=\$!; exec 3<&-; " in line)
+        assertTrue(line, "/mnt/tessera/bin/enter.sh s3 ${Droidspaces.STDIN_FIFO_FLAG} $chunkArgs; s=\$?; " in line)
+        assertTrue(line, line.endsWith("kill \$c 2>/dev/null; rm -f \"\$f\"; exit \$s"))
+        // Apps on a terminal are started as before.
+        assertFalse(Droidspaces.STDIN_FIFO_FLAG in backend.buildLaunch(notes, session).argv[2])
+    }
+
     @Test fun `an app starts through droidspaces run around the in-container script`() {
         val (spec, settings) = launch(notes)
         assertEquals(su, spec.executable)

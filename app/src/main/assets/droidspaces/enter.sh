@@ -25,6 +25,19 @@ if [ "${1-}" = "--tessera-internal-namespace" ]; then
   IN_NAMESPACE=1
   shift
 fi
+# Launches the launcher talks to over pipes (the Files tab's shell): droidspaces run doesn't pass
+# piped input in, so it comes through a FIFO root made in /run (DroidspacesBackend). Only a real
+# FIFO, not a link, owned by root; it's gone once open, and stdin stays across the re-exec below.
+if [ "${1-}" = "--tessera-stdin-fifo" ]; then
+  shift
+  case "$SID" in */*|.*) echo "Invalid session id" >&2; exit 2 ;; esac
+  fifo=/run/.tessera-stdin-$SID
+  if [ -L "$fifo" ] || [ ! -p "$fifo" ] || [ "$(stat -c %u "$fifo")" != 0 ]; then
+    echo "Tessera's input pipe isn't in this container" >&2; exit 1
+  fi
+  exec 0<"$fifo"
+  rm -f "$fifo"
+fi
 [ "$#" -gt 0 ] || { echo "Tessera launch settings are missing" >&2; exit 2; }
 # Reconstruct the payload in the guest. Do not pass it as one CLI argument: the daemon's
 # per-argument cap is 8192 bytes, while GUI helper source makes the full payload much larger.

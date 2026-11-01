@@ -50,6 +50,11 @@ object Droidspaces {
     const val GUEST_BIN = "$GUEST_SHARE/bin"
     const val GUEST_SCRIPT = "$GUEST_BIN/enter.sh"
 
+    /** enter.sh's argument for "read stdin from the FIFO in /run", for piped launches. */
+    const val STDIN_FIFO_FLAG = "--tessera-stdin-fifo"
+    /** That FIFO's name in the container's /run, before the session id. */
+    const val STDIN_FIFO_PREFIX = ".tessera-stdin-"
+
     /** What a container needs bound to run Tessera's apps: every session's files, and the script. */
     fun bridgeBinds(paths: ContainerPaths) = listOf(
         DroidspacesBind(paths.sessionsDir.invariantSeparatorsPath, GUEST_SESSIONS),
