@@ -33,6 +33,12 @@ class StoreFormatsTest {
         assertFalse(entry.terminal)
         assertEquals("gimp", entry.icon)
         assertEquals(listOf("sh", "-c", "echo 50%"), DesktopEntry.splitExec("sh -c \"echo 50%%\""))
+        // Single quotes, as GLib reads them (Debian's 2048).
+        assertEquals(
+            listOf("sh", "-c", "/usr/games/2048;echo;echo PRESS ENTER TO EXIT;read line"),
+            DesktopEntry.splitExec("sh -c '/usr/games/2048;echo;echo PRESS ENTER TO EXIT;read line'"),
+        )
+        assertEquals(listOf("a b", "it's", "x\"y"), DesktopEntry.splitExec("a\\ b \"it's\" 'x\"y'"))
         assertTrue(DesktopEntry.parse("[Desktop Entry]\nExec=htop\nTerminal=true")!!.terminal)
         assertNull(DesktopEntry.parse("[Desktop Entry]\nName=No exec"))
     }

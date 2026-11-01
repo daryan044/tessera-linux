@@ -46,8 +46,11 @@ data class DesktopEntry(
         }
 
         /**
-         * Splits an Exec value into argv, honouring double quotes and dropping field codes
-         * (%f, %U, ...) since the launcher starts apps without files.
+         * Splits an Exec value into argv the way GLib does (a shell's quoting: double quotes,
+         * single quotes, backslashes), dropping field codes (%f, %U, ...) since the launcher
+         * starts apps without files. The spec only names double quotes, but desktops launch
+         * through GLib, so files rely on single ones too: Debian's 2048 runs
+         * `sh -c '/usr/games/2048;echo;...'`, which split at every space before.
          */
         fun splitExec(exec: String): List<String> {
             val args = mutableListOf<String>()
@@ -58,8 +61,15 @@ data class DesktopEntry(
             while (i < exec.length) {
                 val c = exec[i]
                 when {
-                    c == '\\' && quoted && i + 1 < exec.length -> { cur.append(exec[i + 1]); i++ }
+                    c == '\\' && i + 1 < exec.length -> { cur.append(exec[i + 1]); i++; hasArg = true }
                     c == '"' -> { quoted = !quoted; hasArg = true }
+                    // Literal up to the next single quote, as in a shell.
+                    c == '\'' && !quoted -> {
+                        val end = exec.indexOf('\'', i + 1).let { if (it < 0) exec.length else it }
+                        cur.append(exec, i + 1, end)
+                        hasArg = true
+                        i = end
+                    }
                     c.isWhitespace() && !quoted -> {
                         if (hasArg) args += cur.toString()
                         cur.clear(); hasArg = false
