@@ -126,7 +126,9 @@ bind_device() {
   if [ -d "$d" ]; then mkdir -p "$dst"; else mkdir -p "$(dirname "$dst")"; [ -e "$dst" ] || : > "$dst"; fi
   mount --bind "$d" "$dst"
 }
-printf '%s\n' "$DEVICES" | while IFS= read -r d; do [ -n "$d" ] && bind_device "$d"; done
+# Loops here end on "[ … ] || cmd", never "[ … ] && cmd": a loop whose last test is false returns
+# 1, and set -e then ended the launch silently (every app without devices, exit code 1).
+printf '%s\n' "$DEVICES" | while IFS= read -r d; do [ -z "$d" ] || bind_device "$d"; done
 if [ -n "$GPU_DEVICE" ] && ! printf '%s\n' "$DEVICES" | grep -Fxq "$GPU_DEVICE"; then
   bind_device "$GPU_DEVICE"
 fi
@@ -135,7 +137,7 @@ if [ "$USB_ALL" = 1 ]; then
     mkdir -p "$F/dev/bus/usb"
     mount --rbind /dev/bus/usb "$F/dev/bus/usb"
   fi
-  for d in /dev/ttyACM*; do [ -e "$d" ] && bind_device "$d"; done
+  for d in /dev/ttyACM*; do [ ! -e "$d" ] || bind_device "$d"; done
 fi
 
 mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs "$F/tmp"
@@ -150,7 +152,7 @@ mount --bind /home/user "$F/home/user"
 [ -d /usr/share/fonts ] && { mkdir -p "$F/run/host/fonts"; mount --bind /usr/share/fonts "$F/run/host/fonts"; }
 printf '<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n<fontconfig>\n  <dir>/run/host/fonts</dir>\n</fontconfig>\n' > "$F/run/host/font-dirs.xml"
 for o in tessera-gpu tessera-theme; do
-  [ -d "/opt/$o" ] && { mkdir -p "$F/opt/$o"; mount --bind "/opt/$o" "$F/opt/$o"; }
+  [ ! -d "/opt/$o" ] || { mkdir -p "$F/opt/$o"; mount --bind "/opt/$o" "$F/opt/$o"; }
 done
 if ! grep '^Features' /proc/cpuinfo | grep -qw sve; then
   for c in /home/user/.cache; do
@@ -176,7 +178,7 @@ printf '%s\n' "$BINDS" | while IFS=: read -r src dst mode; do
 done
 
 set --
-while IFS= read -r kv; do [ -n "$kv" ] && set -- "$@" "$kv"; done <<ENVEOF
+while IFS= read -r kv; do [ -z "$kv" ] || set -- "$@" "$kv"; done <<ENVEOF
 $GUEST_ENV
 ENVEOF
 [ -n "$ZYPAK" ] && set -- "$@" ELECTRON_DISABLE_SANDBOX=1

@@ -125,7 +125,8 @@ mount -t tmpfs -o mode=755,nosuid,nodev tmpfs "$SHARE"
 
 # GUEST_ENV is one KEY=VALUE per line; turn it into positional args for env -i.
 set --
-while IFS= read -r kv; do [ -n "$kv" ] && set -- "$@" "$kv"; done <<ENVEOF
+# "[ -z ] ||", not "[ -n ] &&": with an empty last line the loop returned 1 and set -e ended here.
+while IFS= read -r kv; do [ -z "$kv" ] || set -- "$@" "$kv"; done <<ENVEOF
 $GUEST_ENV
 ENVEOF
 
