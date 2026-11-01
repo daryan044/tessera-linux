@@ -81,7 +81,8 @@ printf '127.0.0.1 localhost\n::1 localhost\n' > etc/hosts
 resolv="$R/etc/resolv.conf"
 if [ -n "$DNS" ]; then
   first=$(head -n 1 "$resolv" 2>/dev/null || true)
-  if [ -L "$resolv" ] || [ ! -e "$resolv" ] || [ "${first#\# Kept to Android}" != "$first" ] \
+  # Empty counts too: it names no server, and a write that failed left one (#5, #7).
+  if [ -L "$resolv" ] || [ ! -s "$resolv" ] || [ "${first#\# Kept to Android}" != "$first" ] \
     || [ "$(cat "$resolv")" = "$(printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8')" ]; then
     rm -f "$resolv"; printf '%s' "$DNS" > "$resolv"; chmod 644 "$resolv"
   fi

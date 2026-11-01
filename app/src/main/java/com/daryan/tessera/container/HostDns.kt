@@ -32,8 +32,12 @@ object HostDns {
     fun resolvConf(servers: List<String>): String =
         AUTO_MARKER + "\n" + servers.ifEmpty { FALLBACK }.distinct().take(3).joinToString("") { "nameserver $it\n" }
 
-    /** Whether a resolv.conf reading [text] (null: none) is Tessera's to rewrite. */
-    fun isAutomatic(text: String?): Boolean = text == null || text.startsWith(AUTO_MARKER) || text == LEGACY
+    /**
+     * Whether a resolv.conf reading [text] (null: none) is Tessera's to rewrite. An empty one too:
+     * it names no server, so nobody chose it, and a write that failed part way left one.
+     */
+    fun isAutomatic(text: String?): Boolean =
+        text.isNullOrBlank() || text.startsWith(AUTO_MARKER) || text == LEGACY
 
     /** [text] as the user's own file: an edit means they chose their servers. */
     fun userOwned(text: String): String = text.lines().filterNot { it == AUTO_MARKER }.joinToString("\n")

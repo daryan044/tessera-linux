@@ -31,6 +31,11 @@ class HostDnsTest {
         assertEquals("nameserver 9.9.9.9\n", f.readText())
     }
 
+    @Test fun `an empty resolv conf is rewritten, since it names no server`() {
+        assertTrue(HostDns.isAutomatic(""))
+        assertTrue(HostDns.isAutomatic("\n"))
+    }
+
     @Test fun `saving from the editor makes the file the user's`() {
         val saved = HostDns.userOwned(HostDns.resolvConf(listOf("10.0.0.1")))
         assertFalse(HostDns.isAutomatic(saved))
