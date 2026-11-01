@@ -149,9 +149,11 @@ fun SetupScreen(
                     installed -> "${distro.label} is installed."
                     // A reinstalled Tessera is a new app to Magisk, and a frozen Magisk app (HyperOS
                     // freezes it in the background) shows no prompt: the request just times out.
+                    // KernelSU and its forks never prompt: an app not in their list is refused.
                     chroot && status.chrootRootfs == null ->
                         "Root access wasn't granted, so /data/local/linux/debian couldn't be checked. " +
-                            "Allow Tessera when your root app asks. No prompt? Open Magisk (or KernelSU, APatch) first, then ask again."
+                            "Magisk: allow Tessera when it asks; no prompt? Open Magisk first. " +
+                            "KernelSU, SukiSU or APatch: turn Tessera on in its Superuser list. Then ask again."
                     install is InstallState.Failed -> "Install failed: ${install.message}"
                     install.running -> "Installing ${distro.label}. You can leave the app; it keeps going."
                     chroot -> "Chroot mode has no ${distro.label} yet. It's installed as root at /data/local/linux/debian, about ${distro.downloadMb} MB to download."
