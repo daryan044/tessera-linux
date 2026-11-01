@@ -14,7 +14,7 @@ done
 [ -x "$bb" ] || { echo "busybox from Magisk/KernelSU/APatch not found" >&2; exit 1; }
 # Every tool from busybox, never the phone's: some phones' root shell reaches none of toybox's
 # (no unshare, tr or touch on a Galaxy Z Fold5 with KernelSU, #5).
-for c in mount touch mkdir ln rm sed grep head cat chmod chown stat dirname find ls sort tr chroot; do
+for c in mount touch mkdir ln rm sed grep head cat chmod chown stat dirname find ls sort tr chroot printf sleep; do
   eval "$c() { \"\$bb\" $c \"\$@\"; }"
 done
 # Shares host path $1 at $2 with what's mounted inside it (rbind: the phone's / alone is

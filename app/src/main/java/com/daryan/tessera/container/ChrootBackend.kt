@@ -77,12 +77,23 @@ class ChrootBackend(
 private fun suLaunch(su: String, vars: Map<String, String>, network: Boolean, script: java.io.File): LaunchSpec {
     val flags = if (network) "-m" else "-m -n"
     val line = buildString {
+        append("export PATH=${shellQuote(ANDROID_PATH)}; ")
         vars.forEach { (k, v) -> append("export $k=${shellQuote(v)}; ") }
         append(FIND_UNSHARE)
         append("exec \$UNSHARE $flags /system/bin/sh ${shellQuote(script.invariantSeparatorsPath)}")
     }
     return LaunchSpec(listOf(su, "-c", line), emptyMap(), "/")
 }
+
+/**
+ * Android's command path, for the root shell. Sessions start su with none of the app's
+ * environment, and KernelSU's su then sets PATH to its own bin alone, so printf, unshare and
+ * the rest of toybox were "not found" (SukiSU on a Xiaomi 13 Ultra; likely the Fold5 of #5 too).
+ * Magisk's su sets a full PATH itself, which hid this.
+ */
+internal val ANDROID_PATH: String =
+    System.getenv("PATH")?.takeIf { "/system/bin" in it.split(':') }
+        ?: "/product/bin:/apex/com.android.runtime/bin:/system_ext/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin"
 
 /**
  * Sets UNSHARE: the phone's, when it has one that can make a mount namespace, else Debian's from

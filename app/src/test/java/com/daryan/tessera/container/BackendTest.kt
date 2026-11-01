@@ -112,6 +112,12 @@ class BackendTest {
         assertTrue(out, out.startsWith("unshare not found"))
     }
 
+    @Test fun `chroot hands su Android's PATH, since KernelSU's su leaves only its own`() {
+        val script = ChrootBackend(paths, "su", appUid = 10123).buildLaunch(firefox, session).argv[2]
+        assertTrue(script, script.startsWith("export PATH="))
+        assertTrue(script, "/system/bin" in ANDROID_PATH.split(':'))
+    }
+
     @Test fun `chroot quotes the command so arguments survive the shell`() {
         val script = ChrootBackend(paths, "su", appUid = 10123).buildLaunch(firefox, session).argv[2]
         // Two layers: argv joined into CMD for `sh -c`, then CMD quoted again for `export`.
