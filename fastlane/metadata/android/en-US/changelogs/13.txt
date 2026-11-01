@@ -1,0 +1,4 @@
+0.5.5 (alpha)
+- Chroot mode with KernelSU or SukiSU: installs and apps no longer fail with "printf: inaccessible or not found". Root shells now get Android's PATH, which KernelSU's su left out.
+- Chroot mode with KernelSU or SukiSU: installs no longer sit forever after downloading, before any package is set up.
+- An empty resolv.conf, left by those failures or saved from the DNS servers form, is rewritten with Android's DNS servers instead of leaving apt unable to reach any server.
