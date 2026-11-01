@@ -259,8 +259,8 @@ even ones left behind by an earlier run.
   or not), network, sound, a display, devices. Change any of it from the app's page.
 - Two engines, and the app tells you honestly which permissions each one can enforce:
   - **PRoot mode** works on any phone, no root. Its limits are best-effort.
-  - **Chroot mode** (Magisk, KernelSU or APatch) enforces every permission with kernel
-    namespaces and an unprivileged user, and runs faster.
+  - **Chroot mode** (Magisk, KernelSU and forks like SukiSU, or APatch) enforces every permission
+    with kernel namespaces and an unprivileged user, and runs faster.
   - **Droidspaces mode** *(new, experimental; root)* runs apps inside a container you made with
     [Droidspaces](https://github.com/ravindu644/Droidspaces-OSS), which you pick in Setup. Each app
     still gets its own namespaces and uid, but it's **less secure than chroot mode**: the rest of
@@ -306,7 +306,8 @@ even ones left behind by an earlier run.
 
 **Requirements:** Android 7 or newer, an arm64 phone (32-bit ARM and x86_64 builds exist but are
 untested), a few GB of free storage. GPU acceleration needs a Snapdragon (Adreno) GPU. Root is
-optional. Tested on a Xiaomi 13 Ultra and a Samsung Galaxy S26 Ultra, both on Android 16.
+optional. Tested on a Xiaomi 13 Ultra and a Samsung Galaxy S26 Ultra, both on Android 16; chroot
+mode with Magisk and with SukiSU.
 
 1. Download the APK: [tessera-v0.5.5.apk](https://github.com/daryan044/tessera-linux/releases/download/v0.5.5/tessera-v0.5.5.apk)
    (alpha; see the [releases](https://github.com/daryan044/tessera-linux/releases) for notes and
@@ -330,7 +331,7 @@ makes).
 | Firefox, VS Code, HandBrake | ✅ Work, with GPU acceleration |
 | Store, installs, apps installed with apt or .deb | ✅ Works |
 | GPU acceleration (Turnip + Zink) in PRoot mode | ✅ Works on Adreno 740 |
-| Chroot mode with root | ✅ Works; GPU in chroot mode is new |
+| Chroot mode with root | ✅ Works with Magisk and SukiSU (KernelSU forks since 0.5.5); GPU in chroot mode is new |
 | Droidspaces mode (pick a Droidspaces container) | 🧪 New; phone adb not yet; Flathub launch support added |
 | Flathub apps (install from the Store, launch, GPU) | ✅ Works in PRoot and chroot; Droidspaces implementation added, device testing pending |
 | Desktop (xfwm4, dock, Start menu, wallpaper) | 🧪 New; first runs on a Snapdragon 8 Gen 2 in chroot mode |
@@ -465,6 +466,10 @@ means no Flatpak sandbox: Tessera's own per-app permissions apply instead.
 
 **Why isn't it on Google Play?** Play requires a newer target API level, and those forbid running
 programs from app storage, which is what Linux needs. F-Droid has no such rule.
+
+**Chroot mode with KernelSU or SukiSU: installs fail with "inaccessible or not found", or stop
+after downloading.** Both were bugs in 0.5.4 and older; update to 0.5.5. The failures could leave
+the system with no DNS servers, which 0.5.5 also repairs on its own the next time anything starts.
 
 **My apps stop in the background.** Android 12 and newer limit background processes. Setup shows
 whether the limit is on, and lifts it in one tap with root, or gives you the adb command.
