@@ -109,6 +109,14 @@ if [ -n "$DNS" ]; then
   fi
 fi
 
+# apt empties the terminal's input with a non-blocking read before it starts dpkg. Through
+# KernelSU's su (SukiSU, at least) the terminal ignores non-blocking mode, so that read waits for
+# a key nobody presses and every install stopped after downloading, dpkg never started.
+conf="$R/etc/apt/apt.conf.d/99tessera-no-flush-stdin"
+if [ -d "${conf%/*}" ] && [ ! -e "$conf" ]; then
+  printf 'DPkg::FlushSTDIN "false";\n' > "$conf"
+fi
+
 # GUEST_ENV is one KEY=VALUE per line; turn it into positional args for env -i.
 set --
 while IFS= read -r kv; do [ -n "$kv" ] && set -- "$@" "$kv"; done <<ENVEOF
