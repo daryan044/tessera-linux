@@ -75,7 +75,7 @@ cast Linux apps to a TV.
 <tr>
 <td valign="top">
 
-**🖥️ A desktop, too** *(new)*<br>
+**🖥️ A desktop, too**<br>
 One tap for a whole Linux desktop: windows you move and snap, a Material dock and Start menu,
 your wallpaper and colors.
 
@@ -112,7 +112,7 @@ A file manager across Android and Linux, and a task manager with live CPU and me
 </tr>
 </table>
 
-**The desktop** *(new in 0.2)*: windows in your phone's colors, a dock and Start menu, icons on the
+**The desktop**: windows in your phone's colors, a dock and Start menu, icons on the
 desktop, Flathub apps too.
 
 <table>
@@ -164,7 +164,7 @@ for anything graphical. Tessera does all of it from one app:
 | | Termux | AnLinux / Andronix | Tessera |
 |---|---|---|---|
 | Terminal with a real shell | ✅ | via Termux | ✅ built in, extra keys, pinch to zoom |
-| Full Linux distro (Debian, glibc) | ❌ its own package set | ✅ by script, in PRoot | ✅ one tap, PRoot **or chroot** |
+| Full Linux distro (Debian, glibc) | ❌ its own package set | ✅ by script, in PRoot | ✅ one tap, PRoot **or chroot**, or your own Droidspaces container |
 | No root needed | ✅ | ✅ | ✅ |
 | Real chroot with root, kernel-enforced sandboxes | ❌ | partly | ✅ |
 | GUI apps | X11 add-on | a whole desktop over VNC | ✅ each app in its own Android window |
@@ -176,7 +176,7 @@ Anything you'd do in a Termux session or an Andronix distro, you can do in Tesse
 with the same Linux underneath. The one thing it doesn't copy is Termux's own add-ons, like
 Termux:API's phone sensors and SMS commands.
 
-### 📦 Flathub, on a phone, without root *(new)*
+### 📦 Flathub, on a phone, without root
 Flatpak normally needs **bubblewrap**, which needs **user namespaces**, which Android kernels don't
 have. So `flatpak run` simply can't work on a phone. Tessera runs Flathub apps anyway:
 - **Flatpak installs, Tessera runs.** `flatpak` downloads apps and runtimes as usual; Tessera then
@@ -195,7 +195,7 @@ have. So `flatpak run` simply can't work on a phone. Tessera runs Flathub apps a
 - **Optional, and one tap.** The Store switches between **Debian** and **Flathub**; the first
   time, one button installs flatpak and adds Flathub. 2,800+ arm64 apps, with screenshots.
 
-### 🎨 Linux apps that look like Android apps *(new)*
+### 🎨 Linux apps that look like Android apps
 Linux apps usually look like a 2010 desktop on a phone. Tessera themes them with **your phone's
 Material You colors**, taken from your wallpaper, and **follows dark mode live**: flip Android to
 dark and every open Linux app turns dark within seconds, no restart.
@@ -205,7 +205,7 @@ dark and every open Linux app turns dark within seconds, no restart.
 - **A white, rounded pointer** (Bibata) instead of X's sharp black arrow, in every app.
 - Theming is per app: hold any app for **Look and graphics** to leave it out.
 
-### 🖥️ A whole desktop, when you want one *(new)*
+### 🖥️ A whole desktop, when you want one
 The **desktop button** next to the search bar opens a Linux desktop, through the same sheet as any
 app (install, permissions, graphics). Windows move, snap to half the screen and minimize, in the
 style of addy-dclxvi's Circela xfwm4 theme redrawn in your phone's colors: title bars that match
@@ -216,7 +216,7 @@ desktop, under its permissions. Its Files button and folder icons open Thunar, a
 manager, and apps' "open folder" lands there too. It runs xfwm4, installed the first time you open
 it.
 
-### 🔍 Live scaling, per app *(new)*
+### 🔍 Live scaling, per app
 Swipe in the window panel and drag **Scale**: the app re-lays out at the new size *while you
 drag*, from tiny-and-dense to big-and-touchable, and remembers it for next time.
 
@@ -224,12 +224,12 @@ drag*, from tiny-and-dense to big-and-touchable, and remembers it for next time.
 its interface itself (GTK, Qt and Firefox), instead of being stretched: sharp text, and video
 without the shimmer. It applies from the app's next start.
 
-### 📁 A real file manager *(new)*
+### 📁 A real file manager
 The **Files** tab browses phone storage and the whole Linux system side by side: copy, move,
 compress, extract, edit text, change permissions, open files in Android or Linux apps, install a
 .deb with a tap, or browse as root.
 
-### 📊 Task manager *(new)*
+### 📊 Task manager
 Every Linux process, live CPU and memory per app, and **End task** with a two-tap "Sure?" right
 on each app's card. It sees everything Tessera runs, its own X servers and root helpers included,
 even ones left behind by an earlier run.
@@ -254,7 +254,7 @@ GPU, and a GPU meter for the whole phone. What apps printed is under **Logs** in
   or mouse mode from its side menu, where **touch and hold right-clicks**.
 - A side menu on every window (swipe from the edge) has what a phone lacks: right click, Esc,
   Enter, Tab, Ctrl+C, Alt+Tab, F11.
-- **Game controls** *(new)*: turn them on from a game's side menu for a thumb stick that holds
+- **Game controls**: turn them on from a game's side menu for a thumb stick that holds
   WASD, a look area for mouse-look, and buttons that hold Fire, Run, Jump and Reload, so
   first-person games that expect a keyboard and mouse play by touch.
 
@@ -274,23 +274,39 @@ GPU, and a GPU meter for the whole phone. What apps printed is under **Logs** in
 ### 🔒 Every app in its own sandbox
 - Each app runs in a container that gets **only what it's granted**: specific folders (read-only
   or not), network, sound, a display, devices. Change any of it from the app's page.
-- Two engines, and the app tells you honestly which permissions each one can enforce:
+- Three engines, and the app tells you honestly which permissions each one can enforce:
   - **PRoot mode** works on any phone, no root. Its limits are best-effort.
   - **Chroot mode** (Magisk, KernelSU and forks like SukiSU, or APatch) enforces every permission
     with kernel namespaces and an unprivileged user, and runs faster.
-  - **Droidspaces mode** *(new, experimental; root)* runs apps inside a container you made with
-    [Droidspaces](https://github.com/ravindu644/Droidspaces-OSS), which you pick in Setup. Each app
-    still gets its own namespaces and uid, but it's **less secure than chroot mode**: the rest of
-    the container can reach every app's windows, and apps see all of its devices. See
-    [docs/DROIDSPACES.md](docs/DROIDSPACES.md#security).
+  - **Droidspaces mode** *(root)* runs apps in a container of your own,
+    [below](#-your-own-containers-with-droidspaces-new-experimental).
 
-### 📺 Cast to a TV, use the phone as the trackpad *(new)*
+### 🧊 Your own containers, with Droidspaces *(new, experimental)*
+Already run Linux containers with [Droidspaces](https://github.com/ravindu644/Droidspaces-OSS)?
+Pick one in Setup and Tessera runs its apps the way it runs its own: each in an Android window,
+with its own Recents card, theme, sound, GPU and per-app permissions.
+- **Debian, Ubuntu and their family:** Debian, Ubuntu, Kali, Mint and other systems built on them.
+  Setup reads what each container is and blocks the ones Tessera can't drive yet (Arch is on the
+  [roadmap](docs/ROADMAP.md#phase-8-droidspaces-containers)). If the container lacks the tools
+  Tessera's launcher needs, **Install util-linux** adds them.
+- **Each container its own apps.** The Apps tab lists what's in the picked container, its own menu
+  entries included, and nothing installed elsewhere.
+- **The right store.** The Store reads the container's own catalog: Debian's for its release,
+  Ubuntu's archive for Ubuntu and its derivatives, Debian testing's for Kali. When a package
+  a derivative lacks is needed, Debian 13's sources fill the gap at low priority, so nothing the
+  system has is ever replaced.
+- **Flathub inside** too, in the container's own Flathub.
+- It's **less secure than chroot mode**: the rest of the container can reach every app's windows,
+  and apps see all of its devices. Use chroot mode for apps you don't trust. Details in
+  [docs/DROIDSPACES.md](docs/DROIDSPACES.md).
+
+### 📺 Cast to a TV, use the phone as the trackpad
 - Send an app to a TV or monitor, by cable or wireless display, at a resolution that suits it.
 - The phone becomes a **Material 3 trackpad**: move, tap to click, tap-and-hold to drag, two
   fingers to scroll or right-click, with a dot field that lights up under your fingers. The
   keyboard still pops up by itself for text fields.
 
-### 🔌 USB devices, drives and flashing tools *(new, experimental)*
+### 🔌 USB devices, drives and flashing tools *(experimental)*
 - Give an app a USB device, and Tessera asks Android's permission and hands it over at launch.
   Inside, apps use it through libusb as usual, even in PRoot mode, where Android normally keeps
   apps away from USB entirely.
@@ -300,7 +316,7 @@ GPU, and a GPU meter for the whole phone. What apps printed is under **Logs** in
 - **adb to this phone** *(a permission, off by default; root)*: Linux apps can run adb against
   the phone itself, as a PC would.
 
-### 🖱️ The phone as a PC trackpad *(new)*
+### 🖱️ The phone as a PC trackpad
 - Pair the phone with a computer over Bluetooth, or plug it in by USB (with root), and it becomes
   a **trackpad and keyboard** for that PC. No app needed on the computer.
 
@@ -356,16 +372,16 @@ makes).
 | Firefox, VS Code, HandBrake | ✅ Work, with GPU acceleration |
 | Store, installs, apps installed with apt or .deb | ✅ Works |
 | GPU acceleration (Turnip + Zink) in PRoot mode | ✅ Works on Adreno 740 |
-| Chroot mode with root | ✅ Works with Magisk and SukiSU (KernelSU forks since 0.5.5); GPU in chroot mode is new |
-| Droidspaces mode (pick a Droidspaces container) | 🧪 New; phone adb not yet; Flathub launch support added |
-| Flathub apps (install from the Store, launch, GPU) | ✅ Works in PRoot and chroot; Droidspaces implementation added, device testing pending |
-| Desktop (xfwm4, dock, Start menu, wallpaper) | 🧪 New; first runs on a Snapdragon 8 Gen 2 in chroot mode |
+| Chroot mode with root | ✅ Works with Magisk and SukiSU (KernelSU forks since 0.5.5), GPU included |
+| Droidspaces containers (Debian, Ubuntu, Kali, Mint…) | 🧪 New; Debian and Flathub apps confirmed in a Kali container; Ubuntu not yet run; Arch and phone adb not yet |
+| Flathub apps (install from the Store, launch, GPU) | ✅ Works in PRoot and chroot; in Droidspaces confirmed in a Kali container |
+| Desktop (xfwm4, dock, Start menu, wallpaper) | ✅ Works |
 | Material You theming, live dark mode (GTK, libadwaita, Qt, LibreOffice, Firefox) | ✅ Works |
 | Live per-app scaling, white pointer, window panel | ✅ Works |
-| Files tab, task manager | 🧪 New |
-| Game controls (stick, mouse-look, hold buttons) | 🧪 New; tested with AntWare from Flathub |
-| Casting to a TV with the phone as trackpad | 🧪 New |
-| The phone as a PC trackpad (USB, Bluetooth) | 🧪 New |
+| Files tab, task manager | ✅ Works |
+| Game controls (stick, mouse-look, hold buttons) | ✅ Works; tested with AntWare from Flathub |
+| Casting to a TV with the phone as trackpad | ✅ Works |
+| The phone as a PC trackpad (USB, Bluetooth) | ✅ Works |
 | USB devices for PRoot apps, all-USB for flashing tools | 🧪 Experimental |
 
 Full detail, item by item: [docs/ROADMAP.md](docs/ROADMAP.md).
