@@ -188,6 +188,10 @@ have. So `flatpak run` simply can't work on a phone. Tessera runs Flathub apps a
   keyboard, sound, clipboard, theme and per-app permissions as every Debian app.
 - **On the GPU.** Tessera's own Turnip driver loads inside Flathub's runtimes: OpenGL 4.6 on
   Adreno, confirmed with Flathub's mpv.
+- **VS Code and other Electron apps.** Apps whose makers ship them apart (VS Code, 1Password)
+  install and start: Tessera stands in for the bubblewrap and zypak steps they expect.
+- **Progress you can follow.** Installs show flatpak's own progress, each runtime it brings and
+  the download speed, and Flathub apps uninstall from the home screen like any other.
 - **Optional, and one tap.** The Store switches between **Debian** and **Flathub**; the first
   time, one button installs flatpak and adds Flathub. 2,800+ arm64 apps, with screenshots.
 
@@ -208,11 +212,17 @@ style of addy-dclxvi's Circela xfwm4 theme redrawn in your phone's colors: title
 the apps' own, ring buttons sized for fingers, your wallpaper behind it all. A floating Material
 dock (a rail on the left in landscape) has the Start menu with search, a button per open window
 (hold it to maximize, snap or close) and the clock. Apps opened from the Start menu run inside the
-desktop, under its permissions. It runs xfwm4, installed the first time you open it.
+desktop, under its permissions. Its Files button and folder icons open Thunar, a full file
+manager, and apps' "open folder" lands there too. It runs xfwm4, installed the first time you open
+it.
 
 ### 🔍 Live scaling, per app *(new)*
 Swipe in the window panel and drag **Scale**: the app re-lays out at the new size *while you
 drag*, from tiny-and-dense to big-and-touchable, and remembers it for next time.
+
+**Full resolution**, on the same page, has the app draw at the phone's own resolution and enlarge
+its interface itself (GTK, Qt and Firefox), instead of being stretched: sharp text, and video
+without the shimmer. It applies from the app's next start.
 
 ### 📁 A real file manager *(new)*
 The **Files** tab browses phone storage and the whole Linux system side by side: copy, move,
@@ -223,6 +233,9 @@ compress, extract, edit text, change permissions, open files in Android or Linux
 Every Linux process, live CPU and memory per app, and **End task** with a two-tap "Sure?" right
 on each app's card. It sees everything Tessera runs, its own X servers and root helpers included,
 even ones left behind by an earlier run.
+
+The **Sessions** page shows each running app's CPU and RAM as meters, a badge when it draws on the
+GPU, and a GPU meter for the whole phone. What apps printed is under **Logs** in the title bar.
 
 ### 🪟 Every Linux app is a real Android app
 - Each app gets **its own window** and **its own card in Recents**, named and with its icon;
@@ -249,6 +262,10 @@ even ones left behind by an earlier run.
 - Tessera ships its own build of Mesa: **Turnip** (Vulkan for Adreno GPUs, talking to Android's
   own GPU driver interface) and **Zink** (OpenGL on top of it). Apps get **OpenGL 4.6 and
   Vulkan** with no setup; on an Adreno 740, glxgears runs at ~240 fps.
+- **Fast at full resolution too:** frames reach the screen through shared memory, in one piece,
+  without tearing. At 1440×2994, glxgears went from 70 to 166 fps and glmark2 from 71 to 159.
+- **Firefox on the GPU:** Tessera turns on its GPU drawing in GPU sessions, so scrolling and video
+  keep up, and video plays at a steady pace in sync with its sound.
 - **Graphics fixes per app:** hold an app's icon (**Look and graphics**) to switch its GPU off or
   turn on workarounds for driver bugs, named after what you see ("Fix black blocks", "Fix
   flicker").
@@ -280,6 +297,8 @@ even ones left behind by an earlier run.
 - **All USB** for tools like fastboot, adb, heimdall and EDL: in chroot mode the bus is shared
   live, so a phone that reboots into fastboot under a new number is still there.
 - **USB drives and SD cards** appear where Linux file managers look for them.
+- **adb to this phone** *(a permission, off by default; root)*: Linux apps can run adb against
+  the phone itself, as a PC would.
 
 ### 🖱️ The phone as a PC trackpad *(new)*
 - Pair the phone with a computer over Bluetooth, or plug it in by USB (with root), and it becomes
@@ -291,6 +310,12 @@ even ones left behind by an earlier run.
 - **Shortcuts:** your own commands as icons, in a terminal or a window, optionally as root.
   Comes with Claude Code, which installs itself on first run.
 - **Apps installed any way show up:** apt in a terminal, a downloaded .deb, all listed.
+- **Missing a library?** When an app stops for a missing library, program, Python module or
+  GObject typelib, Tessera says what it needs, finds the Debian package with it, installs it and
+  opens the app again.
+- **Your network's DNS:** Linux uses Android's DNS servers, so VPNs and networks that only allow
+  their own resolver work. Set your own in the config editor and they stay.
+- **Predictive back** in the launcher: pages shrink and follow your finger as you swipe back.
 - **Config editor** for .bashrc, apt sources, hosts and more, without a terminal.
 - **Keeps running in the background:** a foreground service holds sessions, and Setup lifts
   Android's background process limit in one tap (with root) or shows the adb command.
