@@ -18,7 +18,7 @@ data class StoreApp(
     val categories: List<String>,
     /** File name inside the component's icon pack, e.g. "gimp_gimp.png". */
     val icon: String? = null,
-    /** Repository component the package comes from: main, contrib, non-free. */
+    /** Catalog and repository component the package comes from: "debian-trixie/main", "ubuntu-noble/universe". */
     val component: String,
     /** The .desktop file that starts it, when the catalog names one. */
     val desktopId: String? = null,

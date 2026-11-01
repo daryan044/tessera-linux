@@ -106,6 +106,15 @@ Flathub as a second source in the Store, for newer versions and apps Debian lack
 | 7.5 | Store integration | 🟡 | The Store tab switches between Debian and Flathub (remembered). Flathub is optional: until it's set up in the active system, a card explains it and Set up installs flatpak and adds the remote through the install queue. Flathub's aarch64 AppStream (2,872 windowed apps) is cached for a week; icons download as they're shown; screenshots come from the catalog. Installed apps get launcher entries with category-based permissions, like Debian's. Confirmed on the device; the Set up button itself not yet run on a fresh system. No "newer on Flathub" badge on Debian apps yet |
 | 7.6 | Portals and theming | ⬜ | xdg-desktop-portal for file pickers; Phase 6's theme bound into each runtime |
 
+## Phase 8: Droidspaces containers
+
+Apps in a container the user made with Droidspaces ([DROIDSPACES.md](DROIDSPACES.md)). Debian and Ubuntu containers only for now.
+
+| | Item | Status | Notes |
+|---|---|---|---|
+| 8.0 | Debian-family containers | 🟡 | Setup reads each container's os-release and the launch tools it has: other systems are named and blocked, missing util-linux has an Install button (apt, through `droidspaces run`, since enter.sh needs it). The Apps tab lists only what the container has (programs checked through su, packages otherwise). The Store's catalog follows the system: Debian's own release, Ubuntu's archive or ports for Ubuntu and derivatives, Debian testing for Kali. Base libraries take renamed packages under either name (t64), and helpers a system lacks are skipped; a package counts only with an install candidate (Kali's `libfuse2` is a name with none). Derivatives and Debian past 13 get Debian 13's sources added once, at pin priority 50, for what their own lack. Confirmed on the device in Kali (2026-10-31): the libraries install, `libfuse2t64` from Debian, nothing else taken from it. Ubuntu not yet run |
+| 8.1 | Arch Linux containers | ⬜ | Tried on the device in an Arch container (2026-10-29): Firefox exited 127, as the bundled entry runs Debian's `/usr/bin/firefox-esr` (Arch has `/usr/bin/firefox`), and nothing warned, since installed apps are found through dpkg. With that bridged by hand it opened, but not fullscreen, unthemed, without live scale or sound: the GUI helpers (`GUI_HELPER_PACKAGES`) are installed with apt, so none were there, and the wrapper looks for Python modules in Debian's `/usr/lib/python3/dist-packages`. Needs: installs with pacman and Arch's package names, installed apps found without dpkg, a Firefox entry for either name, distro-neutral module checks (`python3 -c 'import gi'`), and a window manager in place of matchbox, which Arch only has in the AUR |
+
 ## Known issues
 
 - Alpine isn't offered: the Store, the app manifests, package installs and the GPU driver (built against glibc) are all Debian's.

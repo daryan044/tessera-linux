@@ -552,6 +552,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                         start = vm::startContainer,
                         stop = vm::stopContainer,
                         prepare = vm::prepareContainer,
+                        installTools = vm::installContainerTools,
                     ),
                     containerBusy = containerBusy,
                 )

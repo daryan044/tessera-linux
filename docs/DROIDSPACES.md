@@ -30,8 +30,11 @@ Use chroot mode for apps you don't trust. In Droidspaces mode:
 
 - Root (Magisk, KernelSU or APatch), and Droidspaces installed. Tessera looks for the binary at
   `/data/local/Droidspaces/bin/droidspaces` (where the Droidspaces app puts it), then on `PATH`.
-- A **Debian or Ubuntu** container. Tessera installs apps with `apt`, and its launch script uses
-  `unshare`, `mount` and `setpriv` from util-linux, which those have.
+- A **Debian or Ubuntu** container, or one derived from them (Kali, Mint…). Tessera installs apps
+  with `apt`, and Setup shows what system each container is and won't use the others (Arch and
+  the like are on the roadmap). Its launch script uses `unshare`, `mount` and `setpriv` from
+  util-linux and `base64` from coreutils; if any is missing, Setup says so and **Install
+  util-linux** puts them in with apt.
 - Droidspaces v7.0.0 or later. Tessera only uses `start`, `stop`, `restart`, `run` and `pid`, so it
   doesn't depend on the `--format` flag that v7.1.0 renamed to `--json`.
 
@@ -47,6 +50,29 @@ Use chroot mode for apps you don't trust. In Droidspaces mode:
 
 Turn on **Android storage** for the container in Droidspaces if you want apps to see the phone's
 folders; and **Hardware access** or **GPU** if you want GPU acceleration or USB devices.
+
+## Apps and the Store
+
+- **The Apps tab is the container's own.** It lists only what's in the picked container: an entry
+  shows when its program is there (checked through root), or, for one started from `PATH`, when
+  its packages are installed. Bundled apps that aren't installed, and Store or Flathub apps you
+  installed in another engine, don't show; install them from the Store into this container. The
+  container's own menu entries are listed too. Each container has its own list.
+- **The Store reads the container's catalog**: Debian's for Debian, for its own release, and
+  Ubuntu's for Ubuntu and its derivatives (main, universe, restricted and multiverse). Kali has no
+  catalog of its own and gets Debian testing's, which it follows; an app Kali lacks fails with
+  apt's own words.
+- **Libraries and helpers** (OpenGL, sound, the keyboard watcher, theming) are installed once per
+  container, in the queue. Packages a release names differently are taken under either name
+  (`libfuse2t64` or `libfuse2`), and those the system has no package for are skipped, so a helper
+  missing from a derivative doesn't stop an app's install.
+- **Debian 13 as a fallback source.** In a Debian derivative or a Debian newer than 13 (Kali,
+  Debian testing; not Ubuntu), when an install needs a package the system's own sources don't have
+  (Kali, following Debian testing, has no `libfuse2t64`), Tessera adds Debian 13's sources once,
+  as `/etc/apt/sources.list.d/tessera-debian.sources`, pinned at priority 50 in
+  `/etc/apt/preferences.d/tessera-debian`. So a package comes from Debian only when the system has
+  none of its own, and nothing installed is ever replaced by Debian's version. Delete both files to
+  undo it.
 
 ## What Tessera shares into the container
 
@@ -107,6 +133,10 @@ namespace.
 - *"Set the container up for Tessera in Setup"*: the container booted without the two bind mounts.
   **Set up for Tessera** (restart it if you edited the config by hand).
 - *App exits at once with `Tessera's folders aren't in this container`*: the same, seen from inside.
-- *`unshare`, `setpriv` or `mount` missing*: install `util-linux` in the container.
+- *"… lacks setpriv; install them in Setup"*: **Setup → Container → Install util-linux**, or
+  `apt install util-linux mount` in the container yourself.
+- *"Tessera can't use Arch Linux containers yet"*: pick or make a Debian or Ubuntu container.
+- *An app you installed isn't in the Apps tab*: its program isn't in this container (it may be in
+  another engine's system). Install it from the Store here, then **Check again**.
 - Use **Copy diagnostics** in the side menu: it lists the container, whether it runs, and whether
   Tessera's folders are bound.

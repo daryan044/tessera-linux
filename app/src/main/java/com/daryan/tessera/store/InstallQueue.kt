@@ -47,6 +47,18 @@ data class QueueJob(
     val script: String? = null,
     /** The Flathub id a flatpak install [script] installs, whose progress [FlatpakProgress] reads. */
     val flatpakApp: String? = null,
+    /**
+     * Of [packages], those skipped rather than failed when the system's lists don't have them:
+     * Tessera's own helpers and libraries, whose names are Debian 13's and which another release
+     * or a derivative may lack. A package may also be "a|b": the first of them the lists have.
+     */
+    val optional: Set<String> = emptySet(),
+    /**
+     * When the system's own sources have no package for some of [packages], add Debian 13's
+     * ([FALLBACK_SOURCE]) at a low priority first, so those come from it: for derivatives that
+     * dropped what Tessera needs (Kali, following Debian testing, has no libfuse2t64).
+     */
+    val fallback: Boolean = false,
 ) {
     val active get() = state is JobState.Queued || state is JobState.Running
 }
@@ -78,10 +90,15 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         backend: ContainerBackend,
         script: String? = null,
         flatpakApp: String? = null,
+        optional: Set<String> = emptySet(),
+        fallback: Boolean = false,
         onDone: suspend () -> Unit,
     ) {
         if (_jobs.value.any { it.active && it.packages == packages }) return
-        val job = QueueJob(nextId.getAndIncrement(), title, packages, action, iconFile, script = script, flatpakApp = flatpakApp)
+        val job = QueueJob(
+            nextId.getAndIncrement(), title, packages, action, iconFile,
+            script = script, flatpakApp = flatpakApp, optional = optional, fallback = fallback,
+        )
         reruns[job.id] = backend to onDone
         _jobs.update { it + job }
         scope.launch(Dispatchers.IO) {
@@ -116,7 +133,7 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
         val job = _jobs.value.firstOrNull { it.id == id && it.state is JobState.Failed } ?: return
         val (backend, onDone) = reruns.remove(id) ?: return
         _jobs.update { list -> list.filterNot { it.id == id } }
-        enqueue(job.title, job.packages, job.action, job.iconFile, backend, job.script, job.flatpakApp, onDone)
+        enqueue(job.title, job.packages, job.action, job.iconFile, backend, job.script, job.flatpakApp, job.optional, job.fallback, onDone)
     }
 
     private fun run(job: QueueJob, backend: ContainerBackend): Boolean {
@@ -224,10 +241,67 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
             else -> "Ended by signal $signal"
         }
 
+        /** Where [QueueJob.fallback] puts Debian 13's sources, and its pin. */
+        const val FALLBACK_SOURCE = "/etc/apt/sources.list.d/tessera-debian.sources"
+        const val FALLBACK_PIN = "/etc/apt/preferences.d/tessera-debian"
+        private const val DEBIAN_KEYRING = "/usr/share/keyrings/debian-archive-keyring.gpg"
+
+        private val FALLBACK_SOURCES = """
+            Types: deb
+            URIs: http://deb.debian.org/debian
+            Suites: trixie trixie-updates
+            Components: main
+            Signed-By: $DEBIAN_KEYRING
+        """.trimIndent()
+
+        /**
+         * Below 100: a package comes from Debian only when the system has none of its own, and
+         * what's installed is never "upgraded" to Debian's.
+         */
+        private val FALLBACK_PREFERENCES = """
+            Explanation: Tessera: Debian 13 only for what this system has no package for
+            Package: *
+            Pin: origin deb.debian.org
+            Pin-Priority: 50
+        """.trimIndent()
+
         /** apt in two phases with machine-readable progress; markers tell [AptProgress] which. */
         fun script(job: QueueJob): String {
             val opts = "-o APT::Status-Fd=1 -o Dpkg::Use-Pty=0 -o Dpkg::Progress-Fancy=0"
-            val pkgs = job.packages.joinToString(" ")
+            val install = job.action == QueueAction.INSTALL
+            val pick = install && (job.optional.isNotEmpty() || job.fallback || job.packages.any { '|' in it })
+            val pkgs = if (pick) "\$pkgs" else job.packages.joinToString(" ")
+            fun list(l: List<String>) = l.joinToString(" ") { com.daryan.tessera.container.shellQuote(it) }
+            // A package the lists can install: a candidate, not just a name something refers to
+            // (apt-cache show succeeds for those; Kali's libfuse2 is one).
+            val helpers = if (!pick) "" else
+                "has() { LC_ALL=C apt-cache policy \"\$1\" 2>/dev/null | grep -q '^ *Candidate: [^(]'; }; " +
+                    "pick() { for a in \$(printf '%s' \"\$1\" | tr '|' ' '); do " +
+                    "if has \"\$a\"; then echo \"\$a\"; return 0; fi; done; return 1; }; "
+            // Debian 13's sources for what the system lacks, once; taken out again if they can't
+            // be read, so a failed download doesn't break the system's apt.
+            val fallback = if (!pick || !job.fallback) "" else
+                "lack=; for p in ${list(job.packages)}; do pick \"\$p\" >/dev/null || lack=\"\$lack \${p%%|*}\"; done; " +
+                    "if [ -n \"\$lack\" ] && [ ! -e $FALLBACK_SOURCE ]; then " +
+                    "echo \"Not in this system's sources:\$lack. Adding Debian 13's for them\"; " +
+                    "[ -e $DEBIAN_KEYRING ] || apt-get install -y --no-install-recommends $opts debian-archive-keyring; " +
+                    "if [ -e $DEBIAN_KEYRING ]; then " +
+                    "printf '%s\n' ${com.daryan.tessera.container.shellQuote(FALLBACK_SOURCES)} > $FALLBACK_SOURCE; " +
+                    "mkdir -p ${FALLBACK_PIN.substringBeforeLast('/')}; " +
+                    "printf '%s\n' ${com.daryan.tessera.container.shellQuote(FALLBACK_PREFERENCES)} > $FALLBACK_PIN; " +
+                    "apt-get update $opts || { echo \"Couldn't read Debian's sources; going on without them\"; " +
+                    "rm -f $FALLBACK_SOURCE $FALLBACK_PIN; apt-get update $opts; }; " +
+                    "else echo \"Debian's keyring isn't here, so its sources can't be added\"; fi; fi; "
+            // After apt-get update, so the lists it checks are current. A required package the
+            // lists lack goes to apt as named, which then says so.
+            val filter = if (!pick) "" else {
+                val (optional, required) = job.packages.partition { it in job.optional }
+                "pkgs=; " +
+                    (if (required.isEmpty()) "" else "for p in ${list(required)}; do a=\$(pick \"\$p\") || a=\${p%%|*}; pkgs=\"\$pkgs \$a\"; done; ") +
+                    (if (optional.isEmpty()) "" else "for p in ${list(optional)}; do if a=\$(pick \"\$p\"); then pkgs=\"\$pkgs \$a\"; " +
+                        "else echo \"Skipping \$p: this system has no such package\"; fi; done; ") +
+                    "[ -n \"\$pkgs\" ] || exit 0; "
+            }
             val main = when (job.action) {
                 QueueAction.INSTALL -> "apt-get install -y --no-install-recommends $opts $pkgs"
                 QueueAction.REMOVE -> "apt-get remove -y $opts $pkgs"
@@ -236,8 +310,8 @@ class InstallQueue(private val scope: CoroutineScope, private val paths: Contain
             // apt failing; finish what's pending and try once more before calling it failed.
             val retry = "{ echo 'Finishing interrupted package setup and trying again'; dpkg --configure -a; $main; }"
             return "export DEBIAN_FRONTEND=noninteractive; " +
-                (if (job.action == QueueAction.INSTALL) "echo '##phase update'; apt-get update $opts || exit \$?; " else "") +
-                "echo '##phase main'; $main || $retry"
+                (if (install) "echo '##phase update'; apt-get update $opts || exit \$?; " else "") +
+                helpers + fallback + filter + "echo '##phase main'; $main || $retry"
         }
     }
 }

@@ -47,8 +47,14 @@ what chroot mode does but inside the container: a private mount namespace (and n
 without network), then `setpriv` to the app's uid. Tessera's session folders are bound into the
 container at `/mnt/tessera` when it boots (set up once from Setup, which edits the container's
 `bind_mounts` and restarts it). Folder grants only reach the app if the container can see them
-(Android storage on, or its own binds). No Flathub apps and no phone adb in this engine yet. See
-docs/DROIDSPACES.md.
+(Android storage on, or its own binds). Only Debian-family containers (Debian, Ubuntu and their
+derivatives) are supported; Setup shows each container's system and blocks the rest. The Apps tab
+lists only what that container has (an entry's program, else its packages); the Store reads the
+catalog of the container's own system (Ubuntu's for Ubuntu). Launches need util-linux in the
+container, which Setup can install. In derivatives (Kali) Tessera may add Debian 13's sources,
+pinned at priority 50 (`/etc/apt/sources.list.d/tessera-debian.sources`,
+`/etc/apt/preferences.d/tessera-debian`), for packages the system lacks. No phone adb in this
+engine yet. See docs/DROIDSPACES.md.
 
 In both modes a GUI app gets **its own X server** (a Termux:X11 fork) and its own `DISPLAY`, with
 `matchbox-window-manager` keeping it fullscreen. Tessera follows the X windows and gives each one an

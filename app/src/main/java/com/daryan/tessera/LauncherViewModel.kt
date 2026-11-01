@@ -25,10 +25,17 @@ import com.daryan.tessera.store.StoreRegistry
 import com.daryan.tessera.store.StoreSource
 import com.daryan.tessera.container.Flatpak
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import com.daryan.tessera.container.ChrootBackend
+import com.daryan.tessera.container.ContainerMenu
+import com.daryan.tessera.container.GuestRelease
+import com.daryan.tessera.container.missingPackages
+import com.daryan.tessera.store.CatalogSource
 import com.daryan.tessera.container.ContainerBackend
 import com.daryan.tessera.container.Droidspaces
 import com.daryan.tessera.container.DroidspacesBackend
@@ -88,18 +95,42 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val sessions = container.sessions
     val installState: StateFlow<InstallState> = container.installer.state
 
+    private val prefs = app.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+    private val _mode = MutableStateFlow(
+        runCatching { BackendMode.valueOf(prefs.getString(KEY_MODE, null)!!) }.getOrDefault(BackendMode.PROOT),
+    )
+    val mode: StateFlow<BackendMode> = _mode
+
     /** Apps that ship with the launcher. */
     private val bundled: List<PermissionManifest> = loadApps(app)
 
     /** Where the diagnostics appear inside a container that is granted them. */
     private fun shortcutManifest(s: Shortcut) = s.toManifest(container.diagnostics.dir)
 
-    /** Bundled apps, those installed from the store and the user's shortcuts, as their manifests describe them. */
-    private val manifests: StateFlow<List<PermissionManifest>> =
-        combine(container.registry.userApps, container.shortcuts.shortcuts, container.systemApps.apps) { user, shortcuts, system ->
-            val known = bundled + user.filterNot { u -> bundled.any { it.id == u.id } } + shortcuts.map(::shortcutManifest)
-            known + newSystemApps(system, known)
+    /** Bundled apps, those installed from the store and the user's shortcuts, wherever they're installed. */
+    private val entries: StateFlow<List<PermissionManifest>> =
+        combine(container.registry.userApps, container.shortcuts.shortcuts) { user, shortcuts ->
+            bundled + user.filterNot { u -> bundled.any { it.id == u.id } } + shortcuts.map(::shortcutManifest)
         }.stateIn(viewModelScope, SharingStarted.Eagerly, bundled + container.shortcuts.shortcuts.value.map(::shortcutManifest))
+
+    /** Of [entries]' programs, those in the picked Droidspaces container; null outside that mode or until checked. */
+    private val _containerPrograms = MutableStateFlow<Set<String>?>(null)
+
+    /** What the picked Droidspaces container has, for its menu; null in the other modes, which list every entry. */
+    private val containerMenu: StateFlow<ContainerMenu?> =
+        combine(_mode, _containerPrograms, container.registry.installed, container.registry.flatpaks) { mode, programs, installed, flatpaks ->
+            if (mode == BackendMode.DROIDSPACES) ContainerMenu(programs, installed, flatpaks) else null
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /**
+     * The launcher's apps as their manifests describe them: [entries] plus the system's own menu
+     * entries. A Droidspaces container lists only what it has, being the user's own system.
+     */
+    private val manifests: StateFlow<List<PermissionManifest>> =
+        combine(entries, container.systemApps.apps, containerMenu) { all, system, menu ->
+            val known = if (menu == null) all else all.filter(menu::has)
+            known + newSystemApps(system, known)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, if (_mode.value == BackendMode.DROIDSPACES) emptyList() else entries.value)
 
     /**
      * The container's own menu entries, minus what the launcher lists already: same name, or
@@ -168,7 +199,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }.stateIn(viewModelScope, SharingStarted.Eagerly, bundled.map(::withOverrides))
 
     /** The permissions [appId]'s manifest asks for, before any change by the user. */
-    fun defaultPermissions(appId: String): Permissions? = manifests.value.firstOrNull { it.id == appId }?.permissions
+    fun defaultPermissions(appId: String): Permissions? =
+        (manifests.value.firstOrNull { it.id == appId } ?: entries.value.firstOrNull { it.id == appId })?.permissions
 
     /** Changes [app]'s permissions from its next launch; returns what's wrong with them, if anything. */
     fun setPermissions(app: PermissionManifest, permissions: Permissions): List<String> =
@@ -179,7 +211,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val permissionOverrides: StateFlow<Map<String, Permissions>> = container.permissions.overrides
 
     /** The command [appId]'s manifest asks for, before any change by the user. */
-    fun defaultExec(appId: String): List<String>? = manifests.value.firstOrNull { it.id == appId }?.exec
+    fun defaultExec(appId: String): List<String>? =
+        (manifests.value.firstOrNull { it.id == appId } ?: entries.value.firstOrNull { it.id == appId })?.exec
 
     /** Changes [app]'s command from its next launch; returns what's wrong with it, if anything. */
     fun setExec(app: PermissionManifest, exec: List<String>): List<String> =
@@ -235,12 +268,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _status = MutableStateFlow<HostStatus?>(null)
     val status: StateFlow<HostStatus?> = _status
-
-    private val prefs = app.getSharedPreferences("launcher", Context.MODE_PRIVATE)
-    private val _mode = MutableStateFlow(
-        runCatching { BackendMode.valueOf(prefs.getString(KEY_MODE, null)!!) }.getOrDefault(BackendMode.PROOT),
-    )
-    val mode: StateFlow<BackendMode> = _mode
 
     /** Whether su has worked here before (in chroot mode), so using it again asks nothing. */
     var rootGranted = prefs.getBoolean(KEY_ROOT_GRANTED, false)
@@ -301,6 +328,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 val c = status?.droidspacesSelected
                 appendLine("- Droidspaces: ${status?.droidspacesBinary ?: "not found"}, container ${c?.name ?: "none picked"}" +
                     (c?.let { " (${if (it.running) "running" else "stopped"}, Tessera's folders ${if (it.bridged) "bound" else "not bound"}, net ${it.config.netMode}, Android storage ${it.config.androidStorage})" } ?: ""))
+                if (c != null) {
+                    appendLine("- Container system: ${c.release?.label ?: "unknown"}${if (!c.supported) " (not supported: not Debian or Ubuntu)" else ""}, " +
+                        "launch tools missing: ${c.missingTools?.joinToString()?.ifEmpty { "none" } ?: "unknown"}")
+                }
             }
             appendLine("- PRoot binary present: ${status?.prootBinary}")
             appendLine("- Background process limit on: ${status?.phantomProcessLimit} (on means Android may kill apps in the background)")
@@ -341,6 +372,28 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun missingFor(s: RunningSession): Missing? =
         if (s.running || s.endedBy != null || s.exitCode == 0 || s.terminal != null || s.app.flatpak != null) null
         else MissingPackages.find(s.output)
+
+    init {
+        // Which of the launcher's programs the picked Droidspaces container has, for its menu
+        // ([containerMenu]): again when it, its packages or the launcher's entries change.
+        viewModelScope.launch {
+            var lastRoot: String? = null
+            // Not while a check runs (status null): the menu would blink back to dpkg's view.
+            combine(_mode, _status.filterNotNull(), entries, container.registry.installed) { mode, s, list, _ ->
+                val su = s.su
+                val root = s.droidspacesSelected?.hostRoot
+                if (mode != BackendMode.DROIDSPACES || su == null || root == null) null
+                else Triple(su, root, ContainerMenu.programsOf(list))
+            }.distinctUntilChanged().collectLatest { q ->
+                // Only the programs of this container count; another's would show what isn't here.
+                if (q?.second != lastRoot) _containerPrograms.value = null
+                lastRoot = q?.second
+                if (q == null) return@collectLatest
+                val (su, root, programs) = q
+                withContext(Dispatchers.IO) { DroidspacesHost(su).existing(root, programs) }?.let { _containerPrograms.value = it }
+            }
+        }
+    }
 
     private val _reopen = Channel<PermissionManifest>(Channel.BUFFERED)
     /** Apps whose missing package was just installed, to offer opening again. */
@@ -576,9 +629,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         // Unread (no Linux yet, or dpkg's status unreadable): check again next time.
         val installed = container.registry.installed.value ?: return
         container.baseLibrariesChecked += checkKey()
-        val missing = BASE_LIBRARIES.filterNot { it in installed }
+        val missing = missingPackages(BASE_LIBRARIES, installed)
         if (missing.isEmpty()) return
-        container.queue.enqueue("Graphics and app libraries", missing, QueueAction.INSTALL, null, backend) {
+        // Names are Debian 13's; what another release or a derivative lacks is skipped.
+        container.queue.enqueue("Graphics and app libraries", missing, QueueAction.INSTALL, null, backend, optional = missing.toSet(), fallback = debianFallback()) {
             container.registry.refreshInstalled(store)
         }
     }
@@ -601,7 +655,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val companions = (THEME_COMPANIONS + DESKTOP_COMPANIONS).filterKeys { it in installed }.values.filterNot { it in installed }
         val missing = GUI_HELPER_PACKAGES.filterNot { it in installed } + companions
         if (missing.isEmpty()) return
-        container.queue.enqueue("Sound, keyboard and theme helpers", missing, QueueAction.INSTALL, null, backend) {
+        container.queue.enqueue("Sound, keyboard and theme helpers", missing, QueueAction.INSTALL, null, backend, optional = missing.toSet(), fallback = debianFallback()) {
             container.registry.refreshInstalled(store)
         }
     }
@@ -620,6 +674,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /** Where the running, set-up Droidspaces container's files are, as root sees them; null when there's no such. */
     private fun droidspacesRoot(status: HostStatus): String? =
         if (_mode.value == BackendMode.DROIDSPACES) status.droidspacesSelected?.takeIf { it.running && it.bridged }?.hostRoot else null
+
+    /**
+     * Whether installs may take what the system lacks from Debian 13 ([QueueJob.fallback]): a
+     * Droidspaces container whose system Debian 13's packages fit ([GuestRelease.takesDebianFallback]).
+     */
+    private fun debianFallback(): Boolean =
+        _mode.value == BackendMode.DROIDSPACES && _status.value?.droidspacesSelected?.release?.takesDebianFallback == true
 
     /** What the first-run checks of libraries and helpers are remembered under: per container in Droidspaces mode. */
     private fun checkKey(): String =
@@ -643,7 +704,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         if (_mode.value != BackendMode.DROIDSPACES || status.su == null || status.droidspacesBinary == null) return
         val target = status.droidspacesSelected ?: return
         // Don't start an unprepared container: without Tessera's bridge binds it cannot launch apps.
-        if (target.running || !target.bridged || _containerBusy.value != null) return
+        if (target.running || !target.bridged || !target.supported || _containerBusy.value != null) return
         if (!autoStartAttempted.add(target.name)) return
         startContainer()
     }
@@ -656,6 +717,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startContainer() = controlContainer("Starting") { host, binary, c -> host.start(binary, c.name) }
+
+    /** Installs what Tessera's launch script needs in the picked, running container ([Droidspaces.LAUNCH_TOOLS]). */
+    fun installContainerTools() = controlContainer("Installing util-linux in") { host, binary, c -> host.installLaunchTools(binary, c.name) }
 
     fun stopContainer() = controlContainer("Stopping") { host, binary, c -> host.stop(binary, c.name) }
 
@@ -718,8 +782,12 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         mode == BackendMode.DROIDSPACES && status.droidspacesBinary == null -> "Droidspaces isn't installed"
         mode == BackendMode.DROIDSPACES && status.droidspacesContainers?.isEmpty() == true -> "No Droidspaces containers found"
         mode == BackendMode.DROIDSPACES && status.droidspacesSelected == null -> "Pick a Droidspaces container in Setup"
+        mode == BackendMode.DROIDSPACES && status.droidspacesSelected?.supported == false ->
+            "Tessera can't use ${status.droidspacesSelected?.release?.label} containers yet; pick a Debian or Ubuntu one in Setup"
         mode == BackendMode.DROIDSPACES && status.droidspacesSelected?.bridged != true -> "Set the container up for Tessera in Setup"
         mode == BackendMode.DROIDSPACES && status.droidspacesSelected?.running != true -> "${status.droidspacesName} is stopped; start it in Setup"
+        mode == BackendMode.DROIDSPACES && !status.droidspacesSelected?.missingTools.isNullOrEmpty() ->
+            "${status.droidspacesName} lacks ${status.droidspacesSelected?.missingTools?.joinToString()}; install them in Setup"
         else -> null
     }
 
@@ -766,10 +834,12 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         viewModelScope.launch {
-            val release = runCatching { store?.read("/etc/os-release") }.getOrNull()
-            val suite = release?.lineSequence()?.firstOrNull { it.startsWith("VERSION_CODENAME=") }
-                ?.substringAfter('=')?.trim('"')?.takeIf { it.isNotBlank() } ?: "trixie"
-            container.catalog.load(suite, StoreCatalog.debianArch(Build.SUPPORTED_ABIS.first()), refresh)
+            // The catalog of the system apps install into: Debian's, or Ubuntu's for Ubuntu.
+            val release = GuestRelease.parse(
+                runCatching { store?.read("/etc/os-release") ?: store?.read("/usr/lib/os-release") }.getOrNull(),
+            )
+            val arch = StoreCatalog.debianArch(Build.SUPPORTED_ABIS.first())
+            container.catalog.load(CatalogSource.forRelease(release, arch), arch, refresh)
             container.registry.refreshInstalled(store)
         }
     }
@@ -835,9 +905,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             ) { container.registry.registerFlatpak(app, store, container.flathub.icon(app)) }
             return true
         }
+        // The helpers are a nicety: one the system lacks mustn't stop the app's own install.
         container.queue.enqueue(
             app.name, listOf(app.pkg) + GUI_HELPER_PACKAGES, QueueAction.INSTALL,
-            container.catalog.iconFile(app)?.path, backend,
+            container.catalog.iconFile(app)?.path, backend, optional = GUI_HELPER_PACKAGES.toSet(), fallback = debianFallback(),
         ) { store?.let { container.registry.register(app, it) } }
         return true
     }
@@ -920,8 +991,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             ) { container.registry.reresolveFlatpak(app, store) }
             return true
         }
-        val packages = app.packages + if (app.gui) GUI_HELPER_PACKAGES else emptyList()
-        container.queue.enqueue(app.name, packages, QueueAction.INSTALL, app.iconFile, backend) {
+        val helpers = if (app.gui) GUI_HELPER_PACKAGES.filterNot { it in app.packages } else emptyList()
+        container.queue.enqueue(app.name, app.packages + helpers, QueueAction.INSTALL, app.iconFile, backend, optional = helpers.toSet(), fallback = debianFallback()) {
             container.registry.refreshInstalled(store)
         }
         return true
@@ -1054,7 +1125,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val installed = container.registry.installed.value ?: return
         val missing = PhoneAdb.PACKAGES.filterNot { it in installed }
         if (missing.isEmpty() || container.queue.jobs.value.any { it.active && it.packages == missing }) return
-        container.queue.enqueue("adb and fastboot", missing, QueueAction.INSTALL, null, backend) {
+        container.queue.enqueue("adb and fastboot", missing, QueueAction.INSTALL, null, backend, fallback = debianFallback()) {
             container.registry.refreshInstalled(store)
         }
         _messages.send("Installing adb and fastboot; follow it under Installs")

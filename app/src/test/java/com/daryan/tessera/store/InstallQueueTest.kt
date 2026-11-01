@@ -6,6 +6,7 @@ package com.daryan.tessera.store
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class InstallQueueTest {
@@ -36,6 +37,61 @@ class InstallQueueTest {
         assertTrue(s.endsWith("vlc matchbox-window-manager; }"))
         val remove = InstallQueue.script(job.copy(action = QueueAction.REMOVE, packages = listOf("vlc")))
         assertTrue("apt-get update" !in remove && "apt-get remove -y" in remove)
+    }
+
+    @Test fun `optional packages the lists lack are skipped, renamed ones resolved, required ones kept`() {
+        assumeTrue(java.io.File("/bin/sh").canExecute())
+        val job = QueueJob(
+            1, "Libraries", listOf("vlc", "missing-app", "libfuse2t64|libfuse2|libfuse-old", "libnope", "xsettingsd"), QueueAction.INSTALL, null,
+            optional = setOf("libfuse2t64|libfuse2|libfuse-old", "libnope", "xsettingsd"),
+        )
+        // apt as a stand-in: these packages exist, apt-get prints what it was asked.
+        // libfuse2 is only referred to, as in Kali: the next name is taken.
+        val out = runWithFakeApt(InstallQueue.script(job), "vlc libfuse-old xsettingsd")
+        val install = out.lineSequence().first { it.startsWith("apt-get install") }
+        assertTrue(install, install.endsWith(" vlc missing-app libfuse-old xsettingsd"))
+        assertTrue("Skipping libnope: this system has no such package" in out)
+    }
+
+    @Test fun `Debian 13's sources are added at a low priority only for jobs that may, and only once`() {
+        val packages = listOf("libfuse2t64|libfuse2", "libnss3")
+        val plain = InstallQueue.script(QueueJob(1, "Libraries", packages, QueueAction.INSTALL, null, optional = packages.toSet()))
+        assertTrue(InstallQueue.FALLBACK_SOURCE !in plain)
+        val s = InstallQueue.script(QueueJob(1, "Libraries", packages, QueueAction.INSTALL, null, optional = packages.toSet(), fallback = true))
+        assertTrue("[ ! -e ${InstallQueue.FALLBACK_SOURCE} ]" in s)
+        assertTrue("Suites: trixie trixie-updates" in s && "Pin: origin deb.debian.org" in s && "Pin-Priority: 50" in s)
+        // Before the packages are picked, so what Debian brings counts; taken out if unreadable.
+        assertTrue(s.indexOf(InstallQueue.FALLBACK_SOURCE) < s.indexOf("pkgs=;"))
+        assertTrue("rm -f ${InstallQueue.FALLBACK_SOURCE} ${InstallQueue.FALLBACK_PIN}" in s)
+    }
+
+    @Test fun `nothing left to install after skipping is a success`() {
+        assumeTrue(java.io.File("/bin/sh").canExecute())
+        val job = QueueJob(1, "Libraries", listOf("libnope"), QueueAction.INSTALL, null, optional = setOf("libnope"))
+        val out = runWithFakeApt(InstallQueue.script(job), "")
+        assertTrue("apt-get install" !in out)
+    }
+
+    /** Runs [script] with apt-cache knowing only [known] and apt-get echoing its arguments; its output. */
+    private fun runWithFakeApt(script: String, known: String): String {
+        val bin = kotlin.io.path.createTempDirectory("fake-apt").toFile()
+        try {
+            // As apt prints it: a name only referred to has no candidate, but show still succeeds.
+            java.io.File(bin, "apt-cache").writeText(
+                "#!/bin/sh\n[ \"\$1\" = show ] && exit 0\necho \"\$2:\"; echo '  Installed: (none)'\n" +
+                    "for k in $known; do [ \"\$2\" = \"\$k\" ] && { echo '  Candidate: 1.0-1'; exit 0; }; done\necho '  Candidate: (none)'\n",
+            )
+            java.io.File(bin, "apt-get").writeText("#!/bin/sh\necho \"apt-get \$*\"\n")
+            bin.listFiles()!!.forEach { it.setExecutable(true) }
+            val pb = ProcessBuilder("/bin/sh", "-c", script).redirectErrorStream(true)
+            pb.environment()["PATH"] = bin.path + ":" + (System.getenv("PATH") ?: "/usr/bin:/bin")
+            val p = pb.start()
+            val out = p.inputStream.bufferedReader().readText()
+            assertEquals(out, 0, p.waitFor())
+            return out
+        } finally {
+            bin.deleteRecursively()
+        }
     }
 
     @Test fun `a job killed by a signal says which, and only the user's stop reads Stopped`() {

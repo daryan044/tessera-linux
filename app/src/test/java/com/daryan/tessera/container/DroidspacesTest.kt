@@ -178,6 +178,69 @@ class DroidspacesTest {
         assertNull(found[1].copy(config = found[1].config.copy(rootfs = "/x/a.img")).hostRoot)
     }
 
+    @Test fun `the listing carries each container's release and the launch tools it lacks`() {
+        val text = """
+            @@TESSERA arch
+            @@PID 900
+            name=arch
+            @@RELEASE
+            NAME="Arch Linux"
+            ID=arch
+            PRETTY_NAME="Arch Linux"
+
+            @@MISSING setpriv bogus
+            @@TESSERA kali
+            @@PID NONE
+            name=kali
+            rootfs_path=/data/local/Droidspaces/Containers/kali/rootfs
+            @@RELEASE
+            ID=kali
+            ID_LIKE=debian
+            VERSION_CODENAME=kali-rolling
+
+            @@MISSING
+            @@TESSERA img
+            @@PID NONE
+            rootfs_path=/x/rootfs.img
+        """.trimIndent()
+        val (arch, img, kali) = DroidspacesHost.parseListing(text, bridge)
+        assertEquals("arch", arch.release?.id)
+        assertFalse(arch.supported)
+        // Only the tools Tessera asked about; nothing after the marker leaks into the config.
+        assertEquals(listOf("setpriv"), arch.missingTools)
+        assertEquals("arch", arch.config.name)
+        assertTrue(kali.supported)
+        assertEquals(emptyList<String>(), kali.missingTools)
+        assertEquals("kali-rolling", kali.release?.codename)
+        assertEquals("/data/local/Droidspaces/Containers/kali/rootfs", kali.config.rootfs)
+        // A stopped image can't be read: unknown, which doesn't block it.
+        assertNull(img.release)
+        assertNull(img.missingTools)
+        assertTrue(img.supported)
+    }
+
+    @Test fun `only plain absolute paths are checked for in a container`() {
+        assertTrue(DroidspacesHost.plainPath("/usr/bin/firefox-esr"))
+        assertFalse(DroidspacesHost.plainPath("usr/bin/x"))
+        assertFalse(DroidspacesHost.plainPath("/usr/../../system/bin/sh"))
+        assertFalse(DroidspacesHost.plainPath("/a\nb"))
+    }
+
+    @Test fun `programs are found in a container's files without following its links`() {
+        assumeTrue(File("/bin/sh").canExecute())
+        val root = kotlin.io.path.createTempDirectory("ds-root").toFile()
+        try {
+            File(root, "usr/bin").mkdirs()
+            File(root, "usr/bin/gimp").writeText("")
+            // Absolute, as the container sees it: from outside it points nowhere.
+            java.nio.file.Files.createSymbolicLink(File(root, "usr/bin/firefox-esr").toPath(), File("/usr/lib/firefox-esr/firefox-esr").toPath())
+            val found = DroidspacesHost("/bin/sh").existing(root.path, listOf("/usr/bin/gimp", "/usr/bin/firefox-esr", "/usr/bin/xterm", "/it's here"))
+            assertEquals(setOf("/usr/bin/gimp", "/usr/bin/firefox-esr"), found)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun `only plain names reach a root shell`() {
         assertTrue(Droidspaces.validName("Debian_12-x.1"))
         assertFalse(Droidspaces.validName(""))

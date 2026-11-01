@@ -225,6 +225,8 @@ class DroidspacesActions(
     val start: () -> Unit,
     val stop: () -> Unit,
     val prepare: () -> Unit,
+    /** Installs what Tessera's launch script needs (util-linux) in the running container. */
+    val installTools: () -> Unit,
 )
 
 @Composable
@@ -261,7 +263,7 @@ private fun DroidspacesContainerItem(status: HostStatus, actions: DroidspacesAct
     val picked = status.droidspacesSelected
     SetupItem(
         state = when {
-            picked != null && picked.bridged && picked.running -> ItemState.Done
+            picked != null && picked.supported && picked.bridged && picked.running && picked.missingTools.isNullOrEmpty() -> ItemState.Done
             picked != null -> ItemState.Warn
             else -> ItemState.Todo
         },
@@ -269,9 +271,13 @@ private fun DroidspacesContainerItem(status: HostStatus, actions: DroidspacesAct
         body = when {
             containers.isEmpty() -> "Droidspaces has no containers yet. Make a Debian or Ubuntu one in the Droidspaces app, then check again."
             picked == null -> "Pick the container Tessera runs apps in."
+            !picked.supported -> "${picked.name} is ${picked.release?.label}. Tessera installs and runs apps with apt and " +
+                "Debian's packages, so it can only use Debian and Ubuntu containers (and their derivatives) for now."
             !picked.bridged -> "${picked.name} needs a one-time setup before Tessera can use it."
             !picked.running -> "${picked.name} is stopped."
-            else -> "${picked.name} is running. Apps open inside it."
+            !picked.missingTools.isNullOrEmpty() -> "${picked.name} lacks ${picked.missingTools.joinToString()}, which Tessera " +
+                "needs to start apps in their own namespaces and as their own user."
+            else -> "${picked.name} is running. Apps open inside it, and the Apps tab lists what it has."
         },
     ) {
         Column(Modifier.fillMaxWidth()) {
@@ -290,9 +296,10 @@ private fun DroidspacesContainerItem(status: HostStatus, actions: DroidspacesAct
                     Column(Modifier.weight(1f)) {
                         Text(c.name, style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            listOf(
+                            listOfNotNull(
+                                c.release?.label,
                                 if (c.running) "running" else "stopped",
-                                if (c.bridged) "set up" else "needs setup",
+                                if (!c.supported) "not supported" else if (c.bridged) "set up" else "needs setup",
                                 c.config.netMode,
                             ).joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
@@ -309,15 +316,22 @@ private fun DroidspacesContainerItem(status: HostStatus, actions: DroidspacesAct
             } else if (picked != null) {
                 Spacer(Modifier.height(8.dp))
                 when {
+                    // Nothing to set up in a system Tessera can't install into.
+                    !picked.supported -> {}
                     !picked.bridged -> Button(onClick = { confirm = true }) { Text("Set up for Tessera") }
                     !picked.running -> Button(onClick = actions.start) { Text("Start") }
+                    !picked.missingTools.isNullOrEmpty() -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = actions.installTools) { Text("Install util-linux") }
+                        TextButton(onClick = actions.stop) { Text("Stop") }
+                    }
                     else -> FilledTonalButton(onClick = actions.stop) { Text("Stop") }
                 }
                 val hints = listOfNotNull(
                     "Phone storage isn't in this container, so apps won't see Android folders. Turn on Android storage for it in Droidspaces."
                         .takeIf { !picked.config.androidStorage },
                     "This container has no network, so apps in it won't either.".takeIf { picked.config.netMode == "none" },
-                    "Tessera installs apps with apt: use a Debian or Ubuntu container.",
+                    "Tessera installs apps with apt: use a Debian or Ubuntu container."
+                        .takeIf { picked.release == null },
                 )
                 hints.forEach {
                     Spacer(Modifier.height(6.dp))

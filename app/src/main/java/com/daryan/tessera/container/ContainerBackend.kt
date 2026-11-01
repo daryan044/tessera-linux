@@ -151,7 +151,8 @@ val DESKTOP_COMPANIONS = mapOf(
  * container is missing any: OpenGL, EGL and GLES (glvnd, with Mesa's software drivers for when
  * the GPU driver is off; apps failed on a missing libGL.so.1), GLU, Vulkan's loader, glxinfo,
  * what our GPU driver ([GpuDriver]) links and Debian's Mesa doesn't pull in, and what
- * AppImages (FUSE 2) and Electron apps load.
+ * AppImages (FUSE 2) and Electron apps load. "a|b" is a package renamed between releases (the
+ * 64-bit time ones, from Debian 13 and Ubuntu 24.04): the first one the system has.
  */
 val BASE_LIBRARIES = listOf(
     "libgl1", "libegl1", "libgles2", "libglx-mesa0", "libegl-mesa0", "libgl1-mesa-dri", "libgbm1",
@@ -159,9 +160,14 @@ val BASE_LIBRARIES = listOf(
     // Turnip's X11 presenting links it; without it the driver doesn't load, Zink finds no
     // Vulkan device, and every GPU app fails with "failed to load driver: zink".
     "libxcb-keysyms1",
-    "libfuse2t64", "libnss3", "libxkbcommon0", "libasound2t64", "libxss1", "libxtst6", "libsecret-1-0", "libgtk-3-0t64",
+    "libfuse2t64|libfuse2", "libnss3", "libxkbcommon0", "libasound2t64|libasound2", "libxss1", "libxtst6", "libsecret-1-0",
+    "libgtk-3-0t64|libgtk-3-0",
     "ca-certificates", "fonts-dejavu-core",
 )
+
+/** Of [packages] ("a|b" for either), those none of whose names are in [installed]. */
+fun missingPackages(packages: List<String>, installed: Set<String>): List<String> =
+    packages.filterNot { p -> p.split('|').any { it in installed } }
 
 /** Packages every GUI app gets with it; see [guestCommand]. */
 val GUI_HELPER_PACKAGES = listOf("matchbox-window-manager", "dbus-x11", "at-spi2-core", "python3-pyatspi", "pulseaudio", "python3-xlib", "xsettingsd")

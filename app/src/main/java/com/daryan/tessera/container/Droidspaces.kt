@@ -14,8 +14,15 @@ data class DroidspacesContainer(
     val pid: Int?,
     /** Tessera's folders are shared into it (as it booted, when it runs). */
     val bridged: Boolean,
+    /** What its os-release says it is; null when its files couldn't be read (a stopped image). */
+    val release: GuestRelease? = null,
+    /** Of what enter.sh runs as root ([Droidspaces.LAUNCH_TOOLS]), what isn't there; null when unknown. */
+    val missingTools: List<String>? = null,
 ) {
     val running: Boolean get() = pid != null
+
+    /** Whether Tessera can install and run apps in it: a Debian-family system, or not known yet. */
+    val supported: Boolean get() = release?.isDebianFamily != false
 
     /**
      * Where its files are, as root sees them: /proc/<pid>/root while it runs (which works for
@@ -48,6 +55,12 @@ object Droidspaces {
         DroidspacesBind(paths.sessionsDir.invariantSeparatorsPath, GUEST_SESSIONS),
         DroidspacesBind(paths.droidspacesDir.invariantSeparatorsPath, GUEST_BIN, readOnly = true),
     )
+
+    /**
+     * What enter.sh needs inside the container, and the package apt-get brings each with:
+     * util-linux's unshare and setpriv, mount, and coreutils' base64.
+     */
+    val LAUNCH_TOOLS = linkedMapOf("unshare" to "util-linux", "setpriv" to "util-linux", "mount" to "mount", "base64" to "coreutils")
 
     /** Names Droidspaces makes are plain; anything else is refused before it reaches a root shell. */
     fun validName(name: String) = name.isNotEmpty() && name != "." && name != ".." && name.all { it.isLetterOrDigit() || it in "._-" }
@@ -90,6 +103,25 @@ class DroidspacesHost(private val su: String) {
             appendLine("  else")
             appendLine("    cat \"\$n/container.config\"")
             appendLine("  fi")
+            // A last line without its newline would swallow the next marker.
+            appendLine("  echo")
+            // Its files: through its init while it runs, else its rootfs folder (not an image).
+            appendLine("  r=")
+            appendLine("  if [ \"\$pid\" -gt 1 ] 2>/dev/null; then r=/proc/\$pid/root; else")
+            appendLine("    rp=\$(sed -n 's/^rootfs_path=//p' \"\$n/container.config\" | head -n 1)")
+            appendLine("    [ -n \"\$rp\" ] && [ -d \"\$rp\" ] && r=\$rp")
+            appendLine("  fi")
+            appendLine("  [ -n \"\$r\" ] || continue")
+            appendLine("  echo \"$RELEASE_MARK\"")
+            appendLine("  cat \"\$r/etc/os-release\" 2>/dev/null || cat \"\$r/usr/lib/os-release\" 2>/dev/null")
+            appendLine("  echo")
+            // -L too: a link's target is the container's path, which isn't ours to follow.
+            appendLine("  m=")
+            appendLine("  for t in ${Droidspaces.LAUNCH_TOOLS.keys.joinToString(" ")}; do")
+            appendLine("    ok=; for d in usr/bin bin usr/sbin sbin; do if [ -x \"\$r/\$d/\$t\" ] || [ -L \"\$r/\$d/\$t\" ]; then ok=1; break; fi; done")
+            appendLine("    [ -n \"\$ok\" ] || m=\"\$m \$t\"")
+            appendLine("  done")
+            appendLine("  echo \"$TOOLS_MARK\$m\"")
             appendLine("done")
             // A container whose config can't be read must not make the whole list look failed.
             appendLine("exit 0")
@@ -103,6 +135,36 @@ class DroidspacesHost(private val su: String) {
     fun stop(binary: String, name: String): Result = control(binary, name, "stop", 60)
 
     fun restart(binary: String, name: String): Result = control(binary, name, "restart", 180)
+
+    /**
+     * Installs what enter.sh needs ([Droidspaces.LAUNCH_TOOLS]) with apt, as root in the running
+     * container [name]: directly with `droidspaces run`, since without them enter.sh, and so the
+     * install queue, can't start.
+     */
+    fun installLaunchTools(binary: String, name: String): Result {
+        val packages = Droidspaces.LAUNCH_TOOLS.values.distinct().joinToString(" ")
+        val script = "export PATH=${ContainerPaths.GUEST_PATH} DEBIAN_FRONTEND=noninteractive; " +
+            "command -v apt-get >/dev/null 2>&1 || { echo 'This container has no apt-get'; exit 127; }; " +
+            "apt-get update || exit \$?; pk=; " +
+            "for p in $packages; do LC_ALL=C apt-cache policy \"\$p\" 2>/dev/null | grep -q '^ *Candidate: [^(]' && pk=\"\$pk \$p\"; done; " +
+            "apt-get install -y --no-install-recommends \$pk"
+        return control(binary, name, "run -- /bin/sh -c ${shellQuote(script)}", 900)
+    }
+
+    /**
+     * Which of [paths] (absolute, inside the container) exist under [root], the container's files
+     * as root sees them; null when root answered nothing usable. Links count as there without
+     * being followed: their targets are the container's paths, not ours.
+     */
+    fun existing(root: String, paths: Collection<String>): Set<String>? {
+        val wanted = paths.filter(::plainPath).distinct()
+        if (wanted.isEmpty()) return emptySet()
+        val script = "r=${shellQuote(root)}; for p in ${wanted.joinToString(" ") { shellQuote(it) }}; do " +
+            "if [ -e \"\$r\$p\" ] || [ -L \"\$r\$p\" ]; then echo \"$EXISTS_MARK\$p\"; fi; done; exit 0"
+        val out = suRun(script, 30)?.takeIf { it.code == 0 } ?: return null
+        return out.text.lineSequence().filter { it.startsWith(EXISTS_MARK) }
+            .map { it.removePrefix(EXISTS_MARK) }.filterTo(mutableSetOf()) { it in wanted }
+    }
 
     /**
      * Shares Tessera's folders ([needed]) into [name]: they are added to the container's saved
@@ -151,6 +213,12 @@ class DroidspacesHost(private val su: String) {
     companion object {
         private const val MARK = "@@TESSERA "
         private const val PID_MARK = "@@PID "
+        private const val RELEASE_MARK = "@@RELEASE"
+        private const val TOOLS_MARK = "@@MISSING"
+        private const val EXISTS_MARK = "@@HAS "
+
+        /** An absolute path with nothing a shell or a path walk could make more of. */
+        internal fun plainPath(p: String) = p.startsWith("/") && ".." !in p.split('/') && p.none { it == '\n' || it == '\u0000' }
 
         /** The listing [containers]'s script prints: per container a marker line, its pid line, its config. */
         internal fun parseListing(text: String, needed: List<DroidspacesBind>): List<DroidspacesContainer> {
@@ -158,22 +226,37 @@ class DroidspacesHost(private val su: String) {
             var name: String? = null
             var pid: Int? = null
             val body = StringBuilder()
+            // After the config: its os-release, then which launch tools it lacks.
+            var release: StringBuilder? = null
+            var missing: List<String>? = null
             fun flush() {
                 val n = name ?: return
                 val config = DroidspacesConfig.parse(n, body.toString())
-                found += DroidspacesContainer(n, config, pid, config.hasBinds(needed))
+                found += DroidspacesContainer(
+                    n, config, pid, config.hasBinds(needed),
+                    release = release?.let { GuestRelease.parse(it.toString()) },
+                    missingTools = missing,
+                )
             }
             for (line in text.lineSequence()) {
+                val os = release
                 when {
                     line.startsWith(MARK) -> {
                         flush()
                         name = line.removePrefix(MARK).trim().takeIf { Droidspaces.validName(it) }
                         pid = null
                         body.setLength(0)
+                        release = null
+                        missing = null
                     }
-                    line.startsWith(PID_MARK) && name != null && body.isEmpty() ->
+                    name == null || missing != null -> {}
+                    line.startsWith(PID_MARK) && body.isEmpty() && os == null ->
                         pid = line.removePrefix(PID_MARK).trim().toIntOrNull()?.takeIf { it > 1 }
-                    name != null -> body.appendLine(line)
+                    line == RELEASE_MARK && os == null -> release = StringBuilder()
+                    line.startsWith(TOOLS_MARK) && os != null ->
+                        missing = line.removePrefix(TOOLS_MARK).split(' ').filter { it in Droidspaces.LAUNCH_TOOLS }
+                    os != null -> os.appendLine(line)
+                    else -> body.appendLine(line)
                 }
             }
             flush()
