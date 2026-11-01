@@ -1,0 +1,4 @@
+0.6.0 (alpha)
+- Droidspaces containers: Debian, Ubuntu, Kali, Mint and their family. Each has its own Apps list and Store catalog, Setup installs util-linux when it's missing, and Flathub apps now start there.
+- Setup says when root wasn't granted and has a button to ask again, with what to do in Magisk, KernelSU, SukiSU or APatch.
+- Apps whose menu entry uses single quotes (Debian's 2048) start.
