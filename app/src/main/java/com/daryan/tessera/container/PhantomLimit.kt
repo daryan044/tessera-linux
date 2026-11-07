@@ -40,6 +40,16 @@ object PhantomLimit {
     /** Lifts the limit through [su]; true when it worked. */
     fun lift(su: String): Boolean = runSu(su, COMMANDS.joinToString("; ")) != null
 
+    /** Puts Android's limit back through [su]; true when it worked. */
+    fun restore(su: String): Boolean = runSu(
+        su,
+        buildList {
+            add("/system/bin/device_config delete activity_manager max_phantom_processes")
+            add("/system/bin/device_config set_sync_disabled_for_tests none")
+            if (Build.VERSION.SDK_INT >= 34) add("settings put global $SETTING true")
+        }.joinToString("; "),
+    ) != null
+
     /** [command]'s output, or null when it failed or su was refused. */
     private fun runSu(su: String, command: String): String? = runCatching {
         val p = ProcessBuilder(su, "-c", command).redirectErrorStream(true).start()

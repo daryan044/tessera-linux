@@ -211,6 +211,39 @@ object ChrootSetup {
         mv "${'$'}T" "${'$'}R"
         echo "Installed at ${'$'}R"
     """.trimIndent()
+
+    /**
+     * Deletes the system at [root] and what installs left beside it, as root; its last line says
+     * why when it fails. Sessions mount in namespaces of their own, so this shell shouldn't see
+     * their mounts, but rm follows a mount it does see: with one left inside (a user's own, say),
+     * phone storage could go with it. So any mount there stops it before anything is deleted.
+     * Built in to the shell, so a root shell short of tools can still check.
+     */
+    fun removeScript(root: String): String = """
+        export PATH=/system/bin:${'$'}PATH
+        R=${shellQuote(root)}
+        P="${'$'}{R%/*}"
+        case "${'$'}R" in
+          /data/local/*/*) ;;
+          *) echo "Not removing ${'$'}R: it isn't Tessera's folder."; exit 2 ;;
+        esac
+        while read -r id parent dev base point rest; do
+          case "${'$'}point" in
+            "${'$'}P"|"${'$'}P"/*) echo "Nothing was removed: ${'$'}point is still mounted. Restart the phone and try again."; exit 3 ;;
+          esac
+        done < /proc/self/mountinfo
+        rm -rf -- "${'$'}R" "${'$'}R.partial" "${'$'}R".old-*
+        rmdir "${'$'}P" 2>/dev/null
+        if [ -e "${'$'}R" ]; then echo "Couldn't remove all of ${'$'}R."; exit 1; fi
+        echo "Removed ${'$'}R"
+    """.trimIndent()
+
+    /** Runs [removeScript] through [su]; null when it's gone, else why not. */
+    fun remove(su: String, root: String): String? = runCatching {
+        val p = ProcessBuilder(su, "-c", removeScript(root)).redirectErrorStream(true).start()
+        val output = p.inputStream.bufferedReader().readLines()
+        if (p.waitFor() == 0) null else output.lastOrNull { it.isNotBlank() } ?: "Root access was refused."
+    }.getOrElse { it.message ?: "Couldn't start the removal." }
 }
 
 /** First-boot configuration of a freshly extracted rootfs. Plain file edits, no guest code runs. */

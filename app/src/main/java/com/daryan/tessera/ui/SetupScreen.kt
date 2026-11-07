@@ -32,6 +32,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.LinearWavyProgressIndicator
@@ -77,6 +78,9 @@ fun SetupScreen(
     onInstall: () -> Unit,
     onCancelInstall: () -> Unit,
     onLiftPhantomLimit: () -> Unit,
+    /** Whether chroot mode's Linux system is being deleted, and what deletes it. */
+    removingLinux: Boolean,
+    onRemoveLinux: (restoreLimit: Boolean) -> Unit,
     diagnosticsEnabled: Boolean,
     onDiagnostics: (Boolean) -> Unit,
     /** Puts the notes and recent session logs on the clipboard, for any assistant. */
@@ -168,6 +172,8 @@ fun SetupScreen(
                     }
                 } else if (!installed) {
                     InstallControls(install, if (chroot) status.su != null else status.prootBinary, onInstall, onCancelInstall)
+                } else if (chroot) {
+                    RemoveLinux(removingLinux, onRemoveLinux)
                 }
             }
         }
@@ -229,6 +235,60 @@ fun SetupScreen(
             }
         }
     }
+}
+
+/**
+ * Deletes chroot mode's system, which uninstalling Tessera leaves behind: it's outside the app's
+ * storage, where Android doesn't look. Says what goes, as there's no getting it back.
+ */
+@Composable
+private fun RemoveLinux(removing: Boolean, onRemove: (restoreLimit: Boolean) -> Unit) {
+    var asking by remember { mutableStateOf(false) }
+    var restoreLimit by remember { mutableStateOf(false) }
+    val danger = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+    TextButton(
+        onClick = { asking = true },
+        enabled = !removing,
+        colors = danger,
+        modifier = Modifier.padding(top = 4.dp),
+    ) { Text(if (removing) "Removing Linux…" else "Remove Linux") }
+    if (!asking) return
+    AlertDialog(
+        onDismissRequest = { asking = false },
+        title = { Text("Remove Linux from this phone?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "This deletes /data/local/linux/debian: every Linux app installed in chroot mode, " +
+                        "their settings, and all files in the Linux home folder. It can't be undone. " +
+                        "Linux apps open in chroot mode will close. Your phone's own storage isn't touched.",
+                )
+                Text(
+                    "To remove Tessera completely, uninstall it as usual afterwards.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Also put back Android's limit on background processes. Leave this off if another app, like Termux, needs it lifted.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f).padding(end = 12.dp),
+                    )
+                    Switch(checked = restoreLimit, onCheckedChange = { restoreLimit = it })
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    asking = false
+                    onRemove(restoreLimit)
+                },
+                colors = danger,
+            ) { Text("Remove") }
+        },
+        dismissButton = { TextButton(onClick = { asking = false }) { Text("Keep it") } },
+    )
 }
 
 /** What Setup can do with Droidspaces containers; the view model's. */

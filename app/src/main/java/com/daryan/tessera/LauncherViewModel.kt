@@ -29,9 +29,11 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import com.daryan.tessera.container.ChrootBackend
+import com.daryan.tessera.container.ChrootSetup
 import com.daryan.tessera.container.ContainerMenu
 import com.daryan.tessera.container.GuestRelease
 import com.daryan.tessera.container.missingPackages
@@ -520,6 +522,44 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val ok = withContext(Dispatchers.IO) { PhantomLimit.lift(su) }
             if (!ok) failed("Couldn't change it; was root access refused?")
+            refresh()
+        }
+    }
+
+    private val _removingLinux = MutableStateFlow(false)
+    /** Whether [removeChrootLinux] is deleting the system, which can take a while. */
+    val removingLinux: StateFlow<Boolean> = _removingLinux
+
+    /**
+     * Deletes chroot mode's Linux system, its apps and their files, after closing what runs in it;
+     * chroot mode's the one Android's uninstall can't clean up. [restoreLimit] also puts Android's
+     * limit on background processes back.
+     */
+    fun removeChrootLinux(restoreLimit: Boolean) {
+        val su = _status.value?.su ?: return
+        if (_removingLinux.value) return
+        viewModelScope.launch {
+            if (container.installer.state.value.running || container.queue.jobs.value.any { it.active }) {
+                _messages.send("Wait for what's installing to finish, or cancel it, then remove Linux")
+                return@launch
+            }
+            _removingLinux.value = true
+            try {
+                fun inChroot(s: RunningSession) = s.running && s.backend == ChrootBackend.NAME
+                sessions.sessions.value.filter(::inChroot).forEach { sessions.stop(it.session.id) }
+                kotlinx.coroutines.withTimeoutOrNull(5_000) {
+                    sessions.sessions.first { list -> list.none(::inChroot) }
+                }
+                val problem = withContext(Dispatchers.IO) { ChrootSetup.remove(su, container.paths.chrootRootfs.path) }
+                if (problem != null) {
+                    failed(problem)
+                    return@launch
+                }
+                val restored = !restoreLimit || withContext(Dispatchers.IO) { PhantomLimit.restore(su) }
+                _messages.send(if (restored) "Linux is removed from chroot mode" else "Linux is removed, but Android's process limit couldn't be put back")
+            } finally {
+                _removingLinux.value = false
+            }
             refresh()
         }
     }

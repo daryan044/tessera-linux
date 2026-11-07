@@ -108,6 +108,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val customTabs by vm.tabStore.tabs.collectAsStateWithLifecycle()
     val sessions by vm.sessions.sessions.collectAsStateWithLifecycle()
     val install by vm.installState.collectAsStateWithLifecycle()
+    val removingLinux by vm.removingLinux.collectAsStateWithLifecycle()
     val containerBusy by vm.containerBusy.collectAsStateWithLifecycle()
     val apps by vm.apps.collectAsStateWithLifecycle()
     // Apps installed from a terminal while the launcher was away show up when it's back.
@@ -536,6 +537,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     onInstall = { vm.install() },
                     onCancelInstall = vm::cancelInstall,
                     onLiftPhantomLimit = vm::liftPhantomLimit,
+                    removingLinux = removingLinux,
+                    onRemoveLinux = vm::removeChrootLinux,
                     diagnosticsEnabled = diagnosticsEnabled,
                     onDiagnostics = vm::setDiagnosticsEnabled,
                     onCopyDiagnostics = {
