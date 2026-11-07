@@ -65,9 +65,7 @@ class FlathubCatalog(private val dir: File, private val scope: CoroutineScope) {
 
     private fun readCache(cache: File): CatalogState.Ready? {
         if (!cache.isFile || System.currentTimeMillis() - cache.lastModified() > MAX_AGE_MS) return null
-        return runCatching {
-            CatalogState.Ready(json.decodeFromString(Cache.serializer(), cache.readText()).apps, cache.lastModified())
-        }.getOrNull()
+        return readCacheApps(cache.readText())?.let { CatalogState.Ready(it, cache.lastModified()) }
     }
 
     private fun download(cache: File): CatalogState.Ready {
@@ -76,7 +74,7 @@ class FlathubCatalog(private val dir: File, private val scope: CoroutineScope) {
         get(APPSTREAM) { input -> apps = parse(GZIPInputStream(input)) }
         val sorted = apps.distinctBy { it.id }.sortedBy { it.name.lowercase() }
         cache.parentFile?.mkdirs()
-        cache.writeText(json.encodeToString(Cache.serializer(), Cache(sorted)))
+        cache.writeText(writeCacheApps(sorted))
         return CatalogState.Ready(sorted, System.currentTimeMillis())
     }
 
@@ -93,11 +91,13 @@ class FlathubCatalog(private val dir: File, private val scope: CoroutineScope) {
     }
 
     @Serializable
-    private data class Cache(val apps: List<StoreApp>)
+    private data class Cache(val apps: List<StoreApp>, val version: Int = 0)
 
     companion object {
         private const val APPSTREAM = "https://dl.flathub.org/repo/appstream/aarch64/appstream.xml.gz"
         private const val MAX_AGE_MS = 7L * 24 * 3600 * 1000
+        /** Raised when what's cached changes. 1: ids are Flatpak's, not AppStream's. */
+        private const val CACHE_VERSION = 1
         /** Screenshots closest to this width: about a phone's. */
         private const val SHOT_WIDTH = 624
         private val json = Json { ignoreUnknownKeys = true }
@@ -108,6 +108,14 @@ class FlathubCatalog(private val dir: File, private val scope: CoroutineScope) {
             SAXParserFactory.newInstance().apply { isNamespaceAware = false }.newSAXParser().parse(input, handler)
             return handler.apps
         }
+
+        internal fun writeCacheApps(apps: List<StoreApp>): String =
+            json.encodeToString(Cache.serializer(), Cache(apps, CACHE_VERSION))
+
+        /** The apps in a cache file, or null when it can't be read or is from an older version. */
+        internal fun readCacheApps(text: String): List<StoreApp>? =
+            runCatching { json.decodeFromString(Cache.serializer(), text) }.getOrNull()
+                ?.takeIf { it.version == CACHE_VERSION }?.apps
     }
 
     /** Reads one <component> at a time; only the untranslated texts. */
@@ -117,7 +125,6 @@ class FlathubCatalog(private val dir: File, private val scope: CoroutineScope) {
         private val text = StringBuilder()
         // The component being read.
         private var type: String? = null
-        private var id: String? = null
         private var name: String? = null
         private var summary: String? = null
         private val description = StringBuilder()
@@ -140,7 +147,7 @@ class FlathubCatalog(private val dir: File, private val scope: CoroutineScope) {
             when {
                 qName == "component" && path.size == 2 -> {
                     type = attrs.getValue("type")
-                    id = null; name = null; summary = null; icon = null; desktopId = null; bundle = null
+                    name = null; summary = null; icon = null; desktopId = null; bundle = null
                     description.setLength(0); categories.clear(); shots.clear()
                 }
                 qName == "icon" -> iconAttrs = Triple(attrs.getValue("type"), attrs.getValue("width")?.toIntOrNull() ?: 0, attrs.getValue("scale"))
@@ -162,7 +169,6 @@ class FlathubCatalog(private val dir: File, private val scope: CoroutineScope) {
             val parent = path.elementAtOrNull(path.size - 2)
             val inComponent = path.size >= 3 && path.elementAt(1) == "component"
             if (inComponent) when (qName) {
-                "id" -> if (parent == "component") id = value
                 "name" -> if (parent == "component" && lang == null) name = value
                 "summary" -> if (parent == "component" && lang == null) summary = value
                 "p" -> if (parent == "description" && lang == null) description.append(value).append("\n\n")
@@ -183,11 +189,14 @@ class FlathubCatalog(private val dir: File, private val scope: CoroutineScope) {
         }
 
         private fun finish() {
-            val id = id ?: return
             // Windowed apps only: console ones would need a terminal session, which Flathub apps lack so far.
             if (type != "desktop-application") return
             // Only apps (not runtimes or add-ons), and only those Flatpak installs as apps.
             if (bundle?.startsWith("app/") != true) return
+            // The id Flatpak knows it by, from its ref (app/<id>/<arch>/<branch>). AppStream's own
+            // <id> can differ: org.kde.konsole.desktop is org.kde.konsole, while
+            // org.telegram.desktop really is called that, so no suffix can be trimmed instead.
+            val id = bundle?.split('/')?.getOrNull(1)?.takeIf { it.isNotEmpty() } ?: return
             apps += StoreApp(
                 id = id,
                 pkg = id,

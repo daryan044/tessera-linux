@@ -4,6 +4,7 @@
 package com.daryan.tessera.store
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -70,5 +71,34 @@ class FlathubCatalogTest {
         assertTrue(mpv.description.startsWith("Mpv is a movie player based on MPlayer.\n\nFeatures:"))
         assertTrue("• Drag and drop playlist\n" in mpv.description)
         assertTrue("Nicht" !in mpv.description)
+    }
+
+    @Test fun `an app's id is the one in its Flatpak ref, not AppStream's`() {
+        val apps = FlathubCatalog.parse(
+            """<components origin="flathub">
+              <component type="desktop-application">
+                <id>org.kde.konsole.desktop</id>
+                <name>Konsole</name>
+                <launchable type="desktop-id">org.kde.konsole.desktop</launchable>
+                <bundle type="flatpak">app/org.kde.konsole/aarch64/stable</bundle>
+              </component>
+              <component type="desktop-application">
+                <id>org.telegram.desktop</id>
+                <name>Telegram</name>
+                <bundle type="flatpak">app/org.telegram.desktop/aarch64/stable</bundle>
+              </component>
+            </components>""".byteInputStream(),
+        )
+        assertEquals(listOf("org.kde.konsole", "org.telegram.desktop"), apps.map { it.id })
+        assertEquals(listOf("org.kde.konsole", "org.telegram.desktop"), apps.map { it.pkg })
+        // The desktop file in the app keeps its own name.
+        assertEquals("org.kde.konsole.desktop", apps.first().desktopId)
+    }
+
+    @Test fun `a cache from before ids came from the Flatpak ref is not used`() {
+        val apps = FlathubCatalog.parse(xml.byteInputStream())
+        assertEquals(apps, FlathubCatalog.readCacheApps(FlathubCatalog.writeCacheApps(apps)))
+        assertNull(FlathubCatalog.readCacheApps("""{"apps":[]}"""))
+        assertNull(FlathubCatalog.readCacheApps("not json"))
     }
 }
