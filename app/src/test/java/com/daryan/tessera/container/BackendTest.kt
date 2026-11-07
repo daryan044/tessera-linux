@@ -63,6 +63,32 @@ class BackendTest {
         assertFalse(proot.buildLaunch(offline, session).argv.any { "tessera-proot" in it })
     }
 
+    @Test fun `a runtime that lost its files says so, rather than env not found`() {
+        val code = firefox.copy(
+            flatpak = FlatpakRef(
+                app = "com.vscodium.codium",
+                appDir = "/var/lib/flatpak/app/com.vscodium.codium/current/active/files",
+                runtimeDir = "/var/lib/flatpak/runtime/org.freedesktop.Sdk/aarch64/25.08/active/files",
+                command = "codium",
+            ),
+        )
+        // The folders are there, and bin/env is listed, but following it finds nothing.
+        val proot = ProotBackend(paths, exists = { !it.endsWith("/active/files/bin/env") })
+        val failure = org.junit.Assert.assertThrows(IllegalStateException::class.java) { proot.buildFlatpakLaunch(code, session, emptyMap()) }
+        assertTrue(failure.message!!, "org.freedesktop.Sdk 25.08" in failure.message!!)
+        assertTrue(failure.message!!, "damaged" in failure.message!!)
+    }
+
+    @Test fun `an app in the other engine's system still says that first`() {
+        val code = firefox.copy(
+            flatpak = FlatpakRef(app = "a.b.c", appDir = "/var/lib/flatpak/app/a.b.c/current/active/files", runtimeDir = "/r", command = "c"),
+        )
+        val failure = org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            ProotBackend(paths, exists = { false }).buildFlatpakLaunch(code, session, emptyMap())
+        }
+        assertTrue(failure.message!!, "each engine has its own" in failure.message!!)
+    }
+
     @Test fun `proot cannot withhold network and says so`() {
         val proot = ProotBackend(paths, exists = { true })
         assertEquals(Enforcement.UNAVAILABLE, proot.enforcement(Capability.NETWORK, offline))

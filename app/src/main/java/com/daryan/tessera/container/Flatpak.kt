@@ -141,6 +141,13 @@ object Flatpak {
         )
     }
 
+    /** Says what to do about [ref]'s runtime having lost its files, following "Couldn't start the app:". */
+    fun damagedRuntime(ref: FlatpakRef): String {
+        val (name, _, branch) = ref.runtimeDir.removePrefix("$ROOT/runtime/").split('/') + listOf("", "", "")
+        return "its runtime, $name $branch, is damaged: programs it needs are missing. " +
+            "Uninstall every app that uses that runtime, then install them again."
+    }
+
     /**
      * The environment a Flatpak app needs on top of the session's: its own folders first, and
      * GL from the runtime's Mesa unless the session uses our GPU driver (whose own settings come

@@ -84,6 +84,10 @@ class ProotBackend(
             "it isn't installed in PRoot's Linux system (each engine has its own). " +
                 "Install it from Flathub again here, or switch to the Chroot engine."
         }
+        // A runtime's files are PRoot's stand-ins for hard links, symlinks into Flatpak's store. One
+        // whose target is gone is still listed, but nothing can run it, and PRoot's own word for
+        // the first program it can't start is only "'/usr/bin/env' not found" (#11).
+        check(exists("$rootfs${ref.runtimeDir}/bin/env")) { Flatpak.damagedRuntime(ref) }
         val skeleton = FlatpakSkeleton.ensure(paths.flatpakSkeleton)
         val argv = buildList {
             add(paths.proot.invariantSeparatorsPath)
