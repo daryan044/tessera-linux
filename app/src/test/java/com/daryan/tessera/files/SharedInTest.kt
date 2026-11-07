@@ -56,6 +56,19 @@ class SharedInTest {
         assertNull(of(sendMany))
     }
 
+    @Test fun `no app is granted a phone folder over where shared files go`() {
+        val manifests = java.io.File("src/main/assets/apps").listFiles { f -> f.name.endsWith(".json") }.orEmpty()
+        assert(manifests.isNotEmpty()) { "no bundled manifests found" }
+        val mounts = manifests.flatMap { Regex(""""mountAt"\s*:\s*"([^"]+)"""").findAll(it.readText()).map { m -> m.groupValues[1] } }
+        assert(mounts.isNotEmpty()) { "no grants found: the pattern is stale" }
+        // A grant at, above or below it would hide the copy, or leave PRoot's placeholder there.
+        mounts.forEach { m ->
+            assert(m != FileBrowser.SHARED_DIR && !m.startsWith(FileBrowser.SHARED_DIR + "/") && !FileBrowser.SHARED_DIR.startsWith("$m/")) {
+                "$m is over ${FileBrowser.SHARED_DIR}"
+            }
+        }
+    }
+
     @Test fun `names can't leave the folder`() {
         assertEquals("file", SharedIn.safeName(null))
         assertEquals("file", SharedIn.safeName(""))

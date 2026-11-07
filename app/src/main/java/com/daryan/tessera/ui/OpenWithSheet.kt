@@ -80,11 +80,14 @@ fun OpenWithSheet(
     entry: FileEntry,
     /** Finds the launcher entry for a Linux handler, for its icon and permissions. */
     launcherApp: (String, DesktopEntry) -> PermissionManifest?,
+    /** Every installed app, for opening it with one its type doesn't name. */
+    allApps: () -> List<PermissionManifest>,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onExtract: () -> Unit,
     onInstallDeb: (DebInfo) -> Unit,
     onOpenLinux: (LinuxOpener) -> Unit,
+    onOpenApp: (PermissionManifest) -> Unit,
     onMessage: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -202,6 +205,8 @@ fun OpenWithSheet(
                     }
                 })
             }
+            Spacer(Modifier.height(8.dp))
+            AllApps(allApps, onOpenApp)
 
             Spacer(Modifier.height(24.dp))
             Heading("Open in Android", LauncherIcons.Phone)
@@ -238,8 +243,11 @@ class SharedReady(val title: String, val args: List<String>, val openers: List<L
 fun SharedInSheet(
     shared: SharedIn,
     prepare: suspend (SharedIn) -> SharedReady,
+    /** Every installed app, for opening it with one its type doesn't name. */
+    allApps: () -> List<PermissionManifest>,
     onDismiss: () -> Unit,
     onOpen: (LinuxOpener, List<String>) -> Unit,
+    onOpenApp: (PermissionManifest, List<String>) -> Unit,
 ) {
     var ready by remember(shared) { mutableStateOf<SharedReady?>(null) }
     var problem by remember(shared) { mutableStateOf<String?>(null) }
@@ -280,10 +288,12 @@ fun SharedInSheet(
                             }
                         })
                     }
+                    Spacer(Modifier.height(8.dp))
+                    AllApps(allApps) { onOpenApp(it, r.args) }
                     if (r.saved) {
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            "A copy is in Downloads in your Linux home folder, and stays there.",
+                            "A copy is in From-Android in your Linux home folder, and stays there.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -293,6 +303,30 @@ fun SharedInSheet(
             Spacer(peek)
         }
     }
+}
+
+/** Every installed app, on request: what Linux says opens a type is only a suggestion. */
+@Composable
+private fun AllApps(apps: () -> List<PermissionManifest>, onOpen: (PermissionManifest) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    if (!open) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { open = true }.padding(vertical = 12.dp, horizontal = 4.dp),
+        ) {
+            Icon(Icons.Rounded.MoreVert, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(12.dp))
+            Text("All apps", style = MaterialTheme.typography.bodyLarge)
+        }
+        return
+    }
+    val list = remember { apps() }
+    if (list.isEmpty()) return Note("No apps are installed yet. You'll find them in the Store.")
+    Note("Not every app can open everything; one that can't may open empty or show an error.")
+    Spacer(Modifier.height(12.dp))
+    AppTiles(list.map { app ->
+        Tile(app.name, { AppGlyph(app, 28.dp, MaterialTheme.colorScheme.onSecondaryContainer) }) { onOpen(app) }
+    })
 }
 
 @Composable

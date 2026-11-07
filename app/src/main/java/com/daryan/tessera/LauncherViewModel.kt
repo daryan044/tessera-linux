@@ -77,6 +77,15 @@ import java.io.File
 /** Where USB drives and SD cards appear in apps allowed to see them. */
 private const val DRIVES = "/media/user"
 
+/**
+ * The apps a file or link can be opened with, whatever its type: windowed apps that may be
+ * installed ([installed] is null when that can't be told), by name. Not a whole desktop, nor
+ * shortcuts and terminal apps, whose commands could run what's handed to them as a script.
+ */
+internal fun openableApps(apps: List<PermissionManifest>, installed: (PermissionManifest) -> Boolean?): List<PermissionManifest> =
+    apps.filter { it.gui && !it.desktop && !Shortcut.isShortcut(it) && installed(it) != false }
+        .sortedBy { it.name.lowercase() }
+
 enum class BackendMode(val label: String, val short: String) {
     PROOT("PRoot", "PRoot"),
     CHROOT("Chroot (root)", "Chroot"),
@@ -1073,9 +1082,15 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun openInLinux(opener: com.daryan.tessera.ui.LinuxOpener, path: String, onLaunched: (RunningSession) -> Unit) =
         openInLinux(opener, listOf(path), onLaunched)
 
-    /** Starts [opener] with [args]: files, or an address, which needs no folder shared. */
-    fun openInLinux(opener: com.daryan.tessera.ui.LinuxOpener, args: List<String>, onLaunched: (RunningSession) -> Unit) {
-        val base = opener.app ?: com.daryan.tessera.store.SystemApps.manifestFor(opener.desktopFile, opener.entry, null)
+    fun openInLinux(opener: com.daryan.tessera.ui.LinuxOpener, args: List<String>, onLaunched: (RunningSession) -> Unit) =
+        openInLinux(opener.app ?: com.daryan.tessera.store.SystemApps.manifestFor(opener.desktopFile, opener.entry, null), args, onLaunched)
+
+    /** Every app "All apps" offers: what's installed, by name. */
+    fun openableApps(): List<PermissionManifest> =
+        openableApps(apps.value) { installed(it, _status.value, _mode.value) }
+
+    /** Starts [base] with [args]: files, or an address, which needs no folder shared. */
+    fun openInLinux(base: PermissionManifest, args: List<String>, onLaunched: (RunningSession) -> Unit) {
         val dirs = args.filter { it.startsWith("/") }.map { it.substringBeforeLast('/').ifEmpty { "/" } }.distinct()
         val grants = base.permissions.filesystem + dirs.filter { dir ->
             GuestFiles.onAndroid(dir) && base.permissions.filesystem.none { it.mountAt == dir }

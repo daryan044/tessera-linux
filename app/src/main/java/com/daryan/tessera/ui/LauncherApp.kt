@@ -770,10 +770,17 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         SharedInSheet(
             shared = shared,
             prepare = vm::prepareShared,
+            allApps = vm::openableApps,
             onDismiss = { vm.sharedRequests.value = null },
             onOpen = { opener, args ->
                 vm.sharedRequests.value = null
                 vm.openInLinux(opener, args) { started ->
+                    if (started.terminal != null) TerminalActivity.open(context, started.session.id)
+                }
+            },
+            onOpenApp = { app, args ->
+                vm.sharedRequests.value = null
+                vm.openInLinux(app, args) { started ->
                     if (started.terminal != null) TerminalActivity.open(context, started.session.id)
                 }
             },
@@ -786,6 +793,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             b = vm.files,
             entry = entry,
             launcherApp = vm::linuxAppFor,
+            allApps = vm::openableApps,
             onDismiss = done,
             onEdit = { done(); filesUi.editing = entry },
             onExtract = { done(); filesUi.dialog = FilesDialog.Extract(entry) },
@@ -793,6 +801,12 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onOpenLinux = { opener ->
                 done()
                 vm.openInLinux(opener, entry.path) { started ->
+                    if (started.terminal != null) TerminalActivity.open(context, started.session.id)
+                }
+            },
+            onOpenApp = { app ->
+                done()
+                vm.openInLinux(app, listOf(entry.path)) { started ->
                     if (started.terminal != null) TerminalActivity.open(context, started.session.id)
                 }
             },

@@ -554,9 +554,9 @@ class FileBrowser(
         }
     }
 
-    /** Copies what another app shared into Linux's Downloads folder; returns the paths there. */
+    /** Copies what another app shared into [SHARED_DIR]; returns the paths there. */
     suspend fun bringIn(shared: SharedIn): List<String> = withShell { files ->
-        val into = "$HOME/Downloads"
+        val into = SHARED_DIR
         if (!files.exists(into)) {
             files.mkdir(into)
             files.ownLike(into, HOME)
@@ -812,6 +812,13 @@ class FileBrowser(
         const val PLACES = ""
         const val PHONE = "/storage/emulated/0"
         const val HOME = "/home/user"
+
+        /**
+         * Where files other apps share with Linux go. Not Downloads, Pictures or the like: apps
+         * are granted the phone's folders there, which hides what's in Linux's own from them, and
+         * PRoot leaves an unusable placeholder (mode 000) in their place.
+         */
+        const val SHARED_DIR = "$HOME/From-Android"
 
         private val PROTECTED = setOf("/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib64", "/proc", "/root", "/run", "/sbin", "/sys", "/usr", "/var", "/storage", "/storage/emulated", PHONE)
         val ARCHIVES = setOf("zip", "tar", "tgz", "txz", "tbz2", "gz", "xz", "bz2", "zst")
