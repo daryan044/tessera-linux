@@ -12,7 +12,9 @@ import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -396,8 +398,23 @@ private val AppShapes = listOf(
 fun appShape(app: PermissionManifest): Shape =
     AppShapes[Math.floorMod(app.id.hashCode(), AppShapes.size)].toShape()
 
+/**
+ * Icon colors the user picked, as ARGB by app id ([com.daryan.tessera.HomeLayoutStore] keeps it).
+ * State of its own, not passed down, as icons are drawn in several windows: the launcher's, a
+ * desktop's Start menu, the bitmap that goes on the phone's home screen.
+ */
+internal val customIconColors = mutableStateOf<Map<String, Int>>(emptyMap())
+
+/** The tone that reads on [container]. */
+internal fun contentColorOn(container: Color): Color =
+    if (container.luminance() > 0.5f) Color(0xFF1B1B1F) else Color.White
+
 @Composable
 fun appColors(app: PermissionManifest): Pair<Color, Color> {
+    customIconColors.value[app.id]?.let { argb ->
+        val custom = Color(argb)
+        return custom to contentColorOn(custom)
+    }
     val c = MaterialTheme.colorScheme
     return when (Math.floorMod(app.id.hashCode() / 7, 3)) {
         0 -> c.primaryContainer to c.onPrimaryContainer

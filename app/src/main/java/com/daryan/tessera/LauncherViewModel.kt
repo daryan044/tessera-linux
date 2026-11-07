@@ -117,6 +117,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     val paths = container.paths
     private val probe = HostProbe(paths)
     val tabStore = TabStore(app)
+    val homeLayout = HomeLayoutStore(app)
     val sessions = container.sessions
     val installState: StateFlow<InstallState> = container.installer.state
 
@@ -596,22 +597,23 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         custom: List<CustomTab>,
         pinned: List<String> = emptyList(),
         favorites: List<String> = emptyList(),
+        layout: HomeLayout = HomeLayout(),
     ): List<LauncherTab> {
         val apps = apps.filterNot { it.desktop }
         val byId = apps.associateBy { it.id }
-        val pins = pinned.mapNotNull { byId[it] }
-        fun arranged(list: List<PermissionManifest>) = pins.filter { it in list } + list.filterNot { it.id in pinned }
+        fun tab(title: String, list: List<PermissionManifest>, custom: Boolean = false) =
+            LauncherTab(title, arrange(list, title, layout, pinned), custom)
         return buildList {
-            add(LauncherTab("All", arranged(apps), custom = false))
+            add(tab("All", apps))
             val favs = favorites.mapNotNull { byId[it] }
-            if (favs.isNotEmpty()) add(LauncherTab(FAVORITES_TAB, arranged(favs), custom = false))
+            if (favs.isNotEmpty()) add(tab(FAVORITES_TAB, favs))
             // Always there, even empty: it's where new shortcuts are made.
-            add(LauncherTab(SHORTCUTS_TAB, arranged(apps.filter { it.category == SHORTCUTS_TAB }), custom = false))
+            add(tab(SHORTCUTS_TAB, apps.filter { it.category == SHORTCUTS_TAB }))
             apps.map { it.category }.filter { it != SHORTCUTS_TAB }.distinct().sorted().forEach { cat ->
-                add(LauncherTab(cat, arranged(apps.filter { it.category == cat }), custom = false))
+                add(tab(cat, apps.filter { it.category == cat }))
             }
-            custom.forEach { tab ->
-                add(LauncherTab(tab.name, arranged(apps.filter { it.id in tab.appIds }), custom = true))
+            custom.forEach { t ->
+                add(tab(t.name, apps.filter { it.id in t.appIds }, custom = true))
             }
         }
     }
@@ -1262,7 +1264,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             val adb = if (app.permissions.adb) phoneAdb(app, backend) else null
             // Main thread: TerminalSession binds to the caller's Looper. Spawning is a quick fork.
             runCatching { sessions.launch(app, backend, usb, adb) }
-                .onSuccess(onLaunched)
+                .onSuccess {
+                    homeLayout.markUsed(app.id)
+                    onLaunched(it)
+                }
                 .onFailure {
                     usb?.close()
                     failed("Couldn't start ${app.name}: ${it.message}")

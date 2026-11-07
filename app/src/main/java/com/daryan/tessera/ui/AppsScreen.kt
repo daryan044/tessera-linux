@@ -12,8 +12,24 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.material.icons.rounded.Create
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.toMutableStateList
+import androidx.compose.runtime.withFrameMillis
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
+import com.daryan.tessera.HomeIconSize
+import com.daryan.tessera.HomeLayout
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.material3.AppBarWithSearch
@@ -172,6 +188,15 @@ fun AppsPager(
     /** Whether [onGraphics] has anything for windowed apps (theming, or the phone's GPU driver). */
     graphics: Boolean,
     onGraphics: (PermissionManifest) -> Unit,
+    layout: HomeLayout,
+    /** Whether icons are being dragged into place. */
+    editing: Boolean,
+    onEditing: (Boolean) -> Unit,
+    /** A tab's apps, in the order they were dragged to. */
+    onReorder: (String, List<String>) -> Unit,
+    onHomeSettings: () -> Unit,
+    onIconColor: (PermissionManifest) -> Unit,
+    onHide: (PermissionManifest) -> Unit,
 ) {
     val context = LocalContext.current
     val homeScreen = remember { HomeShortcuts.supported(context) }
@@ -181,6 +206,12 @@ fun AppsPager(
             app, rise,
             pinned = app.id in pinned,
             favorite = app.id in favorites,
+            size = layout.iconSize,
+            showLabels = layout.showLabels,
+            editing = editing,
+            onCustomize = onHomeSettings,
+            onIconColor = { onIconColor(app) },
+            onHide = { onHide(app) },
             onClick = { onOpen(app) },
             onTogglePin = { onTogglePin(app) },
             onToggleFavorite = { onToggleFavorite(app) },
@@ -193,7 +224,26 @@ fun AppsPager(
             modifier = modifier,
         )
     }
-    TabsPager(tabs, pagerState, padding, tile, onTrackpad, onNewShortcut)
+    Box(Modifier.fillMaxSize()) {
+        TabsPager(tabs, pagerState, padding, tile, onTrackpad, onNewShortcut, layout, editing, onEditing, onReorder, onHomeSettings)
+        if (editing) {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                shadowElevation = 6.dp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = padding.calculateBottomPadding() + 12.dp, start = 16.dp, end = 16.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 20.dp, end = 8.dp, top = 4.dp, bottom = 4.dp)) {
+                    Text("Hold an icon and drag it", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f, fill = false))
+                    Spacer(Modifier.size(12.dp))
+                    TextButton(onClick = { onEditing(false) }) { Text("Done") }
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -298,47 +348,220 @@ private fun TabsPager(
     tile: @Composable (PermissionManifest, Int?, Modifier) -> Unit,
     onTrackpad: () -> Unit,
     onNewShortcut: () -> Unit,
+    layout: HomeLayout,
+    editing: Boolean,
+    onEditing: (Boolean) -> Unit,
+    onReorder: (String, List<String>) -> Unit,
+    onHomeSettings: () -> Unit,
 ) {
     // Tabs whose tiles already rose in: coming back to one (or swiping past it) shouldn't replay it.
     val shown = remember { mutableSetOf<String>() }
+    // Holding the home screen itself, where no icon is: where to open the menu.
+    var heldAt by remember { mutableStateOf<Offset?>(null) }
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val onHeld: (Offset) -> Unit = {
+        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+        heldAt = it
+    }
+    Box(Modifier.fillMaxSize()) {
     // The tabs either side are composed ahead, so a swipe doesn't build a whole grid mid-gesture.
     // The page count can run a frame ahead of [tabs] when a tab comes or goes (an app in a new
     // category): until this recomposes, a page past the end has no tab, rather than a crash.
-    HorizontalPager(pagerState, Modifier.fillMaxSize(), beyondViewportPageCount = 1, key = { tabs.getOrNull(it)?.title ?: "page-$it" }) { page ->
+    HorizontalPager(
+        pagerState,
+        Modifier.fillMaxSize(),
+        beyondViewportPageCount = 1,
+        // A tab at a time while arranging: a drag toward the edge shouldn't turn the page.
+        userScrollEnabled = !editing,
+        key = { tabs.getOrNull(it)?.title ?: "page-$it" },
+    ) { page ->
         val tab = tabs.getOrNull(page) ?: return@HorizontalPager
         val animate = remember(tab.title) { shown.add(tab.title) && page == pagerState.currentPage }
         // Only the first screenful rises in; tiles scrolled to later just appear.
         val enteredAt = remember(tab.title) { SystemClock.uptimeMillis() }
         val shortcuts = tab.title == SHORTCUTS_TAB && !tab.custom
         if (tab.apps.isEmpty() && !shortcuts) {
-            EmptyState(
-                title = "Nothing here yet",
-                body = if (tab.custom) "Open an app and add it to “${tab.title}”." else "No apps in this category.",
-                padding = padding,
-            )
+            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onLongPress = onHeld) }) {
+                EmptyState(
+                    title = "Nothing here yet",
+                    body = if (tab.custom) "Open an app and add it to “${tab.title}”." else "No apps in this category.",
+                    padding = padding,
+                )
+            }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 104.dp),
-                contentPadding = PaddingValues(
-                    start = 12.dp,
-                    end = 12.dp,
-                    top = padding.calculateTopPadding() + 8.dp,
-                    bottom = padding.calculateBottomPadding() + 24.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.fillMaxSize(),
+            AppGrid(
+                tab = tab,
+                layout = layout,
+                padding = padding,
+                editing = editing,
+                onHeld = onHeld,
+                onReorder = { onReorder(tab.title, it) },
+                tile = { app, index, modifier ->
+                    tile(app, index.takeIf { animate && SystemClock.uptimeMillis() - enteredAt < 1000 }, modifier)
+                },
+                extras = {
+                    if (shortcuts) {
+                        item(key = "trackpad") { TrackpadTile(onTrackpad, Modifier.animateItem()) }
+                        item(key = "new-shortcut") { NewShortcutTile(onNewShortcut, Modifier.animateItem()) }
+                    }
+                },
+            )
+        }
+    }
+    heldAt?.let { at ->
+        Box(Modifier.offset { IntOffset(at.x.roundToInt(), at.y.roundToInt()) }.size(1.dp)) {
+            DropdownMenu(
+                expanded = true,
+                onDismissRequest = { heldAt = null },
+                shape = MaterialTheme.shapes.large,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
-                itemsIndexed(tab.apps, key = { _, app -> app.id }) { index, app ->
-                    tile(app, index.takeIf { animate && SystemClock.uptimeMillis() - enteredAt < 1000 }, Modifier.animateItem())
-                }
-                if (shortcuts) {
-                    item(key = "trackpad") { TrackpadTile(onTrackpad, Modifier.animateItem()) }
-                    item(key = "new-shortcut") { NewShortcutTile(onNewShortcut, Modifier.animateItem()) }
-                }
+                DropdownMenuItem(
+                    text = { Text("Edit layout") },
+                    leadingIcon = { Icon(Icons.Rounded.Edit, null) },
+                    onClick = { heldAt = null; onEditing(true) },
+                )
+                DropdownMenuItem(
+                    text = { Text("Home settings") },
+                    leadingIcon = { Icon(Icons.Rounded.Settings, null) },
+                    onClick = { heldAt = null; onHomeSettings() },
+                )
             }
         }
     }
+    }
 }
+
+/**
+ * One tab's icons. Holding the empty space between them calls [onHeld]; while [editing], holding
+ * an icon picks it up instead, and the rest make way as it's dragged. The order goes to
+ * [onReorder] when it's let go, so nothing is saved for a drag that's cancelled.
+ */
+@Composable
+private fun AppGrid(
+    tab: LauncherTab,
+    layout: HomeLayout,
+    padding: PaddingValues,
+    editing: Boolean,
+    onHeld: (Offset) -> Unit,
+    onReorder: (List<String>) -> Unit,
+    tile: @Composable (PermissionManifest, Int, Modifier) -> Unit,
+    extras: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit,
+) {
+    val grid = rememberLazyGridState()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    // A copy to move icons around in while dragging, until the saved order catches up.
+    val apps = remember(tab.apps) { tab.apps.toMutableStateList() }
+    var dragged by remember { mutableStateOf<String?>(null) }
+    // The finger, and where on the icon it took hold, in the grid's own coordinates.
+    var finger by remember { mutableStateOf(Offset.Zero) }
+    var grip by remember { mutableStateOf(Offset.Zero) }
+    val startPad = with(density) { GRID_SIDE_PADDING.toPx() }
+    val topPad = with(density) { (padding.calculateTopPadding() + GRID_TOP_PADDING).toPx() }
+    // Item offsets leave out the content padding; pointers don't.
+    fun inGrid(at: Offset) = at - Offset(startPad, topPad)
+    fun itemAt(at: Offset) = grid.layoutInfo.visibleItemsInfo.firstOrNull { item ->
+        at.x >= item.offset.x && at.x < item.offset.x + item.size.width &&
+            at.y >= item.offset.y && at.y < item.offset.y + item.size.height
+    }
+    fun moveTo(target: Any?) {
+        val from = apps.indexOfFirst { it.id == dragged }
+        val to = apps.indexOfFirst { it.id == target }
+        if (from >= 0 && to >= 0 && from != to) apps.add(to, apps.removeAt(from))
+    }
+    // Near the top or bottom edge the grid scrolls on its own, for icons a screen away.
+    LaunchedEffect(dragged) {
+        if (dragged == null) return@LaunchedEffect
+        val edge = with(density) { 96.dp.toPx() }
+        val step = with(density) { 6.dp.toPx() }
+        while (true) {
+            withFrameMillis { }
+            val height = grid.layoutInfo.viewportSize.height
+            val y = finger.y + topPad
+            val delta = when {
+                y < edge + topPad -> -step
+                y > height - edge - with(density) { padding.calculateBottomPadding().toPx() } -> step
+                else -> 0f
+            }
+            if (delta != 0f) {
+                grid.dispatchRawDelta(delta)
+                moveTo(itemAt(finger)?.key)
+            }
+        }
+    }
+    LazyVerticalGrid(
+        state = grid,
+        columns = if (layout.columns > 0) GridCells.Fixed(layout.columns) else GridCells.Adaptive(minSize = 104.dp),
+        // Held still by the drag, which moves the icon rather than the grid.
+        userScrollEnabled = dragged == null,
+        contentPadding = PaddingValues(
+            start = GRID_SIDE_PADDING,
+            end = GRID_SIDE_PADDING,
+            top = padding.calculateTopPadding() + GRID_TOP_PADDING,
+            bottom = padding.calculateBottomPadding() + 24.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            // Keyed on the list: each saved order makes a new one, which a handler still holding
+            // the old one would rearrange out of sight, and then save.
+            .pointerInput(editing, apps) {
+                if (editing) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { at ->
+                            val item = itemAt(inGrid(at))
+                            if (item != null && apps.any { it.id == item.key }) {
+                                finger = inGrid(at)
+                                grip = finger - Offset(item.offset.x.toFloat(), item.offset.y.toFloat())
+                                dragged = item.key as String
+                            }
+                        },
+                        onDrag = { change, amount ->
+                            if (dragged != null) {
+                                change.consume()
+                                finger += amount
+                                moveTo(itemAt(finger)?.key)
+                            }
+                        },
+                        onDragEnd = {
+                            if (dragged != null) onReorder(apps.map { it.id })
+                            dragged = null
+                        },
+                        onDragCancel = {
+                            dragged = null
+                            apps.clear()
+                            apps.addAll(tab.apps)
+                        },
+                    )
+                } else {
+                    detectTapGestures(onLongPress = { at -> if (itemAt(inGrid(at)) == null) onHeld(at) })
+                }
+            },
+    ) {
+        itemsIndexed(apps, key = { _, app -> app.id }) { index, app ->
+            val lifted = dragged == app.id
+            tile(
+                app, index,
+                if (lifted) {
+                    Modifier.zIndex(1f).graphicsLayer {
+                        // Wherever the grid has put it by now, it's drawn under the finger.
+                        val at = grid.layoutInfo.visibleItemsInfo.firstOrNull { it.key == app.id }?.offset
+                        if (at != null) {
+                            translationX = finger.x - grip.x - at.x
+                            translationY = finger.y - grip.y - at.y
+                        }
+                        scaleX = 1.08f
+                        scaleY = 1.08f
+                    }
+                } else Modifier.animateItem(),
+            )
+        }
+        extras()
+    }
+}
+
+private val GRID_SIDE_PADDING = 12.dp
+private val GRID_TOP_PADDING = 8.dp
 
 /** One app in the grid. Holding it opens its menu: pin, favorite, home screen, graphics, command, uninstall. */
 @Composable
@@ -348,6 +571,13 @@ private fun AppTile(
     index: Int?,
     pinned: Boolean,
     favorite: Boolean,
+    size: HomeIconSize,
+    showLabels: Boolean,
+    /** While icons are being arranged, holding one lifts it (the grid's doing): no opening, no menu. */
+    editing: Boolean,
+    onCustomize: () -> Unit,
+    onIconColor: () -> Unit,
+    onHide: () -> Unit,
     onClick: () -> Unit,
     onTogglePin: () -> Unit,
     onToggleFavorite: () -> Unit,
@@ -393,6 +623,7 @@ private fun AppTile(
             }
             .clip(MaterialTheme.shapes.large)
             .combinedClickable(
+                enabled = !editing,
                 interactionSource = interaction,
                 indication = ripple(),
                 onClick = onClick,
@@ -406,12 +637,12 @@ private fun AppTile(
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(72.dp)
+                .size(size.iconDp.dp)
                 .graphicsLayer { rotationZ = spin }
                 .clip(appShape(app))
                 .background(container),
         ) {
-            AppGlyph(app, 30.dp, onContainer, Modifier.graphicsLayer { rotationZ = -spin })
+            AppGlyph(app, size.glyphDp.dp, onContainer, Modifier.graphicsLayer { rotationZ = -spin })
         }
         if (pinned || favorite) {
             Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -423,18 +654,20 @@ private fun AppTile(
         } else {
             Spacer(Modifier.height(10.dp))
         }
-        Text(
-            app.name,
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-        )
-        Text(
-            if (app.gui) "Window" else "Terminal",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (showLabels) {
+            Text(
+                app.name,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                if (app.gui) "Window" else "Terminal",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
     DropdownMenu(
         expanded = menu,
@@ -461,6 +694,21 @@ private fun AppTile(
                 onClick = { menu = false; HomeShortcuts.pin(context, app, homeIcon()) },
             )
         }
+        DropdownMenuItem(
+            text = { Text("Icon color") },
+            leadingIcon = { Icon(Icons.Rounded.Create, null) },
+            onClick = { menu = false; onIconColor() },
+        )
+        DropdownMenuItem(
+            text = { Text("Hide") },
+            leadingIcon = { Icon(Icons.Rounded.Close, null) },
+            onClick = { menu = false; onHide() },
+        )
+        DropdownMenuItem(
+            text = { Text("Customize home") },
+            leadingIcon = { Icon(Icons.Rounded.Settings, null) },
+            onClick = { menu = false; onCustomize() },
+        )
         if (onGraphics != null) {
             DropdownMenuItem(
                 text = { Text("Look and graphics") },

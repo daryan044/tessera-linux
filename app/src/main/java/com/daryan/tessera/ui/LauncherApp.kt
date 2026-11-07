@@ -125,7 +125,12 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     // Phones that have the GPU driver (see LauncherViewModel.gpuFor).
     val gpuGraphics = remember { vm.gpuAvailable() }
     val favorites by vm.tabStore.favorites.collectAsStateWithLifecycle()
-    val tabs = remember(apps, customTabs, pinned, favorites) { vm.tabs(apps, customTabs, pinned, favorites) }
+    val homeLayout by vm.homeLayout.layout.collectAsStateWithLifecycle()
+    val tabs = remember(apps, customTabs, pinned, favorites, homeLayout) { vm.tabs(apps, customTabs, pinned, favorites, homeLayout) }
+    // Customizing the home screen: dragging icons, its settings, and one app's icon color.
+    var editingHome by remember { mutableStateOf(false) }
+    var homeSettings by remember { mutableStateOf(false) }
+    var iconColorApp by remember { mutableStateOf<PermissionManifest?>(null) }
 
     var destination by rememberSaveable { mutableStateOf(Destination.Apps) }
     var openApp by remember { mutableStateOf<PermissionManifest?>(null) }
@@ -490,6 +495,19 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     onEditExec = { execApp = it },
                     graphics = gpuGraphics || appearance.enabled,
                     onGraphics = { graphicsApp = it },
+                    layout = homeLayout,
+                    editing = editingHome,
+                    onEditing = { editingHome = it },
+                    onReorder = vm.homeLayout::setOrder,
+                    onHomeSettings = { homeSettings = true },
+                    onIconColor = { iconColorApp = it },
+                    onHide = { app ->
+                        vm.homeLayout.setHidden(app.id, true)
+                        scope.launch {
+                            val undo = snackbar.showSnackbar("${app.name} is hidden", actionLabel = "Undo", duration = SnackbarDuration.Short)
+                            if (undo == SnackbarResult.ActionPerformed) vm.homeLayout.setHidden(app.id, false)
+                        }
+                    },
                 )
                 Destination.Files -> FilesScreen(vm.files, filesUi, padding, onMessage = filesMessage)
                 Destination.Store -> StoreScreen(
@@ -766,6 +784,27 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     } }
 
     FilesDialogs(vm.files, filesUi, onMessage = filesMessage)
+
+    // Arranging ends with the Back button, or on leaving the home screen.
+    androidx.activity.compose.BackHandler(enabled = editingHome) { editingHome = false }
+    LaunchedEffect(destination) { if (destination != Destination.Apps) editingHome = false }
+    if (homeSettings) {
+        HomeSettingsSheet(
+            layout = homeLayout,
+            store = vm.homeLayout,
+            apps = apps,
+            onEditLayout = { editingHome = true },
+            onDismiss = { homeSettings = false },
+        )
+    }
+    iconColorApp?.let { app -> key(app.id) {
+        IconColorSheet(
+            app = app,
+            current = homeLayout.iconColors[app.id],
+            onPick = { vm.homeLayout.setIconColor(app.id, it) },
+            onDismiss = { iconColorApp = null },
+        )
+    } }
 
     // Opening something in an app: one that's already open is asked about first, as a second copy
     // may refuse to start (Firefox's profile is taken) and only the user can say to close the first.
