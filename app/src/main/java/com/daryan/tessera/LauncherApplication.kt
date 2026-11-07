@@ -190,6 +190,9 @@ class LauncherContainer(private val app: Application) {
     /** What another app wants opened in Linux (set from Android's "Open with" and "Share"). */
     val sharedRequests = kotlinx.coroutines.flow.MutableStateFlow<com.daryan.tessera.files.SharedIn?>(null)
 
+    /** What the phone's widgets last showed as running; session states change far more often. */
+    private var widgetSessions: List<Pair<String, String>>? = null
+
     val busy: StateFlow<Boolean> = combine(installer.state, sessions.sessions, queue.jobs) { install, list, jobs ->
         install.running || list.any { it.exitCode == null } || jobs.any { it.active }
     }.stateIn(scope, SharingStarted.Eagerly, false)
@@ -208,6 +211,16 @@ class LauncherContainer(private val app: Application) {
         }
         scope.launch {
             busy.collect { if (it) ContainerService.start(app) }
+        }
+        // The phone's widgets that list what's running, as it changes.
+        scope.launch {
+            sessions.sessions.collect { list ->
+                val names = list.filter { it.running }.map { it.session.id to it.app.name }
+                if (names != widgetSessions) {
+                    widgetSessions = names
+                    com.daryan.tessera.widgets.PhoneWidgets.refresh(app, com.daryan.tessera.WidgetKind.RUNNING, com.daryan.tessera.WidgetKind.STATS)
+                }
+            }
         }
         recordFailures()
     }

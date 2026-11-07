@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The phone's home screen widgets. Android 12 and newer use the wallpaper's colors instead. -->
+    <color name="widget_surface">#FF1C1B1F</color>
+    <color name="widget_on_surface">#FFF4EFF4</color>
+    <color name="widget_on_surface_variant">#FFCAC4D0</color>
+    <color name="widget_accent">#FFD0BCFF</color>
+    <color name="widget_track">#FF4A4458</color>
+</resources>

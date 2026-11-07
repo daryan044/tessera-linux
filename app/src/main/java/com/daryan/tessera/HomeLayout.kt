@@ -31,6 +31,61 @@ enum class HomeIconSize(val label: String, val iconDp: Int, val glyphDp: Int) {
     LARGE("Large", 88, 36),
 }
 
+/** The widgets Tessera has, on its own home screen and the phone's alike. */
+@Serializable
+enum class WidgetKind(val label: String, val description: String, val needsTarget: Boolean = false) {
+    APP("App", "Start one app", needsTarget = true),
+    RUNNING("Running apps", "What's open in Linux now"),
+    STATS("This phone", "Memory, storage and running apps"),
+    COMMAND("Quick command", "Run one of your shortcuts", needsTarget = true),
+}
+
+/** What a widget starts: an app or shortcut, named so it can be drawn without looking it up. */
+@Serializable
+data class WidgetTarget(val appId: String, val name: String)
+
+/** A widget on one of Tessera's tabs, with its own settings. */
+@Serializable
+data class HomeWidget(
+    val id: String,
+    val kind: WidgetKind,
+    val tab: String,
+    val target: WidgetTarget? = null,
+    /** Across the whole row, or half of it. */
+    val wide: Boolean = true,
+)
+
+/** One thing in a tab's grid. */
+sealed interface HomeItem {
+    /** What it's known by in the grid, and in a dragged order. */
+    val key: String
+
+    data class App(val app: PermissionManifest) : HomeItem {
+        override val key get() = app.id
+    }
+
+    data class Widget(val widget: HomeWidget) : HomeItem {
+        override val key get() = "widget:${widget.id}"
+    }
+}
+
+/**
+ * A tab's grid: its [apps], as [arrange] left them, and its widgets. A widget goes where it was
+ * dragged, ahead of the app that followed it then; one that wasn't dragged yet leads, to be seen.
+ */
+fun homeItems(tab: String, apps: List<PermissionManifest>, layout: HomeLayout): List<HomeItem> {
+    val widgets = layout.widgets.filter { it.tab == tab }.map { HomeItem.Widget(it) }
+    val items = apps.map<PermissionManifest, HomeItem> { HomeItem.App(it) }.toMutableList()
+    val order = if (layout.sort == HomeSort.MANUAL) layout.order[tab].orEmpty() else emptyList()
+    val placed = widgets.filter { it.key in order }.sortedBy { order.indexOf(it.key) }
+    placed.forEach { widget ->
+        val after = order.drop(order.indexOf(widget.key) + 1)
+        val next = after.firstNotNullOfOrNull { key -> items.indexOfFirst { it.key == key }.takeIf { it >= 0 } }
+        items.add(next ?: items.size, widget)
+    }
+    return widgets.filterNot { it in placed } + items
+}
+
 /** How the user laid out the home screen; see [arrange] for what it does to a tab. */
 @Serializable
 data class HomeLayout(
@@ -47,6 +102,8 @@ data class HomeLayout(
     val iconColors: Map<String, Int> = emptyMap(),
     /** When each app last started, in ms, by app id, for [HomeSort.RECENT]. */
     val lastUsed: Map<String, Long> = emptyMap(),
+    /** Widgets on the tabs, each with settings of its own. */
+    val widgets: List<HomeWidget> = emptyList(),
 ) {
     companion object {
         /** The column counts offered, with 0 for fitting the screen. */
@@ -106,6 +163,19 @@ class HomeLayoutStore(context: Context) {
     /** Sets [appId]'s icon color as ARGB; null goes back to the theme's. */
     fun setIconColor(appId: String, argb: Int?) = edit {
         it.copy(iconColors = if (argb == null) it.iconColors - appId else it.iconColors + (appId to argb))
+    }
+
+    fun addWidget(kind: WidgetKind, tab: String, target: WidgetTarget?) = edit {
+        it.copy(widgets = it.widgets + HomeWidget(java.util.UUID.randomUUID().toString(), kind, tab, target))
+    }
+
+    fun removeWidget(id: String) = edit { layout ->
+        val key = HomeItem.Widget(HomeWidget(id, WidgetKind.RUNNING, "")).key
+        layout.copy(widgets = layout.widgets.filterNot { it.id == id }, order = layout.order.mapValues { (_, ids) -> ids - key })
+    }
+
+    fun setWidgetWide(id: String, wide: Boolean) = edit { layout ->
+        layout.copy(widgets = layout.widgets.map { if (it.id == id) it.copy(wide = wide) else it })
     }
 
     /** Notes [appId] starting now. */

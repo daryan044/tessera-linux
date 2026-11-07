@@ -4,4 +4,12 @@
          label rather than the task's own "<app> (Linux)" (the Pixel Launcher). -->
     <string name="linux_window_label">Linux app</string>
     <string name="linux_terminal_label">Linux terminal</string>
+    <string name="widget_app_label">Linux app</string>
+    <string name="widget_app_description">Start one Linux app</string>
+    <string name="widget_running_label">Running Linux apps</string>
+    <string name="widget_running_description">What\'s open in Linux now</string>
+    <string name="widget_stats_label">Phone and Linux</string>
+    <string name="widget_stats_description">Memory, storage and running Linux apps</string>
+    <string name="widget_command_label">Quick command</string>
+    <string name="widget_command_description">Run one of your Tessera shortcuts</string>
 </resources>

@@ -62,6 +62,61 @@ class HomeLayoutTest {
         assertEquals(listOf("Apple", "mango"), ids(HomeLayout(sort = HomeSort.NAME, hidden = setOf("zebra")), pinned = listOf("zebra")))
     }
 
+    private fun widget(id: String, tab: String = "All") = HomeWidget(id, WidgetKind.STATS, tab)
+    private fun keys(layout: HomeLayout, tab: String = "All") =
+        homeItems(tab, arrange(apps, tab, layout), layout).map { it.key }
+
+    @Test fun `a new widget leads its own tab and no other`() {
+        val layout = HomeLayout(widgets = listOf(widget("w")))
+        assertEquals(listOf("widget:w", "zebra", "Apple", "mango"), keys(layout))
+        assertEquals(listOf("zebra", "Apple", "mango"), keys(layout, tab = "Games"))
+    }
+
+    @Test fun `a dragged widget stays ahead of the app that followed it`() {
+        val layout = HomeLayout(
+            sort = HomeSort.MANUAL,
+            widgets = listOf(widget("w")),
+            order = mapOf("All" to listOf("mango", "widget:w", "zebra", "Apple")),
+        )
+        assertEquals(listOf("mango", "widget:w", "zebra", "Apple"), keys(layout))
+    }
+
+    @Test fun `a widget dragged to the end stays there, and new widgets still lead`() {
+        val layout = HomeLayout(
+            sort = HomeSort.MANUAL,
+            widgets = listOf(widget("old"), widget("new")),
+            order = mapOf("All" to listOf("mango", "zebra", "Apple", "widget:old")),
+        )
+        assertEquals(listOf("widget:new", "mango", "zebra", "Apple", "widget:old"), keys(layout))
+    }
+
+    @Test fun `two widgets dragged side by side keep their order`() {
+        val layout = HomeLayout(
+            sort = HomeSort.MANUAL,
+            widgets = listOf(widget("b"), widget("a")),
+            order = mapOf("All" to listOf("mango", "widget:a", "widget:b", "zebra", "Apple")),
+        )
+        assertEquals(listOf("mango", "widget:a", "widget:b", "zebra", "Apple"), keys(layout))
+    }
+
+    @Test fun `a widget's place outlives the app it was next to`() {
+        val layout = HomeLayout(
+            sort = HomeSort.MANUAL,
+            widgets = listOf(widget("w")),
+            order = mapOf("All" to listOf("mango", "widget:w", "uninstalled", "zebra", "Apple")),
+        )
+        assertEquals(listOf("mango", "widget:w", "zebra", "Apple"), keys(layout))
+    }
+
+    @Test fun `any other sort leaves widgets leading, and each keeps its own settings`() {
+        val a = HomeWidget("a", WidgetKind.APP, "All", WidgetTarget("gimp", "GIMP"), wide = false)
+        val b = HomeWidget("b", WidgetKind.APP, "All", WidgetTarget("mango", "mango"))
+        val items = homeItems("All", arrange(apps, "All", HomeLayout(sort = HomeSort.NAME)), HomeLayout(sort = HomeSort.NAME, widgets = listOf(a, b)))
+        assertEquals(listOf("widget:a", "widget:b", "Apple", "mango", "zebra"), items.map { it.key })
+        assertEquals(a, (items[0] as HomeItem.Widget).widget)
+        assertEquals(b, (items[1] as HomeItem.Widget).widget)
+    }
+
     @Test fun `a saved layout comes back, and one from a newer version still reads`() {
         val json = Json { ignoreUnknownKeys = true }
         val layout = HomeLayout(columns = 5, iconSize = HomeIconSize.LARGE, sort = HomeSort.RECENT, hidden = setOf("a"), iconColors = mapOf("a" to -65536))

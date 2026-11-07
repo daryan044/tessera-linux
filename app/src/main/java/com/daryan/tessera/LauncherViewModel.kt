@@ -86,6 +86,14 @@ internal fun openableApps(apps: List<PermissionManifest>, installed: (Permission
     apps.filter { it.gui && !it.desktop && !Shortcut.isShortcut(it) && installed(it) != false }
         .sortedBy { it.name.lowercase() }
 
+/** What a [kind] widget can start: apps for an App widget, shortcuts for a Quick command, by name. */
+internal fun widgetTargets(kind: WidgetKind, apps: List<PermissionManifest>, installed: (PermissionManifest) -> Boolean?): List<PermissionManifest> =
+    when (kind) {
+        WidgetKind.APP -> apps.filter { !it.desktop && !Shortcut.isShortcut(it) && installed(it) != false }
+        WidgetKind.COMMAND -> apps.filter { Shortcut.isShortcut(it) && installed(it) != false }
+        WidgetKind.RUNNING, WidgetKind.STATS -> emptyList()
+    }.sortedBy { it.name.lowercase() }
+
 /** Programs that only start another, so two apps running one are not the same app. */
 private val WRAPPERS = setOf("sh", "bash", "dash", "env", "python3", "python", "flatpak", "wine")
 
@@ -1102,6 +1110,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     /** A running session of [app], which a second copy of it might not start beside. */
     fun runningCopy(app: PermissionManifest): RunningSession? =
         sessions.sessions.value.firstOrNull { it.running && sameApp(it.app, app) }
+
+    /** What a [kind] widget can start, of what's installed. */
+    fun widgetTargets(kind: WidgetKind): List<PermissionManifest> =
+        widgetTargets(kind, apps.value) { installed(it, _status.value, _mode.value) }
 
     /** Every app "All apps" offers: what's installed, by name. */
     fun openableApps(): List<PermissionManifest> =

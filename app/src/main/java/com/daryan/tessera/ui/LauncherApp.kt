@@ -131,6 +131,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var editingHome by remember { mutableStateOf(false) }
     var homeSettings by remember { mutableStateOf(false) }
     var iconColorApp by remember { mutableStateOf<PermissionManifest?>(null) }
+    var addingWidget by remember { mutableStateOf(false) }
 
     var destination by rememberSaveable { mutableStateOf(Destination.Apps) }
     var openApp by remember { mutableStateOf<PermissionManifest?>(null) }
@@ -508,6 +509,22 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                             if (undo == SnackbarResult.ActionPerformed) vm.homeLayout.setHidden(app.id, false)
                         }
                     },
+                    onWidgets = { addingWidget = true },
+                    widget = { widget, modifier ->
+                        HomeWidgetCard(
+                            widget = widget,
+                            running = sessions,
+                            target = widget.target?.let { t -> apps.firstOrNull { it.id == t.appId } },
+                            editing = editingHome,
+                            onStart = startApp,
+                            onShowSession = { s ->
+                                if (s.terminal != null) TerminalActivity.open(context, s.session.id) else vm.sessions.showWindow(s.session.id)
+                            },
+                            onResize = { vm.homeLayout.setWidgetWide(widget.id, !widget.wide) },
+                            onRemove = { vm.homeLayout.removeWidget(widget.id) },
+                            modifier = modifier,
+                        )
+                    },
                 )
                 Destination.Files -> FilesScreen(vm.files, filesUi, padding, onMessage = filesMessage)
                 Destination.Store -> StoreScreen(
@@ -794,7 +811,18 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             store = vm.homeLayout,
             apps = apps,
             onEditLayout = { editingHome = true },
+            onWidgets = { addingWidget = true },
             onDismiss = { homeSettings = false },
+        )
+    }
+    if (addingWidget) {
+        // To the tab that's showing, which is where the sheet was opened from.
+        val tabTitle = tabs.getOrNull(pagerState.currentPage)?.title ?: tabs.first().title
+        WidgetsSheet(
+            tab = tabTitle,
+            targets = vm::widgetTargets,
+            onAddHere = { kind, target -> vm.homeLayout.addWidget(kind, tabTitle, target) },
+            onDismiss = { addingWidget = false },
         )
     }
     iconColorApp?.let { app -> key(app.id) {

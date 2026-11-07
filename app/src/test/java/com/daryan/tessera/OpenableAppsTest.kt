@@ -26,6 +26,14 @@ class OpenableAppsTest {
         })
     }
 
+    @Test fun `an App widget offers installed apps, and a Quick command only shortcuts`() {
+        val all = listOf(app("Zed"), app("bash", gui = false), app("Desktop", desktop = true), app("My command", id = "shortcut-1"), app("Gone"))
+        val installed: (PermissionManifest) -> Boolean? = { it.name != "Gone" }
+        assertEquals(listOf("bash", "Zed"), widgetTargets(WidgetKind.APP, all, installed).map { it.name })
+        assertEquals(listOf("My command"), widgetTargets(WidgetKind.COMMAND, all, installed).map { it.name })
+        assertEquals(emptyList<PermissionManifest>(), widgetTargets(WidgetKind.STATS, all, installed))
+    }
+
     @Test fun `two entries for one program are the same app, as they share its profile`() {
         val launcher = app("Firefox", id = "firefox-esr").copy(exec = listOf("firefox-esr"))
         val linux = app("Firefox ESR", id = "system-firefox").copy(exec = listOf("/usr/bin/firefox-esr", "/tmp/a.png"))

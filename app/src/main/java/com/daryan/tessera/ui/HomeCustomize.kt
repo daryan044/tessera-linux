@@ -53,6 +53,7 @@ fun HomeSettingsSheet(
     store: HomeLayoutStore,
     apps: List<PermissionManifest>,
     onEditLayout: () -> Unit,
+    onWidgets: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     DraggableSheet(onDismissRequest = onDismiss) { peek ->
@@ -61,6 +62,10 @@ fun HomeSettingsSheet(
             Spacer(Modifier.height(16.dp))
             FilledTonalButton(onClick = { onDismiss(); onEditLayout() }, modifier = Modifier.fillMaxWidth()) {
                 Text("Drag icons into place")
+            }
+            Spacer(Modifier.height(8.dp))
+            FilledTonalButton(onClick = { onDismiss(); onWidgets() }, modifier = Modifier.fillMaxWidth()) {
+                Text("Add a widget")
             }
 
             Section("Grid")

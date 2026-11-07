@@ -28,8 +28,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import com.daryan.tessera.HomeIconSize
+import com.daryan.tessera.HomeItem
 import com.daryan.tessera.HomeLayout
+import com.daryan.tessera.HomeWidget
+import com.daryan.tessera.homeItems
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.material3.AppBarWithSearch
@@ -197,6 +201,9 @@ fun AppsPager(
     onHomeSettings: () -> Unit,
     onIconColor: (PermissionManifest) -> Unit,
     onHide: (PermissionManifest) -> Unit,
+    onWidgets: () -> Unit,
+    /** Draws a widget on a tab. */
+    widget: @Composable (HomeWidget, Modifier) -> Unit,
 ) {
     val context = LocalContext.current
     val homeScreen = remember { HomeShortcuts.supported(context) }
@@ -225,7 +232,7 @@ fun AppsPager(
         )
     }
     Box(Modifier.fillMaxSize()) {
-        TabsPager(tabs, pagerState, padding, tile, onTrackpad, onNewShortcut, layout, editing, onEditing, onReorder, onHomeSettings)
+        TabsPager(tabs, pagerState, padding, tile, onTrackpad, onNewShortcut, layout, editing, onEditing, onReorder, onHomeSettings, onWidgets, widget)
         if (editing) {
             Surface(
                 shape = MaterialTheme.shapes.large,
@@ -353,6 +360,8 @@ private fun TabsPager(
     onEditing: (Boolean) -> Unit,
     onReorder: (String, List<String>) -> Unit,
     onHomeSettings: () -> Unit,
+    onWidgets: () -> Unit,
+    widget: @Composable (HomeWidget, Modifier) -> Unit,
 ) {
     // Tabs whose tiles already rose in: coming back to one (or swiping past it) shouldn't replay it.
     val shown = remember { mutableSetOf<String>() }
@@ -380,7 +389,7 @@ private fun TabsPager(
         // Only the first screenful rises in; tiles scrolled to later just appear.
         val enteredAt = remember(tab.title) { SystemClock.uptimeMillis() }
         val shortcuts = tab.title == SHORTCUTS_TAB && !tab.custom
-        if (tab.apps.isEmpty() && !shortcuts) {
+        if (tab.apps.isEmpty() && !shortcuts && layout.widgets.none { it.tab == tab.title }) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onLongPress = onHeld) }) {
                 EmptyState(
                     title = "Nothing here yet",
@@ -399,6 +408,7 @@ private fun TabsPager(
                 tile = { app, index, modifier ->
                     tile(app, index.takeIf { animate && SystemClock.uptimeMillis() - enteredAt < 1000 }, modifier)
                 },
+                widget = widget,
                 extras = {
                     if (shortcuts) {
                         item(key = "trackpad") { TrackpadTile(onTrackpad, Modifier.animateItem()) }
@@ -426,6 +436,11 @@ private fun TabsPager(
                     leadingIcon = { Icon(Icons.Rounded.Settings, null) },
                     onClick = { heldAt = null; onHomeSettings() },
                 )
+                DropdownMenuItem(
+                    text = { Text("Widgets") },
+                    leadingIcon = { Icon(LauncherIcons.Apps, null) },
+                    onClick = { heldAt = null; onWidgets() },
+                )
             }
         }
     }
@@ -446,12 +461,14 @@ private fun AppGrid(
     onHeld: (Offset) -> Unit,
     onReorder: (List<String>) -> Unit,
     tile: @Composable (PermissionManifest, Int, Modifier) -> Unit,
+    widget: @Composable (HomeWidget, Modifier) -> Unit,
     extras: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit,
 ) {
     val grid = rememberLazyGridState()
     val density = androidx.compose.ui.platform.LocalDensity.current
-    // A copy to move icons around in while dragging, until the saved order catches up.
-    val apps = remember(tab.apps) { tab.apps.toMutableStateList() }
+    // A copy to move things around in while dragging, until the saved order catches up.
+    val arranged = remember(tab.apps, layout.widgets, layout.order, layout.sort) { homeItems(tab.title, tab.apps, layout) }
+    val items = remember(arranged) { arranged.toMutableStateList() }
     var dragged by remember { mutableStateOf<String?>(null) }
     // The finger, and where on the icon it took hold, in the grid's own coordinates.
     var finger by remember { mutableStateOf(Offset.Zero) }
@@ -465,9 +482,9 @@ private fun AppGrid(
             at.y >= item.offset.y && at.y < item.offset.y + item.size.height
     }
     fun moveTo(target: Any?) {
-        val from = apps.indexOfFirst { it.id == dragged }
-        val to = apps.indexOfFirst { it.id == target }
-        if (from >= 0 && to >= 0 && from != to) apps.add(to, apps.removeAt(from))
+        val from = items.indexOfFirst { it.key == dragged }
+        val to = items.indexOfFirst { it.key == target }
+        if (from >= 0 && to >= 0 && from != to) items.add(to, items.removeAt(from))
     }
     // Near the top or bottom edge the grid scrolls on its own, for icons a screen away.
     LaunchedEffect(dragged) {
@@ -505,12 +522,12 @@ private fun AppGrid(
             .fillMaxSize()
             // Keyed on the list: each saved order makes a new one, which a handler still holding
             // the old one would rearrange out of sight, and then save.
-            .pointerInput(editing, apps) {
+            .pointerInput(editing, items) {
                 if (editing) {
                     detectDragGesturesAfterLongPress(
                         onDragStart = { at ->
                             val item = itemAt(inGrid(at))
-                            if (item != null && apps.any { it.id == item.key }) {
+                            if (item != null && items.any { it.key == item.key }) {
                                 finger = inGrid(at)
                                 grip = finger - Offset(item.offset.x.toFloat(), item.offset.y.toFloat())
                                 dragged = item.key as String
@@ -524,13 +541,13 @@ private fun AppGrid(
                             }
                         },
                         onDragEnd = {
-                            if (dragged != null) onReorder(apps.map { it.id })
+                            if (dragged != null) onReorder(items.map { it.key })
                             dragged = null
                         },
                         onDragCancel = {
                             dragged = null
-                            apps.clear()
-                            apps.addAll(tab.apps)
+                            items.clear()
+                            items.addAll(arranged)
                         },
                     )
                 } else {
@@ -538,23 +555,36 @@ private fun AppGrid(
                 }
             },
     ) {
-        itemsIndexed(apps, key = { _, app -> app.id }) { index, app ->
-            val lifted = dragged == app.id
-            tile(
-                app, index,
-                if (lifted) {
-                    Modifier.zIndex(1f).graphicsLayer {
-                        // Wherever the grid has put it by now, it's drawn under the finger.
-                        val at = grid.layoutInfo.visibleItemsInfo.firstOrNull { it.key == app.id }?.offset
-                        if (at != null) {
-                            translationX = finger.x - grip.x - at.x
-                            translationY = finger.y - grip.y - at.y
-                        }
-                        scaleX = 1.08f
-                        scaleY = 1.08f
+        itemsIndexed(
+            items,
+            key = { _, item -> item.key },
+            // A widget takes the row, or half of it however many icons fit across; an icon one cell.
+            span = { _, item ->
+                GridItemSpan(
+                    when {
+                        item !is HomeItem.Widget -> 1
+                        item.widget.wide -> maxLineSpan
+                        else -> (maxLineSpan + 1) / 2
+                    },
+                )
+            },
+        ) { index, item ->
+            val modifier = if (dragged == item.key) {
+                Modifier.zIndex(1f).graphicsLayer {
+                    // Wherever the grid has put it by now, it's drawn under the finger.
+                    val at = grid.layoutInfo.visibleItemsInfo.firstOrNull { it.key == item.key }?.offset
+                    if (at != null) {
+                        translationX = finger.x - grip.x - at.x
+                        translationY = finger.y - grip.y - at.y
                     }
-                } else Modifier.animateItem(),
-            )
+                    scaleX = 1.08f
+                    scaleY = 1.08f
+                }
+            } else Modifier.animateItem()
+            when (item) {
+                is HomeItem.App -> tile(item.app, index, modifier)
+                is HomeItem.Widget -> widget(item.widget, modifier)
+            }
         }
         extras()
     }
