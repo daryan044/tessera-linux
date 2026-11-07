@@ -26,6 +26,21 @@ class OpenableAppsTest {
         })
     }
 
+    @Test fun `two entries for one program are the same app, as they share its profile`() {
+        val launcher = app("Firefox", id = "firefox-esr").copy(exec = listOf("firefox-esr"))
+        val linux = app("Firefox ESR", id = "system-firefox").copy(exec = listOf("/usr/bin/firefox-esr", "/tmp/a.png"))
+        assertEquals(true, sameApp(launcher, linux))
+        assertEquals(true, sameApp(launcher, launcher.copy(exec = listOf("firefox-esr", "https://example.org"))))
+        assertEquals(false, sameApp(launcher, app("GIMP").copy(exec = listOf("gimp"))))
+    }
+
+    @Test fun `a wrapper doesn't make two apps the same, and terminals aren't asked about`() {
+        fun wrapped(id: String) = app(id).copy(exec = listOf("sh", "-c", id))
+        assertEquals(false, sameApp(wrapped("a"), wrapped("b")))
+        assertEquals(true, sameApp(wrapped("a"), wrapped("a")))
+        assertEquals(false, sameApp(app("a", gui = false), app("a", gui = false)))
+    }
+
     @Test fun `no terminal apps, desktops or shortcuts, which could run a file as a script`() {
         assertEquals(
             listOf("Konsole"),

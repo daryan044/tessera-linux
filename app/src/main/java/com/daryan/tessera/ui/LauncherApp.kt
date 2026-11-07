@@ -87,6 +87,9 @@ import com.daryan.tessera.Shortcut
 import com.daryan.tessera.store.SystemApps
 import kotlinx.coroutines.launch
 
+/** What's waiting on the user: [app] should open [args], and session [sessionId] already runs it. */
+private class AlreadyOpen(val app: PermissionManifest, val args: List<String>, val sessionId: String)
+
 enum class Destination(val label: String, val title: String, val icon: ImageVector) {
     Apps("Apps", "Linux", LauncherIcons.Apps),
     Files("Files", "Files", LauncherIcons.Folder),
@@ -764,6 +767,39 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
 
     FilesDialogs(vm.files, filesUi, onMessage = filesMessage)
 
+    // Opening something in an app: one that's already open is asked about first, as a second copy
+    // may refuse to start (Firefox's profile is taken) and only the user can say to close the first.
+    var alreadyOpen by remember { mutableStateOf<AlreadyOpen?>(null) }
+    val startWith: (PermissionManifest, List<String>) -> Unit = { app, args ->
+        vm.openInLinux(app, args) { started ->
+            if (started.terminal != null) TerminalActivity.open(context, started.session.id)
+        }
+    }
+    val openWith: (PermissionManifest, List<String>) -> Unit = { app, args ->
+        val running = vm.runningCopy(app)
+        if (running != null) alreadyOpen = AlreadyOpen(app, args, running.session.id) else startWith(app, args)
+    }
+    alreadyOpen?.let { open ->
+        AlertDialog(
+            onDismissRequest = { alreadyOpen = null },
+            title = { Text("${open.app.name} is already open") },
+            text = { Text("Close it and open this instead? Unsaved work in it will be lost. Some apps can run a second copy, but others, like Firefox, can't.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    alreadyOpen = null
+                    vm.sessions.restart(open.sessionId, null) { startWith(open.app, open.args) }
+                }) { Text("Close it and open this") }
+            },
+            dismissButton = {
+                TextButton(onClick = { alreadyOpen = null }) { Text("Cancel") }
+                TextButton(onClick = {
+                    alreadyOpen = null
+                    startWith(open.app, open.args)
+                }) { Text("Open another copy") }
+            },
+        )
+    }
+
     // Something another app sent through "Open with" or "Share", once Linux is checked.
     val sharedIn by vm.sharedRequests.collectAsStateWithLifecycle()
     sharedIn?.takeIf { status != null }?.let { shared -> key(shared) {
@@ -774,15 +810,11 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onDismiss = { vm.sharedRequests.value = null },
             onOpen = { opener, args ->
                 vm.sharedRequests.value = null
-                vm.openInLinux(opener, args) { started ->
-                    if (started.terminal != null) TerminalActivity.open(context, started.session.id)
-                }
+                openWith(vm.appFor(opener), args)
             },
             onOpenApp = { app, args ->
                 vm.sharedRequests.value = null
-                vm.openInLinux(app, args) { started ->
-                    if (started.terminal != null) TerminalActivity.open(context, started.session.id)
-                }
+                openWith(app, args)
             },
         )
     } }
@@ -800,15 +832,11 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onInstallDeb = { info -> done(); vm.installDeb(entry, info) },
             onOpenLinux = { opener ->
                 done()
-                vm.openInLinux(opener, entry.path) { started ->
-                    if (started.terminal != null) TerminalActivity.open(context, started.session.id)
-                }
+                openWith(vm.appFor(opener), listOf(entry.path))
             },
             onOpenApp = { app ->
                 done()
-                vm.openInLinux(app, listOf(entry.path)) { started ->
-                    if (started.terminal != null) TerminalActivity.open(context, started.session.id)
-                }
+                openWith(app, listOf(entry.path))
             },
             onMessage = filesMessage,
         )

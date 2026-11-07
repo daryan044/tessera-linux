@@ -574,8 +574,10 @@ class FileBrowser(
                 val path = place(displayName(uri) ?: "file")
                 val tmp = File(files.transferDir, "${System.nanoTime()}-import")
                 withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use { input -> tmp.outputStream().use { input.copyTo(it) } }
-                        ?: throw IOException("Couldn't read ${path.substringAfterLast('/')}")
+                    // Whatever the sender's provider throws, the user gets a sentence.
+                    runCatching {
+                        context.contentResolver.openInputStream(uri)?.use { input -> tmp.outputStream().use { input.copyTo(it) } }
+                    }.getOrNull() ?: throw IOException("Couldn't read what the other app sent")
                 }
                 files.import(tmp, path)
                 files.ownLike(path, HOME)

@@ -86,6 +86,20 @@ internal fun openableApps(apps: List<PermissionManifest>, installed: (Permission
     apps.filter { it.gui && !it.desktop && !Shortcut.isShortcut(it) && installed(it) != false }
         .sortedBy { it.name.lowercase() }
 
+/** Programs that only start another, so two apps running one are not the same app. */
+private val WRAPPERS = setOf("sh", "bash", "dash", "env", "python3", "python", "flatpak", "wine")
+
+/**
+ * Whether [a] and [b] are the same windowed program: Linux's own entry for Firefox ("Firefox ESR")
+ * and the launcher's ("Firefox") have different ids, and share a profile all the same.
+ */
+internal fun sameApp(a: PermissionManifest, b: PermissionManifest): Boolean {
+    if (!a.gui || !b.gui) return false
+    if (a.id == b.id) return true
+    val program = a.exec.firstOrNull()?.substringAfterLast('/') ?: return false
+    return program !in WRAPPERS && program == b.exec.firstOrNull()?.substringAfterLast('/')
+}
+
 enum class BackendMode(val label: String, val short: String) {
     PROOT("PRoot", "PRoot"),
     CHROOT("Chroot (root)", "Chroot"),
@@ -1079,11 +1093,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Starts [opener] on [path]; a folder of the phone's storage is shared with it for the occasion. */
-    fun openInLinux(opener: com.daryan.tessera.ui.LinuxOpener, path: String, onLaunched: (RunningSession) -> Unit) =
-        openInLinux(opener, listOf(path), onLaunched)
+    /** The app a Linux handler is: its launcher entry when it has one. */
+    fun appFor(opener: com.daryan.tessera.ui.LinuxOpener): PermissionManifest =
+        opener.app ?: com.daryan.tessera.store.SystemApps.manifestFor(opener.desktopFile, opener.entry, null)
 
-    fun openInLinux(opener: com.daryan.tessera.ui.LinuxOpener, args: List<String>, onLaunched: (RunningSession) -> Unit) =
-        openInLinux(opener.app ?: com.daryan.tessera.store.SystemApps.manifestFor(opener.desktopFile, opener.entry, null), args, onLaunched)
+    /** A running session of [app], which a second copy of it might not start beside. */
+    fun runningCopy(app: PermissionManifest): RunningSession? =
+        sessions.sessions.value.firstOrNull { it.running && sameApp(it.app, app) }
 
     /** Every app "All apps" offers: what's installed, by name. */
     fun openableApps(): List<PermissionManifest> =
