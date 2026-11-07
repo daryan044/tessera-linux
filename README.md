@@ -216,6 +216,15 @@ desktop, under its permissions. Its Files button and folder icons open Thunar, a
 manager, and apps' "open folder" lands there too. It runs xfwm4, installed the first time you open
 it.
 
+### 🧩 Your home screen, your way, with widgets
+Hold the home screen for **Edit layout**, **Home settings** and **Widgets**. Drag icons into your
+own order on each tab, choose how many fit across and how big they are, sort by name, recent use or
+category, hide apps, and give any icon its own color.
+
+Four widgets, for Tessera's home screen and the phone's: **App**, **Running apps** (tap one to jump
+to its window), **This phone** (memory and storage rings) and **Quick command**. Each one you add
+has its own settings, and on Android 12 and newer the phone's take your wallpaper's colors.
+
 ### 🔍 Live scaling, per app
 Swipe in the window panel and drag **Scale**: the app re-lays out at the new size *while you
 drag*, from tiny-and-dense to big-and-touchable, and remembers it for next time.
