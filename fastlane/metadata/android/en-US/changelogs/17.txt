@@ -1,0 +1,4 @@
+0.6.3 (alpha)
+- Open in Linux: send files and links from any Android app through Open with and Share, and pick a Linux app for them, or any app from All apps.
+- An app that's already open asks first, instead of Firefox saying it's "already running".
+- Setup: Remove Linux deletes chroot mode's system, which uninstalling Tessera leaves behind.

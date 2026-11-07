@@ -17,7 +17,7 @@ phone's own colors. No terminal setup, no VNC, no guides to follow.
 ![Flathub](https://img.shields.io/badge/Flathub-2%2C800%2B%20apps-4A86CF?logo=flathub&logoColor=white)
 ![GPU](https://img.shields.io/badge/GPU-OpenGL%204.6%20%2B%20Vulkan-E2231A)
 
-**[⬇ Download Tessera 0.6.2 (alpha)](https://github.com/daryan044/tessera-linux/releases/download/v0.6.2/tessera-v0.6.2.apk)**
+**[⬇ Download Tessera 0.6.3 (alpha)](https://github.com/daryan044/tessera-linux/releases/download/v0.6.3/tessera-v0.6.3.apk)**
 · [▶ 1-minute demo video](https://github.com/daryan044/tessera-linux/releases/download/v0.4.0/tessera-demo.mp4)
 · [All releases](https://github.com/daryan044/tessera-linux/releases)
 
@@ -230,6 +230,12 @@ The **Files** tab browses phone storage and the whole Linux system side by side:
 compress, extract, edit text, change permissions, open files in Android or Linux apps, install a
 .deb with a tap, or browse as root.
 
+### 🔗 Open in Linux, from any Android app
+Tessera is in Android's **Open with** and **Share** menus: send a photo, a document or a link from
+any app, then pick a Linux app for it, or anything you like from **All apps**. Files are copied to
+`From-Android` in your Linux home. On Android 12 and newer, tapped web links go to your default
+browser, so use **Share** to send a link to Linux.
+
 ### 📊 Task manager
 Every Linux process, live CPU and memory per app, and **End task** with a two-tap "Sure?" right
 on each app's card. It sees everything Tessera runs, its own X servers and root helpers included,
@@ -351,7 +357,7 @@ untested), a few GB of free storage. GPU acceleration needs a Snapdragon (Adreno
 optional. Tested on a Xiaomi 13 Ultra and a Samsung Galaxy S26 Ultra, both on Android 16; chroot
 mode with Magisk and with SukiSU.
 
-1. Download the APK: [tessera-v0.6.2.apk](https://github.com/daryan044/tessera-linux/releases/download/v0.6.2/tessera-v0.6.2.apk)
+1. Download the APK: [tessera-v0.6.3.apk](https://github.com/daryan044/tessera-linux/releases/download/v0.6.3/tessera-v0.6.3.apk)
    (alpha; see the [releases](https://github.com/daryan044/tessera-linux/releases) for notes and
    newer versions), or build it yourself (below). With [Obtainium](https://github.com/ImranR98/Obtainium),
    add this repository's URL and it keeps Tessera up to date from its releases.
