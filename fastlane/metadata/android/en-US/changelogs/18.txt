@@ -1,0 +1,3 @@
+0.7.0 (alpha)
+- Hold the home screen to customize it: drag icons into your own order, set the grid and icon size, sort, hide apps, and give any icon its own color.
+- Widgets for Tessera's home screen and the phone's: App, Running apps, This phone and Quick command, each with its own settings.
