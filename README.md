@@ -220,9 +220,10 @@ it.
 Swipe in the window panel and drag **Scale**: the app re-lays out at the new size *while you
 drag*, from tiny-and-dense to big-and-touchable, and remembers it for next time.
 
-**Full resolution**, on the same page, has the app draw at the phone's own resolution and enlarge
-its interface itself (GTK, Qt and Firefox), instead of being stretched: sharp text, and video
-without the shimmer. It applies from the app's next start.
+**Screen looks blurry?** The same page asks. Pick the size you like and restart the app: it then
+draws at the phone's own resolution and enlarges its interface itself (GTK, Qt and Firefox), instead
+of being stretched, for sharp text and video without the shimmer. The slider stays live after that;
+a new size lasts until the app closes unless you apply it, for good or for that session.
 
 ### 📁 A real file manager
 The **Files** tab browses phone storage and the whole Linux system side by side: copy, move,

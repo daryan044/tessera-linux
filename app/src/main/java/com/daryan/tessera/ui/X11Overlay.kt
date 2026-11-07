@@ -56,7 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,6 +87,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.daryan.tessera.MouseButton
+import com.daryan.tessera.ScaleRestart
 import com.daryan.tessera.TouchMode
 import com.daryan.tessera.UsbState
 import com.daryan.tessera.X11Actions
@@ -371,12 +372,17 @@ private fun Tile(icon: ImageVector, label: String, danger: Boolean = false, arme
 /**
  * The app's scale: bigger draws everything larger on a smaller X screen. The app resizes while
  * the slider moves (a little behind it, so it isn't resized on every step), and keeps the value.
- * At full resolution the app draws at the window's size and enlarges itself instead, from its
- * next start; a desktop always stretches (it scales its own title bars and dock).
+ * That stretching is what makes it soft, so the page asks; the answer is to restart the app at
+ * full resolution, where it draws at the window's size and enlarges itself. The slider still
+ * works live then, stretching what it draws, but only until the app closes unless it's applied
+ * by restarting at the new size. A desktop always stretches (it scales its own title bars and dock).
  */
 @Composable
 private fun ScalePage(actions: X11Actions, desktop: Boolean) {
     val default = remember { actions.defaultScale() }
+    // The size the running app enlarges itself to, when it's at full resolution.
+    val applied = remember { actions.runningUiScale() }
+    val reset = applied ?: default
     var value by remember { mutableFloatStateOf(actions.scale().toFloat()) }
     val percent = (value / 10).roundToInt() * 10
     LaunchedEffect(percent) {
@@ -384,7 +390,8 @@ private fun ScalePage(actions: X11Actions, desktop: Boolean) {
         if (percent != actions.scale()) actions.setScale(percent)
     }
     Text(
-        "Bigger makes text and buttons larger, with less room for them. Only this app; it keeps the size next time.",
+        if (applied == null) "Bigger makes text and buttons larger, with less room for them. Only this app; it keeps the size next time."
+        else "Bigger makes text and buttons larger, with less room for them. A new size lasts until the app closes unless you apply it.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -393,7 +400,7 @@ private fun ScalePage(actions: X11Actions, desktop: Boolean) {
     androidx.compose.material3.Slider(
         value = value,
         onValueChange = { value = it },
-        valueRange = X11Scale.MIN.toFloat()..X11Scale.MAX.toFloat(),
+        valueRange = X11Scale.minLive(applied).toFloat()..X11Scale.MAX.toFloat(),
     )
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Smaller", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -403,39 +410,73 @@ private fun ScalePage(actions: X11Actions, desktop: Boolean) {
     Spacer(Modifier.height(12.dp))
     FilledTonalButton(
         onClick = {
-            value = default.toFloat()
+            value = reset.toFloat()
             actions.setScale(null)
         },
-        enabled = percent != default,
-    ) { Text("Default ($default%)") }
+        enabled = percent != reset,
+    ) { Text(if (applied == null) "Default ($default%)" else "Applied size ($applied%)") }
     if (desktop) return
-    var full by remember { mutableStateOf(actions.fullResolution()) }
-    val running = remember { actions.runningUiScale() }
     Spacer(Modifier.height(16.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text("Full resolution", style = MaterialTheme.typography.bodyLarge)
+    if (applied == null) {
+        BlurryHint(percent, actions)
+    } else {
+        if (percent != applied) {
             Text(
-                "Sharper text and video: the app draws at the phone's resolution and enlarges itself. Some apps don't enlarge everything",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                "This size may look blurry until you apply it.",
+                style = MaterialTheme.typography.bodyMedium,
             )
+            Spacer(Modifier.height(8.dp))
+            ApplyScale(percent, actions)
         }
-        Spacer(Modifier.width(12.dp))
-        Switch(checked = full, onCheckedChange = {
-            full = it
-            actions.setFullResolution(it)
-        })
+        TextButton(onClick = { actions.restartAtScale(percent, ScaleRestart.STRETCHED) }) {
+            Text("Restart with live scaling only")
+        }
     }
-    // The app reads its interface scale as it starts.
-    if (full != (running != null) || (running != null && running != percent)) {
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Takes effect the next time the app opens.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.primary,
-        )
+}
+
+/**
+ * Asks about the blur a stretched screen has, and offers the way out. At 100% nothing is
+ * stretched; "No" lasts until the page opens again, so the way out can always be found.
+ */
+@Composable
+private fun BlurryHint(percent: Int, actions: X11Actions) {
+    var blurry by remember { mutableStateOf<Boolean?>(null) }
+    if (percent == 100 || blurry == false) return
+    Text("Is the screen blurry?", style = MaterialTheme.typography.titleSmall)
+    Spacer(Modifier.height(4.dp))
+    if (blurry == null) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalButton(onClick = { blurry = true }) { Text("Yes") }
+            TextButton(onClick = { blurry = false }) { Text("No") }
+        }
+        return
     }
+    Text(
+        "Set the size you like with the slider, then restart the app. It will draw at the phone's full resolution at that size. Some apps don't enlarge everything.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(8.dp))
+    ApplyScale(percent, actions)
+}
+
+/** Applies [percent] by restarting the app, which it can't do running: for good or for this session. */
+@Composable
+private fun ApplyScale(percent: Int, actions: X11Actions) {
+    Text(
+        "The app closes and opens again, so save your work first.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(8.dp))
+    FilledTonalButton(
+        onClick = { actions.restartAtScale(percent, ScaleRestart.ALWAYS) },
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("Restart and keep $percent%") }
+    TextButton(
+        onClick = { actions.restartAtScale(percent, ScaleRestart.THIS_SESSION) },
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("Restart at $percent% for this session") }
 }
 
 @Composable

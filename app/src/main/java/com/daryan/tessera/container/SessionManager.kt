@@ -14,10 +14,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
@@ -184,7 +186,9 @@ class SessionManager(
             flatpak = app.gui && app.flatpak != null,
             adb = adb,
             // A desktop scales its own title bars and dock (rescaleDesktop), so it stays stretched.
-            uiScale = if (app.gui && !app.desktop) com.daryan.tessera.X11Scale.uiScaleFor(context, app.id) else null,
+            uiScale = if (app.gui && !app.desktop) {
+                nextUiScale.remove(app.id) ?: com.daryan.tessera.X11Scale.uiScaleFor(context, app.id)
+            } else null,
         )
         // Ids restart with the process, so a previous run's s1 may have left a dead X socket here.
         paths.sessionTmp(session).apply {
@@ -434,6 +438,36 @@ class SessionManager(
 
     fun stopAll() = _sessions.value.filter { it.running }.forEach { stop(it.session.id) }
 
+    /** Interface scales for an app's next start alone, by app id; see [restart]. */
+    private val nextUiScale = ConcurrentHashMap<String, Int>()
+    /** Where the Scale slider has a full-resolution session for now, by session id. */
+    private val liveScales = ConcurrentHashMap<String, Int>()
+
+    /** The scale a full-resolution session is stretched to for now, or null at the one it started with. */
+    fun liveScale(sessionId: String): Int? = liveScales[sessionId]
+
+    fun setLiveScale(sessionId: String, percent: Int?) {
+        if (percent == null) liveScales.remove(sessionId) else liveScales[sessionId] = percent
+    }
+
+    /**
+     * Stops session [id] and calls [start] once it's gone: a new one started beside it could find
+     * the old one's locks still held (Firefox's profile). [uiScaleOnce] is the interface scale of
+     * the app's next start alone, ahead of what's saved for it.
+     */
+    fun restart(id: String, uiScaleOnce: Int?, start: () -> Unit) {
+        val appId = byId(id)?.app?.id ?: return
+        if (uiScaleOnce != null) nextUiScale[appId] = uiScaleOnce
+        liveScales.remove(id)
+        stop(id)
+        scope.launch {
+            withTimeoutOrNull(RESTART_WAIT_MS) {
+                _sessions.first { list -> list.none { it.session.id == id && it.running } }
+            }
+            withContext(Dispatchers.Main) { start() }
+        }
+    }
+
     fun dismiss(id: String) {
         stop(id)
         screenListeners.remove(id)
@@ -629,6 +663,8 @@ class SessionManager(
         /** A desktop's title bars, tall enough to hit their buttons with a finger. */
         const val DESKTOP_TITLE_DP = 40
         const val PREFS = "launcher"
+        /** How long a restart waits for the old session to end before starting the new one anyway. */
+        const val RESTART_WAIT_MS = 5_000L
         const val KEY_GPU = "gpu_acceleration"
         const val KEY_GPU_APP = "gpu_acceleration_"
         const val KEY_GPU_FIXES = "gpu_fixes_"

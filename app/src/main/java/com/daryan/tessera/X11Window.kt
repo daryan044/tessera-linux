@@ -111,9 +111,13 @@ class X11Window : MainActivity.MainActivityTagged() {
      * so each applies the app's scale when it comes to the front.
      */
     private fun applyScale() {
-        // At full resolution the app enlarges itself (it started that way); the screen is ours.
+        // At full resolution the app enlarges itself (it started that way), and the screen is the
+        // window's own size until the slider stretches it for now.
         val session = sessionTag?.let { container.sessions.forWindowTag(it) }
-        if (session?.session?.uiScale != null) return lorieView.setScaleOverride(100)
+        session?.session?.uiScale?.let { uiScale ->
+            val live = container.sessions.liveScale(session.session.id) ?: uiScale
+            return lorieView.setScaleOverride(X11Scale.screenOverride(live, uiScale))
+        }
         lorieView.setScaleOverride(appId?.let { X11Scale.forApp(this, it) } ?: 0)
     }
 
@@ -719,17 +723,27 @@ class X11Window : MainActivity.MainActivityTagged() {
 
         override fun longPressRightClick(): Boolean = X11Input.longPressRightClick(this@X11Window)
 
-        override fun scale(): Int = appId?.let { X11Scale.forApp(this@X11Window, it) } ?: X11Scale.default(this@X11Window)
+        override fun scale(): Int {
+            val session = sessionTag?.let { container.sessions.forWindowTag(it) }
+            session?.session?.uiScale?.let { return container.sessions.liveScale(session.session.id) ?: it }
+            return appId?.let { X11Scale.forApp(this@X11Window, it) } ?: X11Scale.default(this@X11Window)
+        }
 
         override fun defaultScale(): Int = X11Scale.default(this@X11Window)
 
         override fun setScale(percent: Int?) {
             val id = appId ?: return
+            val session = sessionTag?.let { container.sessions.forWindowTag(it) }
+            // At full resolution the slider is only for now: keeping a size is applying it.
+            if (session?.session?.uiScale != null) {
+                container.sessions.setLiveScale(session.session.id, percent)
+                applyScale()
+                return
+            }
             X11Scale.set(this@X11Window, id, percent)
             applyScale()
             // A desktop's title bars are drawn in X pixels: redrawn for the new scale once the
             // slider rests, they keep their size on the phone.
-            val session = sessionTag?.let { container.sessions.forWindowTag(it) }
             if (session?.app?.desktop == true) {
                 rescale?.cancel()
                 rescale = lifecycleScope.launch {
@@ -739,13 +753,26 @@ class X11Window : MainActivity.MainActivityTagged() {
             }
         }
 
-        override fun fullResolution(): Boolean = appId?.let { X11Scale.fullResolution(this@X11Window, it) } ?: false
-
-        override fun setFullResolution(on: Boolean) {
-            X11Scale.setFullResolution(this@X11Window, appId ?: return, on)
-        }
-
         override fun runningUiScale(): Int? = sessionTag?.let { container.sessions.forWindowTag(it) }?.session?.uiScale
+
+        override fun restartAtScale(percent: Int, how: ScaleRestart) {
+            val running = sessionTag?.let { container.sessions.forWindowTag(it) } ?: return
+            val id = running.app.id
+            if (how != ScaleRestart.THIS_SESSION) {
+                X11Scale.set(this@X11Window, id, percent)
+                X11Scale.setFullResolution(this@X11Window, id, how == ScaleRestart.ALWAYS)
+            }
+            // The application's context: this window closes with its session.
+            val app = application
+            container.sessions.restart(running.session.id, percent.takeIf { how == ScaleRestart.THIS_SESSION }) {
+                app.startActivity(
+                    Intent(app, com.daryan.tessera.MainActivity::class.java)
+                        .setAction(com.daryan.tessera.MainActivity.ACTION_LAUNCH_APP)
+                        .putExtra(com.daryan.tessera.MainActivity.EXTRA_APP_ID, id)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
 
         override fun openPermissions(appId: String) {
             (application as LauncherApplication).container.showAppRequests.value = appId
@@ -900,8 +927,31 @@ object X11Scale {
     fun uiScaleFor(c: android.content.Context, appId: String): Int? =
         if (fullResolution(c, appId)) forApp(c, appId) ?: default(c) else null
 
+    /**
+     * The X screen's scale for an app that enlarges itself by [uiScale] and should look [live]
+     * percent large: only what's left over is stretched, so at [uiScale] its pixels are the
+     * window's. Below 100 the screen is larger than the window and shrunk to fit it.
+     */
+    fun screenOverride(live: Int, uiScale: Int): Int =
+        (live * 100 / uiScale.coerceAtLeast(1)).coerceAtLeast(MIN_OVERRIDE)
+
+    /** The lowest the slider goes: at full resolution, no X screen over twice the window's size. */
+    fun minLive(uiScale: Int?): Int = uiScale?.let { maxOf(MIN, (it * MIN_OVERRIDE + 99) / 100) } ?: MIN
+
+    private const val MIN_OVERRIDE = 50
+
     /** Key prefix of the full-resolution switches, apart from the apps' scales (ints). */
     private const val FULL = "full/"
+}
+
+/** How [X11Actions.restartAtScale] applies a size. */
+enum class ScaleRestart {
+    /** At full resolution, at this size, from now on. */
+    ALWAYS,
+    /** At full resolution, at this size, until the app closes; then as it was saved. */
+    THIS_SESSION,
+    /** Back to a stretched screen, the slider live and kept, at this size from now on. */
+    STRETCHED,
 }
 
 /**
@@ -933,13 +983,16 @@ interface X11Actions : com.daryan.tessera.input.InputSink {
     /** The app's scale in percent ([X11Scale]), and the one it would have without its own. */
     fun scale(): Int
     fun defaultScale(): Int
-    /** Resizes the app's screen to [percent] at once, and keeps it for the app; null resets it. */
+    /**
+     * Resizes the app's screen to [percent] at once; null resets it. It keeps the size for the
+     * app, except at full resolution, where it lasts until the app closes unless [restartAtScale]
+     * applies it.
+     */
     fun setScale(percent: Int?)
-    /** The app's full-resolution switch ([X11Scale.fullResolution]), from its next start. */
-    fun fullResolution(): Boolean
-    fun setFullResolution(on: Boolean)
     /** The interface scale the running app started with at full resolution, or null when stretched. */
     fun runningUiScale(): Int?
+    /** Closes the app and starts it again at [percent], the way [how] says. */
+    fun restartAtScale(percent: Int, how: ScaleRestart)
     fun openPermissions(appId: String)
     fun displaySettings()
     fun close(sessionId: String?)
