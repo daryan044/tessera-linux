@@ -1,0 +1,3 @@
+0.6.2 (alpha)
+- Blurry at your scale? The Scale page now asks. Pick a size and restart the app: it draws at the phone's own resolution at that size, for good or for that session. The slider stays live.
+- Flathub: 142 apps that always failed to install now install, Konsole among them. The Store asked for their AppStream id instead of their Flatpak id.
