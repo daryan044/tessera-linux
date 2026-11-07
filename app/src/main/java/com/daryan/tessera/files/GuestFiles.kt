@@ -196,6 +196,11 @@ class GuestFiles private constructor(
         return File(File(transferDir, sub), name)
     }
 
+    /** Gives [path] [reference]'s owner when this shell is root, so the user's apps can change what it made. */
+    suspend fun ownLike(path: String, reference: String) {
+        shell.run("[ \"\$(id -u)\" != 0 ] || chown --reference=${q(reference)} -- ${q(path)}")
+    }
+
     /** Removes an [export]ed copy. */
     fun discard(f: File) {
         f.delete()

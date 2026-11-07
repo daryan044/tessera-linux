@@ -61,6 +61,7 @@ import com.daryan.tessera.files.DebInfo
 import com.daryan.tessera.files.FileBrowser
 import com.daryan.tessera.files.FileEntry
 import com.daryan.tessera.files.OpenOptions
+import com.daryan.tessera.files.SharedIn
 import com.daryan.tessera.store.DesktopEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -107,7 +108,7 @@ fun OpenWithSheet(
                             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         try {
                             if (component != null) context.startActivity(intent.setComponent(component))
-                            else context.startActivity(Intent.createChooser(intent, "Open ${entry.name} with"))
+                            else context.startActivity(chooserWithoutTessera(context, intent, "Open ${entry.name} with"))
                             onDismiss()
                         } catch (_: ActivityNotFoundException) {
                             onMessage("That app can't open it")
@@ -226,6 +227,74 @@ fun OpenWithSheet(
     }
 }
 
+/** What another app shared, ready to open: what to call it, what to run an app with, and which apps can. */
+class SharedReady(val title: String, val args: List<String>, val openers: List<LinuxOpener>, val saved: Boolean)
+
+/**
+ * What another app sent through Android's "Open with" or "Share": it's brought into Linux, then
+ * the Linux apps for it are offered. Nothing starts until one is picked, as anything can send these.
+ */
+@Composable
+fun SharedInSheet(
+    shared: SharedIn,
+    prepare: suspend (SharedIn) -> SharedReady,
+    onDismiss: () -> Unit,
+    onOpen: (LinuxOpener, List<String>) -> Unit,
+) {
+    var ready by remember(shared) { mutableStateOf<SharedReady?>(null) }
+    var problem by remember(shared) { mutableStateOf<String?>(null) }
+    LaunchedEffect(shared) {
+        runCatching { prepare(shared) }
+            .onSuccess { ready = it }
+            .onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
+                problem = it.message ?: "Couldn't bring that into Linux"
+            }
+    }
+    DraggableSheet(onDismissRequest = onDismiss) { peek ->
+        Column(Modifier.animateContentSize().padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            Text("Open in Linux", style = MaterialTheme.typography.titleLarge)
+            val r = ready
+            val failed = problem
+            when {
+                failed != null -> {
+                    Spacer(Modifier.height(12.dp))
+                    Note(failed)
+                }
+                r == null -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                else -> {
+                    Text(
+                        r.title,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    if (r.openers.isEmpty()) {
+                        Note(if (r.saved) "No Linux app here opens this. Apps for it are in the Store." else "No Linux browser here opens links. You'll find one in the Store.")
+                    } else {
+                        AppTiles(r.openers.map { l ->
+                            Tile(l.entry.name.orEmpty(), { l.app?.let { AppGlyph(it, 28.dp, MaterialTheme.colorScheme.onSecondaryContainer) } ?: Icon(LauncherIcons.Terminal, null) }) {
+                                onOpen(l, r.args)
+                            }
+                        })
+                    }
+                    if (r.saved) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "A copy is in Downloads in your Linux home folder, and stays there.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            Spacer(peek)
+        }
+    }
+}
+
 @Composable
 private fun Heading(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
@@ -267,6 +336,13 @@ private fun AppTiles(tiles: List<Tile>) {
         repeat((4 - tiles.size % 4) % 4) { Spacer(Modifier.weight(1f)) }
     }
 }
+
+/** Android's chooser, for sending a file out of Linux: "Open in Linux" would only bring it back. */
+internal fun chooserWithoutTessera(context: Context, intent: Intent, title: String): Intent =
+    Intent.createChooser(intent, title).putExtra(
+        Intent.EXTRA_EXCLUDE_COMPONENTS,
+        arrayOf(ComponentName(context.packageName, com.daryan.tessera.MainActivity.OPEN_IN_LINUX)),
+    )
 
 private class AndroidOpener(val label: String, val icon: ImageBitmap, val component: ComponentName)
 

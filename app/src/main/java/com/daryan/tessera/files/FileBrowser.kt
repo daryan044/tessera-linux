@@ -554,6 +554,43 @@ class FileBrowser(
         }
     }
 
+    /** Copies what another app shared into Linux's Downloads folder; returns the paths there. */
+    suspend fun bringIn(shared: SharedIn): List<String> = withShell { files ->
+        val into = "$HOME/Downloads"
+        if (!files.exists(into)) {
+            files.mkdir(into)
+            files.ownLike(into, HOME)
+        }
+        val taken = files.names(into).toMutableSet()
+        fun place(name: String) = child(freeName(SharedIn.safeName(name), taken).also { taken += it }, into)
+        when (shared) {
+            is SharedIn.Link -> emptyList()
+            is SharedIn.Text -> listOf(place("Shared text.txt").also { path ->
+                files.writeText(path, shared.text)
+                files.ownLike(path, HOME)
+            })
+            is SharedIn.Files -> shared.uris.map { text ->
+                val uri = Uri.parse(text)
+                val path = place(displayName(uri) ?: "file")
+                val tmp = File(files.transferDir, "${System.nanoTime()}-import")
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { input -> tmp.outputStream().use { input.copyTo(it) } }
+                        ?: throw IOException("Couldn't read ${path.substringAfterLast('/')}")
+                }
+                files.import(tmp, path)
+                files.ownLike(path, HOME)
+                path
+            }
+        }
+    }
+
+    /** The Linux apps for [hint], or for the file at [path] when there is one. */
+    suspend fun linuxHandlers(path: String, hint: String?): List<Pair<String, DesktopEntry>> =
+        runCatching { withShell { it.handlers(path, hint).second } }.getOrDefault(emptyList())
+
+    /** Android's type for what's at [uri], from the app that shared it. */
+    fun sharedType(uri: String): String? = runCatching { context.contentResolver.getType(Uri.parse(uri)) }.getOrNull()
+
     /** Copies [targets] out to Android, for sharing. */
     suspend fun export(targets: List<FileEntry>): List<File> = withShell { s -> targets.filterNot { it.isDir }.map { s.export(it.path) } }
 

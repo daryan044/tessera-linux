@@ -80,6 +80,33 @@
             android:name=".ContainerService"
             android:exported="false" />
 
+        <!-- Tessera in Android's "Open with" and "Share" menus, under a name that says what it
+             does there. MainActivity tells these apart by this component (SharedIn). -->
+        <activity-alias
+            android:name=".OpenInLinux"
+            android:exported="true"
+            android:label="Open in Linux"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- Hands files the Files tab copied out of Linux to Android apps (open with, share). -->
         <provider
             android:name="androidx.core.content.FileProvider"

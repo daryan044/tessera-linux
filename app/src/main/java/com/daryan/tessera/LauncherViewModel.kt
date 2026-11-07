@@ -1070,13 +1070,44 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Starts [opener] on [path]; a folder of the phone's storage is shared with it for the occasion. */
-    fun openInLinux(opener: com.daryan.tessera.ui.LinuxOpener, path: String, onLaunched: (RunningSession) -> Unit) {
+    fun openInLinux(opener: com.daryan.tessera.ui.LinuxOpener, path: String, onLaunched: (RunningSession) -> Unit) =
+        openInLinux(opener, listOf(path), onLaunched)
+
+    /** Starts [opener] with [args]: files, or an address, which needs no folder shared. */
+    fun openInLinux(opener: com.daryan.tessera.ui.LinuxOpener, args: List<String>, onLaunched: (RunningSession) -> Unit) {
         val base = opener.app ?: com.daryan.tessera.store.SystemApps.manifestFor(opener.desktopFile, opener.entry, null)
-        val dir = path.substringBeforeLast('/').ifEmpty { "/" }
-        val grants = if (GuestFiles.onAndroid(dir) && base.permissions.filesystem.none { it.mountAt == dir }) {
-            base.permissions.filesystem + FsGrant(dir)
-        } else base.permissions.filesystem
-        launch(base.copy(exec = base.exec + path, permissions = base.permissions.copy(filesystem = grants)), onLaunched)
+        val dirs = args.filter { it.startsWith("/") }.map { it.substringBeforeLast('/').ifEmpty { "/" } }.distinct()
+        val grants = base.permissions.filesystem + dirs.filter { dir ->
+            GuestFiles.onAndroid(dir) && base.permissions.filesystem.none { it.mountAt == dir }
+        }.map { FsGrant(it) }
+        launch(base.copy(exec = base.exec + args, permissions = base.permissions.copy(filesystem = grants)), onLaunched)
+    }
+
+    val sharedRequests = container.sharedRequests
+
+    /**
+     * Gets what another app shared ready to open: its files copied into Linux, and the Linux apps
+     * that can take it. Throws, with a message for the user, when Linux can't take it.
+     */
+    suspend fun prepareShared(shared: com.daryan.tessera.files.SharedIn): com.daryan.tessera.ui.SharedReady {
+        blocker(_status.value, _mode.value)?.let { throw java.io.IOException(it) }
+        val paths = files.bringIn(shared)
+        val first = (shared as? com.daryan.tessera.files.SharedIn.Files)?.uris?.first()
+        val hint = when (shared) {
+            is com.daryan.tessera.files.SharedIn.Link -> "x-scheme-handler/${shared.url.substringBefore(':').lowercase()}"
+            is com.daryan.tessera.files.SharedIn.Text -> "text/plain"
+            is com.daryan.tessera.files.SharedIn.Files -> first?.let(files::sharedType)
+        }
+        val openers = files.linuxHandlers(paths.firstOrNull().orEmpty(), hint).map { (file, entry) ->
+            com.daryan.tessera.ui.LinuxOpener(file, entry, linuxAppFor(file, entry))
+        }
+        return when (shared) {
+            is com.daryan.tessera.files.SharedIn.Link -> com.daryan.tessera.ui.SharedReady(shared.url, listOf(shared.url), openers, saved = false)
+            else -> com.daryan.tessera.ui.SharedReady(
+                if (paths.size == 1) paths[0].substringAfterLast('/') else "${paths.size} files",
+                paths, openers, saved = true,
+            )
+        }
     }
 
     /** Queues installing a .deb from the Files tab, with whatever it depends on. */

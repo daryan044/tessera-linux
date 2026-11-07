@@ -187,6 +187,9 @@ class LauncherContainer(private val app: Application) {
     /** An app the launcher should start (set from its icon on the phone's home screen). */
     val launchRequests = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
+    /** What another app wants opened in Linux (set from Android's "Open with" and "Share"). */
+    val sharedRequests = kotlinx.coroutines.flow.MutableStateFlow<com.daryan.tessera.files.SharedIn?>(null)
+
     val busy: StateFlow<Boolean> = combine(installer.state, sessions.sessions, queue.jobs) { install, list, jobs ->
         install.running || list.any { it.exitCode == null } || jobs.any { it.active }
     }.stateIn(scope, SharingStarted.Eagerly, false)

@@ -764,6 +764,22 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
 
     FilesDialogs(vm.files, filesUi, onMessage = filesMessage)
 
+    // Something another app sent through "Open with" or "Share", once Linux is checked.
+    val sharedIn by vm.sharedRequests.collectAsStateWithLifecycle()
+    sharedIn?.takeIf { status != null }?.let { shared -> key(shared) {
+        SharedInSheet(
+            shared = shared,
+            prepare = vm::prepareShared,
+            onDismiss = { vm.sharedRequests.value = null },
+            onOpen = { opener, args ->
+                vm.sharedRequests.value = null
+                vm.openInLinux(opener, args) { started ->
+                    if (started.terminal != null) TerminalActivity.open(context, started.session.id)
+                }
+            },
+        )
+    } }
+
     filesUi.opening?.let { entry -> key(entry.path) {
         val done = { if (filesUi.opening?.path == entry.path) filesUi.opening = null }
         OpenWithSheet(

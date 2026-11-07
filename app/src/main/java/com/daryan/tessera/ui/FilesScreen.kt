@@ -1446,5 +1446,5 @@ private fun share(context: Context, files: List<File>, onMessage: (String) -> Un
     intent.type = "*/*"
     intent.clipData = ClipData.newUri(context.contentResolver, "Files", uris[0]).apply { uris.drop(1).forEach { addItem(ClipData.Item(it)) } }
     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    context.startActivity(Intent.createChooser(intent, "Share"))
+    context.startActivity(chooserWithoutTessera(context, intent, "Share"))
 }
