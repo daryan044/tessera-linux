@@ -188,7 +188,8 @@ const val AUDIO_RATE = 48000
  * - a session D-Bus, which also carries the accessibility bus (AT-SPI);
  * - [FOCUS_WATCHER], which reports whether the focused widget takes text, so the window can
  *   show Android's keyboard for text fields the way a native app does;
- * - with the audio permission, PulseAudio playing into a FIFO the app reads (AudioPipe);
+ * - with the audio permission, PulseAudio (or PipeWire, where the guest has no PulseAudio)
+ *   playing into a FIFO the app reads (AudioPipe);
  * - [WINDOW_WATCHER], which reports the app's windows so each can have its own Android task;
  * - in themed sessions, [THEME_DAEMON]: the settings portal and xsettingsd, with the phone's
  *   colors and light or dark;
@@ -271,6 +272,38 @@ if [ -n "${'$'}LAUNCHER_AUDIO" ] && command -v pulseaudio >/dev/null 2>&1; then
     --load="module-suspend-on-idle timeout=2" >/dev/null 2>&1 & pa=${'$'}!
   # Apps that find no server at startup stay silent, so give it a moment.
   for i in 1 2 3 4 5 6 7 8 9 10; do [ -S "${'$'}PULSE_RUNTIME_PATH/native" ] && break; sleep 0.2; done
+elif [ -n "${'$'}LAUNCHER_AUDIO" ] && command -v pipewire >/dev/null 2>&1 && command -v wireplumber >/dev/null 2>&1; then
+  # No pulseaudio, but PipeWire: start a private PipeWire for the session. It serves the
+  # PulseAudio protocol on the same socket and has one sink that writes to the same FIFO.
+  mkdir -p "${'$'}PULSE_RUNTIME_PATH"
+  cat > "${'$'}PULSE_RUNTIME_PATH/pipewire.conf" <<PWEOF
+context.properties = { core.daemon = true core.name = pipewire-0 default.clock.rate = $AUDIO_RATE default.clock.allowed-rates = [ $AUDIO_RATE ] }
+context.spa-libs = { audio.convert.* = audioconvert/libspa-audioconvert audio.adapt = audioconvert/libspa-audioconvert support.* = support/libspa-support }
+context.modules = [
+  { name = libpipewire-module-protocol-native }
+  { name = libpipewire-module-metadata }
+  { name = libpipewire-module-spa-node-factory }
+  { name = libpipewire-module-client-node }
+  { name = libpipewire-module-access args = { } }
+  { name = libpipewire-module-adapter }
+  { name = libpipewire-module-link-factory }
+  { name = libpipewire-module-session-manager }
+  { name = libpipewire-module-pipe-tunnel
+    args = { tunnel.mode = sink pipe.filename = "/tmp/.X11-unix/$AUDIO_FIFO_NAME" audio.format = S16LE audio.rate = $AUDIO_RATE audio.channels = 2 audio.position = [ FL FR ]
+             stream.props = { node.name = android node.description = Phone } } }
+  { name = libpipewire-module-protocol-pulse }
+]
+pulse.properties = { server.address = [ "unix:${'$'}PULSE_RUNTIME_PATH/native" ] }
+stream.properties = { adapter.auto-port-config = { mode = dsp } }
+context.objects = [
+  { factory = metadata args = { metadata.name = default } }
+  { factory = spa-node-factory args = { factory.name = support.node.driver node.name = Dummy-Driver node.group = pipewire.dummy priority.driver = 20000 } }
+]
+PWEOF
+  export PIPEWIRE_RUNTIME_DIR="${'$'}PULSE_RUNTIME_PATH"
+  pipewire -c "${'$'}PULSE_RUNTIME_PATH/pipewire.conf" >/dev/null 2>&1 & pa=${'$'}!
+  for i in 1 2 3 4 5 6 7 8 9 10; do [ -S "${'$'}PULSE_RUNTIME_PATH/native" ] && break; sleep 0.2; done
+  wireplumber -p policy >/dev/null 2>&1 & pa="${'$'}pa ${'$'}!"
 fi
 if [ "${'$'}wm_mode" = desktop ]; then
   # The desktop's own window manager starts with it, below; the watcher follows its windows
