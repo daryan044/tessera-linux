@@ -188,8 +188,14 @@ DEV_GROUPS=$({
   printf '%s\n' "$DEVICES"
   if [ "$USB_ALL" = 1 ]; then find /dev/bus/usb -type c 2>/dev/null; ls /dev/ttyACM* 2>/dev/null; fi
 } | while IFS= read -r d; do
-  [ -n "$d" ] && [ -e "$d" ] && stat -c %g "$d"
-done | grep -vx 1000 | sort -u | tr '\n' ',' | sed 's/,$//')
+  # Path sanitation: only device nodes under /dev count (for a folder, the nodes in it),
+  # and never group 0 (root) or 1000 (system).
+  case "$d" in /dev/?*) ;; *) continue ;; esac
+  case "/$d/" in */../*|*/./*) continue ;; esac
+  if [ -d "$d" ]; then find "$d" \( -type c -o -type b \) -exec stat -c %g {} + 2>/dev/null || true
+  elif [ -c "$d" ] || [ -b "$d" ]; then stat -c %g "$d"
+  fi
+done | grep -vx -e 0 -e 1000 | sort -u | tr '\n' ',' | sed 's/,$//')
 [ -n "$DEV_GROUPS" ] && GROUPS_LIST=${GROUPS_LIST:+$GROUPS_LIST,}$DEV_GROUPS
 if [ -n "$GROUPS_LIST" ]; then GROUP_ARG="--groups=$GROUPS_LIST"; else GROUP_ARG=--clear-groups; fi
 
