@@ -312,6 +312,10 @@ class X11Window : MainActivity.MainActivityTagged() {
         }
     }
 
+    /** True once this window ended because its X window was already gone: nothing is left to close. */
+    var endedWithItsWindow = false
+        private set
+
     /** Ends with what it shows: the session, or for a window of its own, that X window. */
     private fun followSession() {
         val tag = sessionTag ?: return
@@ -323,7 +327,10 @@ class X11Window : MainActivity.MainActivityTagged() {
                 .collect { s ->
                     val gone = s == null || !s.running || (id != null && s.windows.main.none { it.id == id })
                     // Every window of the session, not just the one Termux:X11's stop finds by tag.
-                    if (gone) return@collect finishAndRemoveTask()
+                    if (gone) {
+                        endedWithItsWindow = true
+                        return@collect finishAndRemoveTask()
+                    }
                     val title = s?.windows?.windows?.firstOrNull { it.id == id }?.title
                     if (id != null && s != null && !title.isNullOrBlank()) brandForRecents(this@X11Window, s, container, title)
                 }

@@ -92,7 +92,12 @@ class LauncherApplication : LorieApp() {
             if (!activity.isFinishing || activity.isChangingConfigurations) return
             val session = sessionOf(activity)?.takeIf { it.running } ?: return
             // A window of its own closed in Recents: close that X window, not the whole app.
-            X11Server.windowId(activity.intent?.data)?.let { return container.sessions.closeWindow(session.session.id, it) }
+            // Not when it ended because its X window was gone: X reuses the id, and the close
+            // would hit the next window that gets it.
+            X11Server.windowId(activity.intent?.data)?.let { id ->
+                if ((activity as? X11Window)?.endedWithItsWindow != true) container.sessions.closeWindow(session.session.id, id)
+                return
+            }
             container.sessions.stop(session.session.id, EndReason.CLOSED_FROM_RECENTS)
         }
 
