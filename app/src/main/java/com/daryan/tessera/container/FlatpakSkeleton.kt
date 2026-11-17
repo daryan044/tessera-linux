@@ -37,7 +37,9 @@ object FlatpakSkeleton {
             }
         }
         File(dir, "run/host/font-dirs.xml").takeIf { !it.isFile }?.writeText(FONT_DIRS)
-        File(dir, ZYPAK_STUB).takeIf { !it.isFile }?.apply { writeText("#!/bin/sh\nexec \"\$@\"\n"); setExecutable(true, false) }
+        mapOf(ZYPAK_STUB to ZYPAK_SCRIPT, ZYPAK_HELPER_STUB to ZYPAK_HELPER_SCRIPT, CHROMIUM_STUB to CHROMIUM_SCRIPT).forEach { (path, script) ->
+            File(dir, path).takeIf { !it.isFile || it.readText() != script }?.apply { writeText(script); setExecutable(true, false) }
+        }
         return dir
     }
 
@@ -48,7 +50,28 @@ object FlatpakSkeleton {
      * is for every PRoot app. Relative to the skeleton.
      */
     const val ZYPAK_STUB = "run/host/tessera-zypak"
+    const val ZYPAK_SCRIPT = "#!/bin/sh\nexec \"\$@\"\n"
 
     /** The wrappers [ZYPAK_STUB] goes over, in an app's /app/bin. */
     val ZYPAK_WRAPPERS = listOf("zypak-wrapper.sh", "zypak-wrapper")
+
+    /**
+     * What goes over zypak's own helper, which some apps call straight, as
+     * `zypak-helper host - <program> <args>` (Flathub's IDE wrapper: VSCodium, #18). It drops
+     * the mode and the fd list up to "-", and runs the rest.
+     */
+    const val ZYPAK_HELPER_STUB = "run/host/tessera-zypak-helper"
+    const val ZYPAK_HELPER = "zypak-helper"
+    const val ZYPAK_HELPER_SCRIPT = "#!/bin/sh\nshift\nwhile [ \$# -gt 0 ] && [ \"\$1\" != - ]; do shift; done\n[ \$# -gt 0 ] && shift\nexec \"\$@\"\n"
+
+    /**
+     * zypak's wrapper for Chromium browsers started by cobalt (Flathub's Chrome, #25). Electron
+     * reads ELECTRON_DISABLE_SANDBOX; Chrome reads no variable, only --no-sandbox, and without a
+     * sandbox it can set up (none here: no user namespaces, no setuid helper) it won't start.
+     */
+    const val CHROMIUM_STUB = "run/host/tessera-zypak-chromium"
+    const val CHROMIUM_SCRIPT = "#!/bin/sh\np=\$1\nshift\nexec \"\$p\" --no-sandbox \"\$@\"\n"
+
+    /** cobalt, the launcher of Flathub's Chromium browsers; with it, /.flatpak-info too ([Flatpak.info]). */
+    const val COBALT = "cobalt"
 }

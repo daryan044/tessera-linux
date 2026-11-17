@@ -84,6 +84,8 @@ class DroidspacesBackend(
             "FP_APP" to ref.appDir,
             "FP_GL" to ref.glDir.orEmpty(),
             "FP_GL_MOUNT" to ref.glMount.orEmpty(),
+            // Written at /.flatpak-info only for apps cobalt starts; see Flatpak.info.
+            "FP_INFO" to Flatpak.info(ref),
             "BINDS" to p.filesystem.mapNotNull { g ->
                 DroidspacesView.visibleAt(container.config, g.path)?.let {
                     "$it:${g.mountAt}:${if (g.readOnly) "ro" else "rw"}"

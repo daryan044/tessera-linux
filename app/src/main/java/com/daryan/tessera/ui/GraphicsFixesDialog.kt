@@ -48,6 +48,9 @@ fun GraphicsFixesDialog(
     onGpu: (Boolean) -> Unit,
     fixes: Set<GpuFix>,
     onFix: (GpuFix, Boolean) -> Unit,
+    /** Whether the app runs with a compositor; null where there's none to run (a desktop has its own). */
+    compositing: Boolean? = null,
+    onCompositing: (Boolean) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -65,6 +68,14 @@ fun GraphicsFixesDialog(
                     GpuFix.entries.forEach { fix ->
                         FixLine(fix.title(), fix.detail(), fix in fixes, enabled = gpu) { onFix(fix, it) }
                     }
+                }
+                if (compositing != null) {
+                    if (themed != null || gpu != null) HorizontalDivider()
+                    FixLine(
+                        "Compositing",
+                        "For black boxes where something should be see-through: selection handles, rounded corners, shadows around menus. Uses a little more power",
+                        compositing, enabled = true, onCompositing,
+                    )
                 }
                 Text(
                     "Changes apply the next time the app opens.",

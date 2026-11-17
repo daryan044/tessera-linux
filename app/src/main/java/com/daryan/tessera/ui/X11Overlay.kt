@@ -60,6 +60,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -506,12 +507,25 @@ private fun KeysPage(actions: X11Actions) {
 
 @Composable
 private fun InputPage(actions: X11Actions) {
-    InputChoices(
-        mode = actions.touchMode(),
-        onMode = actions::setTouchMode,
-        longPress = actions.longPressRightClick(),
-        onLongPress = actions::setLongPressRightClick,
-    )
+    // Each app keeps the mode picked here; the launcher's menu sets the one the others use.
+    var own by remember { mutableStateOf(actions.ownTouchMode()) }
+    key(own) {
+        InputChoices(
+            mode = actions.touchMode(),
+            onMode = { actions.setTouchMode(it); own = true },
+            longPress = actions.longPressRightClick(),
+            onLongPress = actions::setLongPressRightClick,
+        )
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+        Text(
+            if (own) "This app keeps its own mode." else "The mode you pick here is kept for this app alone.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (own) TextButton(onClick = { actions.resetTouchMode(); own = false }) { Text("Same as other apps") }
+    }
 }
 
 /**

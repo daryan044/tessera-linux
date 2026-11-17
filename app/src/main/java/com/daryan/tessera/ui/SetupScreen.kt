@@ -86,6 +86,10 @@ fun SetupScreen(
     /** Puts the notes and recent session logs on the clipboard, for any assistant. */
     onCopyDiagnostics: () -> Unit,
     onShowIntro: () -> Unit,
+    /** A backup or restore under way, and what starts one (#19). */
+    backup: com.daryan.tessera.LauncherViewModel.BackupProgress? = null,
+    onBackup: () -> Unit = {},
+    onRestore: () -> Unit = {},
     /** What Droidspaces mode can do with its containers; null where there's no such mode. */
     droidspaces: DroidspacesActions? = null,
     /** What the picked Droidspaces container is being made to do ("Starting web"), while it does it. */
@@ -177,6 +181,11 @@ fun SetupScreen(
                 }
             }
         }
+        if (mode != BackendMode.DROIDSPACES) item {
+            val chroot = mode == BackendMode.CHROOT
+            val installed = if (chroot) status.chrootRootfs == true else status.prootRootfs
+            BackupItem(chroot, installed, install.running, backup, onBackup, onRestore)
+        }
         item {
             SetupItem(
                 state = if (status.su != null) ItemState.Done else ItemState.Warn,
@@ -234,6 +243,56 @@ fun SetupScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * The Linux system as one file to keep (#19): saved wherever Android's picker reaches, and put
+ * back after a reinstall or a reset without downloading Debian and the apps again.
+ */
+@Composable
+private fun BackupItem(
+    chroot: Boolean,
+    installed: Boolean,
+    installing: Boolean,
+    progress: com.daryan.tessera.LauncherViewModel.BackupProgress?,
+    onBackup: () -> Unit,
+    onRestore: () -> Unit,
+) {
+    var confirmRestore by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    SetupItem(
+        state = ItemState.Done.takeIf { installed } ?: ItemState.Todo,
+        title = "Back up and restore",
+        body = when {
+            progress != null -> (if (progress.restoring) "Restoring" else "Backing up") +
+                " · ${android.text.format.Formatter.formatShortFileSize(context, progress.bytes)} so far. Keep Tessera open."
+            chroot -> "Saves chroot mode's whole Linux system, apps and home folder included, as one file. " +
+                "Restoring needs the system removed first, and as much free space again as the backup."
+            else -> "Saves the whole Linux system, apps and home folder included, as one file to keep off the phone. " +
+                "Restore it after reinstalling Tessera, instead of downloading everything again."
+        },
+    ) {
+        if (progress != null) {
+            LinearWavyProgressIndicator(Modifier.fillMaxWidth().padding(top = 12.dp))
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                FilledTonalButton(onClick = onBackup, enabled = installed && !installing) { Text("Back up") }
+                // Chroot's restore never replaces a system; PRoot's does, so it asks.
+                TextButton(onClick = { if (installed && !chroot) confirmRestore = true else onRestore() }, enabled = !installing && !(chroot && installed)) {
+                    Text("Restore")
+                }
+            }
+        }
+    }
+    if (confirmRestore) {
+        AlertDialog(
+            onDismissRequest = { confirmRestore = false },
+            title = { Text("Replace this Linux system?") },
+            text = { Text("Restoring a backup deletes the Linux system that's installed now, its apps and everything in its home folder, and puts the backup's in its place. Files on the phone's own storage aren't touched.") },
+            confirmButton = { TextButton(onClick = { confirmRestore = false; onRestore() }) { Text("Choose a backup") } },
+            dismissButton = { TextButton(onClick = { confirmRestore = false }) { Text("Cancel") } },
+        )
     }
 }
 

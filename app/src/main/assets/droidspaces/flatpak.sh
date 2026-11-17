@@ -59,17 +59,32 @@ share "$FP_APP" "$F/app" ro || { echo "Couldn't mount Flatpak app read-only" >&2
 
 # Zypak depends on Flatpak's own sandbox services, which this launcher replaces. Keep the same
 # stand-in as the other backends and disable Electron's nested sandbox (not the app's permissions).
+# A Chromium browser (Flathub's Chrome, started by cobalt) reads no variable for that, only
+# --no-sandbox, and cobalt needs /.flatpak-info for the app's id (#25); only those get the file,
+# as GLib takes it to mean "use portals", and only the settings portal is here.
 ZYPAK=
+mkdir -p "$F/run/host"
+if [ -e "$F/app/bin/cobalt" ]; then
+  printf '#!/bin/sh\np=$1\nshift\nexec "$p" --no-sandbox "$@"\n' > "$F/run/host/tessera-zypak-chromium"
+  chmod 755 "$F/run/host/tessera-zypak-chromium"
+  [ -n "$FP_INFO" ] && printf '%s' "$FP_INFO" > "$F/.flatpak-info"
+fi
 for z in zypak-wrapper.sh zypak-wrapper; do
   [ -e "$F/app/bin/$z" ] || continue
   if [ -z "$ZYPAK" ]; then
     ZYPAK=/run/host/tessera-zypak
-    mkdir -p "$F/run/host"
-    printf '#!/bin/sh\nexec "$@"\n' > "$F$ZYPAK"
-    chmod 755 "$F$ZYPAK"
+    if [ -e "$F/app/bin/cobalt" ]; then ZYPAK=/run/host/tessera-zypak-chromium
+    else printf '#!/bin/sh\nexec "$@"\n' > "$F$ZYPAK"; chmod 755 "$F$ZYPAK"; fi
   fi
   mount --bind "$F$ZYPAK" "$F/app/bin/$z"
 done
+# Some call zypak's helper straight, "zypak-helper host - <program> <args>" (VSCodium, #18).
+if [ -e "$F/app/bin/zypak-helper" ]; then
+  printf '#!/bin/sh\nshift\nwhile [ $# -gt 0 ] && [ "$1" != - ]; do shift; done\n[ $# -gt 0 ] && shift\nexec "$@"\n' > "$F/run/host/tessera-zypak-helper"
+  chmod 755 "$F/run/host/tessera-zypak-helper"
+  mount --bind "$F/run/host/tessera-zypak-helper" "$F/app/bin/zypak-helper"
+  ZYPAK=${ZYPAK:-/run/host/tessera-zypak-helper}
+fi
 
 if [ -n "$FP_GL" ] && [ -n "$FP_GL_MOUNT" ] && [ -d "$FP_GL" ]; then
   # Runtime GL extensions share a well-known directory with the Mesa supplied by the runtime.

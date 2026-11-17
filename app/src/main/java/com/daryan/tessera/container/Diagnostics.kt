@@ -188,6 +188,7 @@ class Diagnostics(
             if (p.network) add("network")
             if (p.display) add("display")
             if (p.audio) add("audio")
+            if (p.microphone) add("microphone")
             if (p.root) add("root")
             if (p.adb) add("adb")
             if (p.devices.isNotEmpty()) add("devices=${p.devices.joinToString(",")}")

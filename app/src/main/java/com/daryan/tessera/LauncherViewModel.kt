@@ -319,6 +319,29 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         _introSeen.value = seen
     }
 
+    private val _lowPower = MutableStateFlow(prefs.getBoolean(LauncherContainer.KEY_LOW_POWER, false))
+
+    /** Low power mode: Tessera's own screens without blur and other costly effects (#21). */
+    val lowPower: StateFlow<Boolean> = _lowPower
+
+    fun setLowPower(on: Boolean) {
+        prefs.edit().putBoolean(LauncherContainer.KEY_LOW_POWER, on).apply()
+        _lowPower.value = on
+    }
+
+    private val _androidLinks = MutableStateFlow(sessions.androidLinks())
+
+    /** Whether web links Linux apps open go to Android's "Open with" (#17). */
+    val androidLinks: StateFlow<Boolean> = _androidLinks
+
+    fun setAndroidLinks(on: Boolean) {
+        sessions.setAndroidLinks(on)
+        _androidLinks.value = on
+    }
+
+    /** Whether a newer Tessera is out, and the check for it; see [UpdateChecker]. */
+    val updates = container.updates
+
     private val _diagnosticsEnabled = MutableStateFlow(prefs.getBoolean(LauncherContainer.KEY_DIAGNOSTICS, true))
 
     /** Whether ended sessions are recorded for the user (and for whoever helps them). */
@@ -355,6 +378,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             appendLine()
             appendLine("- Tessera $version")
             appendLine("- ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
+            // Names the ROM (LineageOS, GrapheneOS, a beta), which can matter more than the version (#14).
+            appendLine("- Build: ${android.os.Build.DISPLAY} (${android.os.Build.FINGERPRINT})")
             appendLine("- ABI: ${android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"}")
             appendLine("- Engine: ${_mode.value.label}${if (status?.su != null) " (root available)" else " (no root)"}")
             appendLine("- Debian installed: PRoot ${status?.prootRootfs}, chroot ${status?.chrootRootfs}")
@@ -369,6 +394,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             }
             appendLine("- PRoot binary present: ${status?.prootBinary}")
             appendLine("- Background process limit on: ${status?.phantomProcessLimit} (on means Android may kill apps in the background)")
+            appendLine("- GPU: ${GpuDriver.describe(getApplication())}")
             appendLine("- GPU driver available: ${gpuAvailable()}, acceleration on: ${_gpuEnabled.value}")
             appendLine()
             appendLine("## Apps in the launcher (${apps.size})")
@@ -382,6 +408,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refresh()
+        container.updates.check()
         viewModelScope.launch { apps.collect { container.launcherApps.value = it } }
         // Re-probe once an install finishes so Setup and the launch buttons update.
         viewModelScope.launch {
@@ -497,6 +524,29 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         _gpuApps.value++
     }
 
+    /** Whether [app] runs with a compositor, for windows with see-through parts (#23); null when it can't. */
+    fun compositingFor(app: PermissionManifest): Boolean? =
+        if (app.gui && !app.desktop) sessions.compositeFor(app.id) else null
+
+    /** Turns [app]'s compositor on or off from its next start; the first time, its package is installed. */
+    fun setCompositing(app: PermissionManifest, on: Boolean) {
+        sessions.setCompositeFor(app.id, on)
+        _gpuApps.value++
+        if (!on) return
+        viewModelScope.launch {
+            val store = configStore(_status.value, _mode.value) ?: return@launch
+            val backend = backend() ?: return@launch
+            if (container.registry.installed.value == null) container.registry.refreshInstalled(store)
+            val installed = container.registry.installed.value ?: return@launch
+            val pkg = com.daryan.tessera.container.COMPOSITOR_PACKAGE
+            if (pkg in installed || container.queue.jobs.value.any { it.active && pkg in it.packages }) return@launch
+            container.queue.enqueue("Compositor ($pkg)", listOf(pkg), QueueAction.INSTALL, null, backend, fallback = debianFallback()) {
+                container.registry.refreshInstalled(store)
+            }
+            _messages.send("Installing the compositor; follow it under Installs")
+        }
+    }
+
     /** How Linux apps look; see docs/LOOK-AND-FEEL.md. */
     val appearance = container.appearance.global
 
@@ -592,6 +642,100 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             } finally {
                 _removingLinux.value = false
             }
+            refresh()
+        }
+    }
+
+    /** A backup or a restore of the Linux system under way: which, and how much of the file is through. */
+    data class BackupProgress(val restoring: Boolean, val bytes: Long)
+
+    private val _backup = MutableStateFlow<BackupProgress?>(null)
+    val backup: StateFlow<BackupProgress?> = _backup
+
+    /** Why the Linux system can't be backed up or restored right now, or null when it can. */
+    private fun backupBlocker(): String? = when {
+        _backup.value != null -> "A backup or restore is already going"
+        _mode.value == BackendMode.DROIDSPACES -> "Droidspaces keeps its own backups of its containers"
+        container.installer.state.value.running || container.queue.jobs.value.any { it.active } -> "Wait for what's installing to finish first"
+        sessions.sessions.value.any { it.running } -> "Close the Linux apps that are open first: their files change while they run"
+        _mode.value == BackendMode.CHROOT && _status.value?.su == null -> "Root access not found"
+        else -> null
+    }
+
+    /**
+     * Saves the active engine's Linux system, apps and home folder included, as a .tar.gz at
+     * [uri] (#19); see [com.daryan.tessera.container.LinuxBackup].
+     */
+    fun backupLinux(uri: android.net.Uri) {
+        val backups = com.daryan.tessera.container.LinuxBackup
+        viewModelScope.launch {
+            backupBlocker()?.let { return@launch failed(it) }
+            val chroot = _mode.value == BackendMode.CHROOT
+            val su = _status.value?.su
+            _backup.value = BackupProgress(restoring = false, bytes = 0)
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val out = getApplication<Application>().contentResolver.openOutputStream(uri) ?: error("Couldn't open that file")
+                    out.use { o ->
+                        val progress: (Long) -> Unit = { _backup.value = BackupProgress(false, it) }
+                        if (chroot) backups.backupChroot(su!!, paths.chrootRootfs.path, o, progress)
+                        else backups.backupProot(paths.prootRootfs, Build.SUPPORTED_ABIS.first(), o, progress)
+                    }
+                }
+            }
+            _backup.value = null
+            result.onSuccess { _messages.send("Linux is backed up") }.onFailure {
+                // What was written isn't a backup: not left lying about to be trusted later.
+                runCatching { android.provider.DocumentsContract.deleteDocument(getApplication<Application>().contentResolver, uri) }
+                failed(it.message ?: "The backup failed")
+            }
+        }
+    }
+
+    /** Puts the backup at [uri] back as the active engine's Linux system, replacing PRoot mode's. */
+    fun restoreLinux(uri: android.net.Uri) {
+        val backups = com.daryan.tessera.container.LinuxBackup
+        viewModelScope.launch {
+            backupBlocker()?.let { return@launch failed(it) }
+            val chroot = _mode.value == BackendMode.CHROOT
+            val su = _status.value?.su
+            _backup.value = BackupProgress(restoring = true, bytes = 0)
+            val problem = withContext(Dispatchers.IO) {
+                runCatching {
+                    val resolver = getApplication<Application>().contentResolver
+                    val progress: (Long) -> Unit = { _backup.value = BackupProgress(true, it) }
+                    val input = resolver.openInputStream(uri) ?: error("Couldn't open that file")
+                    if (chroot) {
+                        // Root reads it from the app's cache: it can't open what Android's picker hands over.
+                        val copy = File(getApplication<Application>().cacheDir, "restore.tar.gz")
+                        try {
+                            var done = 0L
+                            input.use { from ->
+                                copy.outputStream().use { to ->
+                                    val buf = ByteArray(1 shl 16)
+                                    while (true) {
+                                        val r = from.read(buf)
+                                        if (r < 0) break
+                                        to.write(buf, 0, r)
+                                        done += r
+                                        progress(done)
+                                    }
+                                }
+                            }
+                            backups.restoreChroot(su!!, paths.chrootRootfs.path, copy)?.let { error(it) }
+                        } finally {
+                            copy.delete()
+                        }
+                    } else {
+                        input.use { backups.restoreProot(paths.prootRootfs, Build.SUPPORTED_ABIS.first(), it, progress) }
+                    }
+                }.exceptionOrNull()
+            }
+            _backup.value = null
+            if (problem != null) failed(problem.message ?: "The restore failed") else _messages.send("Linux is restored")
+            // Whatever happened, the system isn't what it was: look again.
+            container.baseLibrariesChecked.clear()
+            container.guiHelpersChecked.clear()
             refresh()
         }
     }
@@ -1018,6 +1162,16 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             ) { container.registry.unregister(app.id, store) }
             return true
         }
+        com.daryan.tessera.container.AppImages.dirOf(app)?.let { dir ->
+            val backend = backend() ?: return false
+            val store = configStore(_status.value, _mode.value)
+            val slug = dir.substringAfterLast('/')
+            container.queue.enqueue(
+                app.name, listOf(appImageJob(slug)), QueueAction.REMOVE, app.iconFile, backend,
+                script = com.daryan.tessera.container.AppImages.removeScript(slug),
+            ) { container.registry.unregister(app.id, store) }
+            return true
+        }
         if (app.packages.isEmpty()) return false
         val backend = backend() ?: return false
         val store = configStore(_status.value, _mode.value)
@@ -1178,6 +1332,75 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** install.sh, which unpacks an AppImage in the install queue. */
+    private val appImageInstaller by lazy { getApplication<Application>().assets.open("appimage/install.sh").reader().use { it.readText() } }
+
+    /**
+     * Queues installing the app in a .flatpak file from the Files tab (#24): flatpak installs it
+     * with its runtime from Flathub, then it gets a launcher entry like a Flathub app.
+     */
+    fun installFlatpakBundle(entry: com.daryan.tessera.files.FileEntry, info: com.daryan.tessera.files.FlatpakBundleInfo) {
+        viewModelScope.launch {
+            val backend = backend()
+            val problem = blocker(_status.value, _mode.value)
+            val store = configStore(_status.value, _mode.value)
+            if (backend == null || problem != null || store == null) {
+                failed(problem ?: "Linux isn't ready")
+                return@launch
+            }
+            if (!checkFlathub(store)) {
+                failed("Set up Flathub first, in the Store: it brings flatpak, and the runtime this app needs comes from it")
+                return@launch
+            }
+            val staged = runCatching { files.stage(entry, "${info.id}.flatpak") }.getOrElse {
+                failed(it.message ?: "Couldn't get ${entry.name} ready")
+                return@launch
+            }
+            container.queue.enqueue(
+                info.id.substringAfterLast('.'), listOf(flatpakJob(info.id)), QueueAction.INSTALL, null, backend,
+                script = Flatpak.bundleInstallScript(staged, info.id, _flathubFsync.value, bwrapStandIn), flatpakApp = info.id,
+            ) {
+                val desktop = files.readSmall(Flatpak.desktopFile(info.id))
+                val icon = files.firstPng(Flatpak.iconCandidates(info.id))
+                if (!container.registry.registerFlatpakBundle(info.id, store, desktop, icon)) {
+                    failed("${info.id} was installed, but its files weren't found to add it to the launcher")
+                }
+            }
+            _messages.send("Installing ${info.id}; follow it under Installs")
+        }
+    }
+
+    /**
+     * Queues adding an AppImage from the Files tab to the launcher (#9): unpacked once into
+     * Linux, then an app like any other, with its own icon and permissions.
+     */
+    fun installAppImage(entry: com.daryan.tessera.files.FileEntry) {
+        viewModelScope.launch {
+            val backend = backend()
+            val problem = blocker(_status.value, _mode.value)
+            val store = configStore(_status.value, _mode.value)
+            if (backend == null || problem != null || store == null) {
+                failed(problem ?: "Linux isn't ready")
+                return@launch
+            }
+            val images = com.daryan.tessera.container.AppImages
+            val slug = images.slug(entry.name)
+            val title = images.title(entry.name)
+            val staged = runCatching { files.stage(entry, "$slug.AppImage") }.getOrElse {
+                failed(it.message ?: "Couldn't get ${entry.name} ready")
+                return@launch
+            }
+            container.queue.enqueue(
+                title, listOf(appImageJob(slug)), QueueAction.INSTALL, null, backend,
+                script = images.installScript(appImageInstaller, staged, slug),
+            ) {
+                val app = container.registry.registerAppImage(slug, title, store)
+                _reopen.send(app)
+            }
+            _messages.send("Adding $title; follow it under Installs")
+        }
+    }
+
     /**
      * [app] with the drives plugged in right now shared at /media/user/<name>, when it may see
      * drives; Android has already mounted them, so they're folders like any other.
@@ -1315,5 +1538,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         /** What stands for Flathub's setup and its apps in the install queue's package lists. */
         const val FLATHUB_SETUP = "flathub-setup"
         fun flatpakJob(id: String) = "flathub:$id"
+        fun appImageJob(slug: String) = "appimage:$slug"
     }
 }

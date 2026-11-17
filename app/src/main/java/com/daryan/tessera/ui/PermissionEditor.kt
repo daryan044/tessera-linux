@@ -92,6 +92,16 @@ fun PermissionEditor(
             }
             Divider()
             SwitchRow(
+                "Microphone",
+                when {
+                    !p.microphone -> "Can't record"
+                    !p.audio -> "Needs Sound turned on as well"
+                    else -> "Can record what the phone hears: its microphone, a headset's, or a USB audio interface that's plugged in. Android asks when the app opens"
+                },
+                p.microphone, pill(Capability.AUDIO, !p.microphone),
+            ) { change(p.copy(microphone = it)) }
+            Divider()
+            SwitchRow(
                 "USB drives and SD cards",
                 if (p.drives) "Each drive plugged in when it opens shows up in /media/user" else "Can't see plugged-in drives",
                 p.drives, null,

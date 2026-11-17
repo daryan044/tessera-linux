@@ -175,6 +175,9 @@ class LauncherContainer(private val app: Application) {
     /** The modes already checked for missing base libraries ([BASE_LIBRARIES]) this run. */
     val baseLibrariesChecked: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
 
+    /** Looks for newer versions of Tessera among its releases. */
+    val updates = UpdateChecker(app, scope)
+
     /** Whether this run already ended what earlier runs left running in chroot mode. */
     @Volatile var chrootSwept = false
 
@@ -256,5 +259,6 @@ class LauncherContainer(private val app: Application) {
         const val PREFS = "launcher"
         const val KEY_DIAGNOSTICS = "diagnostics"
         const val KEY_INTRO_SEEN = "intro_seen"
+        const val KEY_LOW_POWER = "low_power"
     }
 }

@@ -64,6 +64,12 @@ data class Permissions(
     val network: Boolean = false,
     val display: Boolean = false,
     val audio: Boolean = false,
+    /**
+     * Sound input: what Android records (the phone's microphone, a headset's, a USB audio
+     * interface) reaches the app through its PulseAudio ([MicPipe]). Needs [audio], and Android's
+     * own microphone permission, asked when the app opens.
+     */
+    val microphone: Boolean = false,
     /** Device nodes, e.g. /dev/dri/renderD128 or /dev/bus/usb/001/004. */
     val devices: List<String> = emptyList(),
     /** Run as root inside the container. Weakens every other guarantee in chroot mode. */

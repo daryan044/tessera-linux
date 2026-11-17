@@ -178,6 +178,11 @@ interface DesktopActions {
     fun moveToWorkspace(windowId: Long, n: Int)
     /** Keeps [px] X pixels along the [left] or bottom edge for the dock. */
     fun reserve(left: Boolean, px: Int): Boolean
+    /**
+     * Where a mouse is the shell's alone, in this view's pixels: the [dock], or the whole view
+     * while a panel covers it ([everything]). Elsewhere it's the X screen's (#22).
+     */
+    fun mouseArea(dock: Rect, everything: Boolean)
     /** Whether the desktop shows a picture the user chose rather than the phone's wallpaper. */
     val customWallpaper: StateFlow<Boolean>
     /** Bumped when the background changes, to send it again. */
@@ -326,6 +331,8 @@ fun DesktopShell(actions: DesktopActions) {
     var dragApp by remember { mutableStateOf<PermissionManifest?>(null) }
     val dragAt = remember { mutableStateOf(Offset.Zero) }
     val dropHere by remember { derivedStateOf { dragApp != null && dockBounds.contains(dragAt.value) } }
+    // The Start menu and the overview lie over a scrim that closes them: the whole screen is theirs.
+    LaunchedEffect(dockBounds, startOpen, overview) { actions.mouseArea(dockBounds, startOpen || overview) }
     var message by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(message) {
         if (message != null) {

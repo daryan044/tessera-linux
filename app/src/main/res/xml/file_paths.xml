@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Files tab's transfer folder: what it copies out of Linux for Android apps. -->
+<!-- The Files tab's transfer folder: what it copies out of Linux for Android apps. And the
+     phone's own storage, for a file there that a Linux app hands to an Android one
+     (AndroidHandoff): handed over where it is, to the one app the user picks. -->
 <paths>
     <cache-path name="transfer" path="files-transfer/" />
+    <external-path name="phone" path="." />
 </paths>

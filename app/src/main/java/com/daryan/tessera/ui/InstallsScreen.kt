@@ -70,6 +70,8 @@ fun InstallsScreen(
     onCancel: (Int) -> Unit,
     onRetry: (Int) -> Unit,
     onClearFinished: () -> Unit,
+    /** To the Files tab, to install a .deb, a .flatpak or an AppImage that was downloaded. */
+    onInstallFile: () -> Unit = {},
     onClose: () -> Unit,
 ) {
     val back = rememberBackSwipe(onBack = onClose)
@@ -85,14 +87,18 @@ fun InstallsScreen(
             TopAppBar(
                 title = { Text("Installs") },
                 navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
-                actions = { if (finished.isNotEmpty()) TextButton(onClick = onClearFinished) { Text("Clear finished") } },
+                actions = {
+                    if (finished.isNotEmpty()) TextButton(onClick = onClearFinished) { Text("Clear finished") }
+                    TextButton(onClick = onInstallFile) { Text("Install a file") }
+                },
             )
         },
     ) { padding ->
         if (jobs.isEmpty()) {
             EmptyState(
                 title = "No installs",
-                body = "Apps you install or remove wait here, one after another, and stay listed until you clear them.",
+                body = "Apps you install or remove wait here, one after another, and stay listed until you clear them. " +
+                    "Install a file (top right) takes you to your downloads, for a .deb, a .flatpak or an AppImage.",
                 padding = padding,
             )
             return@Scaffold

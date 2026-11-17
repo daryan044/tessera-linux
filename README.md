@@ -17,7 +17,7 @@ phone's own colors. No terminal setup, no VNC, no guides to follow.
 ![Flathub](https://img.shields.io/badge/Flathub-2%2C800%2B%20apps-4A86CF?logo=flathub&logoColor=white)
 ![GPU](https://img.shields.io/badge/GPU-OpenGL%204.6%20%2B%20Vulkan-E2231A)
 
-**[⬇ Download Tessera 0.7.0 (alpha)](https://github.com/daryan044/tessera-linux/releases/download/v0.7.0/tessera-v0.7.0.apk)**
+**[⬇ Download Tessera 0.8.0 (alpha)](https://github.com/daryan044/tessera-linux/releases/download/v0.8.0/tessera-v0.8.0.apk)**
 · [▶ 1-minute demo video](https://github.com/daryan044/tessera-linux/releases/download/v0.4.0/tessera-demo.mp4)
 · [All releases](https://github.com/daryan044/tessera-linux/releases)
 
@@ -236,14 +236,38 @@ a new size lasts until the app closes unless you apply it, for good or for that 
 
 ### 📁 A real file manager
 The **Files** tab browses phone storage and the whole Linux system side by side: copy, move,
-compress, extract, edit text, change permissions, open files in Android or Linux apps, install a
-.deb with a tap, or browse as root.
+compress, extract, edit text, change permissions, open files in Android or Linux apps, or browse
+as root.
+
+### 📥 Install from a file: .deb, .flatpak, AppImage
+For an app that's in neither store, download its file and tap it in **Files** (the Store, the
+Installs page and the menu all have **Install from a file**, which takes you to your downloads):
+
+- **.deb:** apt installs it with whatever it needs.
+- **.flatpak:** a build its maker hands out, not on Flathub. flatpak installs it, its runtime
+  comes from Flathub, and it opens from your apps like any Flathub app.
+- **AppImage:** Tessera unpacks it into Linux once and adds it to your apps with its own icon and
+  permissions. No FUSE, no `--appimage-extract-and-run` at every start. It has to be the arm64
+  (aarch64) download; Tessera says so when it isn't.
 
 ### 🔗 Open in Linux, from any Android app
 Tessera is in Android's **Open with** and **Share** menus: send a photo, a document or a link from
 any app, then pick a Linux app for it, or anything you like from **All apps**. Files are copied to
 `From-Android` in your Linux home. On Android 12 and newer, tapped web links go to your default
 browser, so use **Share** to send a link to Linux.
+
+### 📲 And back: Open in Android, from any Linux app
+A web link tapped in a Linux app opens Android's **Open with**: the phone's browsers and apps, or
+**Open in Linux** for a Linux one. Phone numbers, mail addresses and map links go to the phone.
+Linux apps also list **Open in Android** among the apps a file can be opened with, so a PDF or a
+photo in Linux can go straight to an Android app. Prefer links to stay in Linux? Settings →
+**Open links on the phone**.
+
+### 🎵 Linux players on the phone's media controls
+A music or video player in Linux that speaks MPRIS (VLC, mpv, Spotify clients, most of them)
+shows up where Android's own players do: the notification shade, the lock screen, a headset's
+buttons. Play, pause and skip reach the player. And with the **Microphone** permission, an app
+records what the phone hears, a USB audio interface included while one is plugged in.
 
 ### 📊 Task manager
 Every Linux process, live CPU and memory per app, and **End task** with a two-tap "Sure?" right
@@ -347,6 +371,16 @@ with its own Recents card, theme, sound, GPU and per-app permissions.
   opens the app again.
 - **Your network's DNS:** Linux uses Android's DNS servers, so VPNs and networks that only allow
   their own resolver work. Set your own in the config editor and they stay.
+- **Back up and restore:** Setup saves the whole Linux system, apps and home folder included, as
+  one file, and puts it back after a reinstall instead of downloading everything again.
+- **Tells you about new versions:** once a day Tessera looks at its releases and says when there's
+  a newer one, with what's new. Nothing is downloaded or installed by itself, and it can be off.
+- **Low power mode** for slow phones and tablets: no blur behind Tessera's bars.
+- **Compositing, per app:** for GTK 4 apps that draw black boxes where something should be
+  see-through. Hold the app's icon → Look and graphics.
+- **Touch or mouse, per app:** each app keeps the input mode picked in its window's panel.
+- **A key for an app:** home screen icons start apps through an intent, which key remappers can
+  send too; see [the FAQ](#faq).
 - **Predictive back** in the launcher: pages shrink and follow your finger as you swipe back.
 - **Config editor** for .bashrc, apt sources, hosts and more, without a terminal.
 - **Keeps running in the background:** a foreground service holds sessions, and Setup lifts
@@ -366,7 +400,7 @@ untested), a few GB of free storage. GPU acceleration needs a Snapdragon (Adreno
 optional. Tested on a Xiaomi 13 Ultra and a Samsung Galaxy S26 Ultra, both on Android 16; chroot
 mode with Magisk and with SukiSU.
 
-1. Download the APK: [tessera-v0.7.0.apk](https://github.com/daryan044/tessera-linux/releases/download/v0.7.0/tessera-v0.7.0.apk)
+1. Download the APK: [tessera-v0.8.0.apk](https://github.com/daryan044/tessera-linux/releases/download/v0.8.0/tessera-v0.8.0.apk)
    (alpha; see the [releases](https://github.com/daryan044/tessera-linux/releases) for notes and
    newer versions), or build it yourself (below). With [Obtainium](https://github.com/ImranR98/Obtainium),
    add this repository's URL and it keeps Tessera up to date from its releases.
@@ -387,6 +421,7 @@ makes).
 | Sound, clipboard both ways, automatic keyboard | ✅ Works |
 | Firefox, VS Code, HandBrake | ✅ Work, with GPU acceleration |
 | Store, installs, apps installed with apt or .deb | ✅ Works |
+| New in 0.8.0: .flatpak files, AppImages, backup and restore, Open in Android, media controls, microphone, compositing, update notices | 🧪 New; built and unit-tested, not yet confirmed on a phone |
 | GPU acceleration (Turnip + Zink) in PRoot mode | ✅ Works on Adreno 740 |
 | Chroot mode with root | ✅ Works with Magisk and SukiSU (KernelSU forks since 0.5.5), GPU included |
 | Droidspaces containers (Debian, Ubuntu, Kali, Mint…) | 🧪 New; Debian and Flathub apps confirmed in a Kali container; Ubuntu not yet run; Arch and phone adb not yet |
@@ -528,6 +563,17 @@ programs from app storage, which is what Linux needs. F-Droid has no such rule.
 after downloading.** Both were bugs in 0.5.4 and older; update to 0.5.5. The failures could leave
 the system with no DNS servers, which 0.5.5 also repairs on its own the next time anything starts.
 
+**Can a key start an app (Key Mapper and the like)?** Yes. Add an action that sends an intent to
+an **activity**: action `com.daryan.tessera.LAUNCH_APP`, package `com.daryan.tessera`, class
+`com.daryan.tessera.MainActivity`, and a string extra `app_id` with the app's id. Ids are in
+Setup → Copy diagnostics, next to each app's name; Flathub apps are `flathub-` and the Flathub id
+in lowercase (`flathub-org.kde.konsole`), AppImages `appimage-` and their name.
+
+**Can Linux apps record from a USB audio interface?** Through sound's Microphone permission, yes:
+Android records from the interface while it's plugged in, and the app sees it as PulseAudio's
+input (two channels). Not as a raw ALSA device: Android keeps those to itself, so an app's ALSA
+device list stays empty; pick PulseAudio in the app.
+
 **My apps stop in the background.** Android 12 and newer limit background processes. Setup shows
 whether the limit is on, and lifts it in one tap with root, or gives you the adb command.
 
@@ -539,6 +585,20 @@ container can't read, so Tessera keeps the output of recently closed apps next t
 all works. Open the Claude Code shortcut, which reads both, or use Setup → Copy diagnostics and
 paste it into any AI. Turn it off in Setup if you'd rather nothing were kept; the files never leave
 the phone on their own, and they do name your apps and folders.
+
+## Thanks
+
+To everyone who reported a problem or asked for something, and so shaped what Tessera does. In
+0.8.0: [@gaussandhisgun](https://github.com/gaussandhisgun) (desktop mouse support, compositing,
+low power mode, MPRIS, opening links and files across Linux and Android),
+[@imhemish](https://github.com/imhemish) (.flatpak files), [@Vikranttiw](https://github.com/Vikranttiw)
+(AppImages), [@ClockGen](https://github.com/ClockGen) (backup and restore),
+[@fouadd123](https://github.com/fouadd123) (a key for an app), [@Leeroyy42](https://github.com/Leeroyy42)
+(sound input), [@rajnishrtx6090](https://github.com/rajnishrtx6090) (Adreno 710),
+[@PankajGautam04](https://github.com/PankajGautam04) (Angelfish), [@gaetanolip](https://github.com/gaetanolip)
+(Chrome), [@ThierryTouin](https://github.com/ThierryTouin) and [@dezzezer](https://github.com/dezzezer)
+(VSCodium and Electron apps from Flathub), and [@FinallyCanuck](https://github.com/FinallyCanuck)
+(installing on a Pixel Tablet).
 
 ## License
 

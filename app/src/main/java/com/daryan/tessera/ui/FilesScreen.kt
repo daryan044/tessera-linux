@@ -173,6 +173,8 @@ class FilesUi {
     var editing by mutableStateOf<FileEntry?>(null)
     /** Set while a file is being copied out to open it. */
     var busy by mutableStateOf<String?>(null)
+    /** A folder to show next, asked for from outside the tab ("Install from a file"). */
+    var goTo by mutableStateOf<String?>(null)
 }
 
 sealed interface FilesDialog {
@@ -430,6 +432,14 @@ fun FilesScreen(
             storageRequest.launch(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE))
         } else {
             b.open(path)
+        }
+    }
+
+    // A folder asked for from elsewhere, opened like a tap on it: with the storage permission.
+    LaunchedEffect(ui.goTo) {
+        ui.goTo?.let { path ->
+            ui.goTo = null
+            openPlace(path)
         }
     }
 

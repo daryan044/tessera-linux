@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Warning
@@ -45,6 +46,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -52,6 +57,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.daryan.tessera.BackendMode
 import com.daryan.tessera.CustomTab
+import com.daryan.tessera.UpdateState
+import com.daryan.tessera.X11Input
 import com.daryan.tessera.container.Appearance
 import com.daryan.tessera.container.ColorMode
 import com.daryan.tessera.container.ConfigCatalog
@@ -61,7 +68,11 @@ import com.daryan.tessera.container.HostStatus
 import com.daryan.tessera.container.InstallState
 import com.daryan.tessera.store.CatalogState
 
-/** Everything the launcher lets you configure, in one place. Each row hands off to its owner. */
+/**
+ * Everything that is set once, in one place, from what people change most to what they rarely
+ * touch: how Linux apps look, how they're shown and touched, Tessera's own screens, the store,
+ * the Linux system's files, and Tessera itself. Each row hands off to its owner.
+ */
 @Composable
 fun SettingsScreen(
     /** Why the system files can't be edited, or null when they can. */
@@ -89,10 +100,24 @@ fun SettingsScreen(
     onDeleteTheme: (String) -> Unit,
     runningSessions: Int,
     onStopAll: () -> Unit,
+    /** Whether web links Linux apps open go to Android's apps (#17). */
+    androidLinks: Boolean,
+    onAndroidLinks: (Boolean) -> Unit,
+    /** Low power mode: Tessera's own screens without blur (#21). */
+    lowPower: Boolean,
+    onLowPower: (Boolean) -> Unit,
+    /** What the update check found, this build's version, and the check's switch and button. */
+    updates: UpdateState,
+    currentVersion: String,
+    onUpdateChecks: (Boolean) -> Unit,
+    onCheckUpdates: () -> Unit,
+    onOpenUpdate: () -> Unit,
+    onIntro: () -> Unit,
     onAbout: () -> Unit,
     onClose: () -> Unit,
 ) {
     val back = rememberBackSwipe(onBack = onClose)
+    val context = LocalContext.current
     Scaffold(
         modifier = Modifier.backSwipePage(back),
         containerColor = MaterialTheme.colorScheme.surface,
@@ -104,61 +129,11 @@ fun SettingsScreen(
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 40.dp)) {
-            Group("System files") {
-                if (filesUnavailable != null) Note(filesUnavailable)
-                ConfigCatalog.files.forEach { f ->
-                    Row(LauncherIcons.Folder, f.title, f.path, onClick = if (filesUnavailable == null) ({ onOpenFile(f) }) else null)
-                }
-            }
-
-            Group("Launcher") {
-                if (customTabs.isEmpty()) Note("No custom tabs yet. Tabs group apps you pick, next to the category tabs.")
-                customTabs.forEach { tab ->
-                    Row(LauncherIcons.Apps, tab.name, "${tab.appIds.size} apps", action = {
-                        IconButton(onClick = { onRemoveTab(tab.name) }) { Icon(Icons.Rounded.Delete, "Remove tab") }
-                    })
-                }
-                Row(Icons.Rounded.Add, "New tab", "Group apps your way", onClick = onAddTab)
-            }
-
-            Group("App store") {
+            Group("How Linux apps look") {
                 Row(
-                    LauncherIcons.Store, "App catalog",
-                    when (catalog) {
-                        is CatalogState.Ready -> "${catalog.apps.size} apps · updated ${DateUtils.getRelativeTimeSpanString(catalog.updated)}"
-                        is CatalogState.Loading -> catalog.step
-                        is CatalogState.Failed -> "Couldn't load: ${catalog.message}"
-                        CatalogState.Empty -> "Not downloaded yet (about 20 MB)"
-                    },
-                    action = { IconButton(onClick = onRefreshCatalog) { Icon(Icons.Rounded.Refresh, "Refresh catalog") } },
-                )
-                Row(
-                    LauncherIcons.Store, "Faster Flathub installs",
-                    if (flathubFsync) "Off: every file is flushed to storage as it's written, which is safe and slow, in PRoot mode most of all"
-                    else "Files aren't flushed to storage one by one. If the phone loses power during an install, install that app again. Applies to installs from now on",
-                    action = { androidx.compose.material3.Switch(checked = !flathubFsync, onCheckedChange = { onFlathubFsync(!it) }) },
-                )
-                Row(LauncherIcons.Store, "Install queue", if (activeInstalls == 0) "Nothing installing" else "$activeInstalls installing or waiting", onClick = onOpenQueue)
-            }
-
-            Group("Display") {
-                Row(Icons.Rounded.Settings, "X11 display settings", "Resolution, touch mode, keyboard", onClick = onDisplaySettings)
-                Row(
-                    LauncherIcons.Monitor, "GPU acceleration",
-                    when (gpuEnabled) {
-                        null -> "Needs an Adreno GPU (Snapdragon); apps draw in software here"
-                        true -> "Windowed apps draw with the phone's GPU (OpenGL and Vulkan, through Turnip and Zink). Applies to apps opened from now on"
-                        false -> "Off: apps draw in software"
-                    },
-                    action = gpuEnabled?.let { on -> { androidx.compose.material3.Switch(checked = on, onCheckedChange = onGpuEnabled) } },
-                )
-            }
-
-            Group("Appearance") {
-                Row(
-                    LauncherIcons.Palette, "Theme Linux apps",
-                    if (appearance.enabled) "Apps take the phone's colors and follow its dark mode, live. Each app can opt out from its long-press menu"
-                    else "Off: apps look the way their toolkit draws them by default",
+                    LauncherIcons.Palette, "Match the phone's theme",
+                    if (appearance.enabled) "Apps take the phone's colors and dark mode. Hold an app's icon to leave it out"
+                    else "Off: apps look the way they do on a Linux desktop",
                     action = { androidx.compose.material3.Switch(checked = appearance.enabled, onCheckedChange = { onAppearance(appearance.copy(enabled = it)) }) },
                 )
                 if (appearance.enabled) {
@@ -177,22 +152,121 @@ fun SettingsScreen(
                     if (Build.VERSION.SDK_INT >= 31 && appearance.linuxTheme == null) {
                         Row(
                             LauncherIcons.Palette, "Wallpaper colors",
-                            if (appearance.dynamicColor) "Accents and surfaces from your wallpaper, like Android's own apps" else "A fixed blue palette",
+                            if (appearance.dynamicColor) "Colors come from your wallpaper, like Android's own apps" else "A fixed blue palette",
                             action = { androidx.compose.material3.Switch(checked = appearance.dynamicColor, onCheckedChange = { onAppearance(appearance.copy(dynamicColor = it)) }) },
                         )
                     }
                 }
             }
 
-            Group("Sessions") {
+            Group("Display") {
+                Row(
+                    LauncherIcons.Monitor, "GPU acceleration",
+                    when (gpuEnabled) {
+                        null -> "Not available on this phone: apps draw without the GPU"
+                        true -> "Apps draw with the phone's GPU. Hold an app's icon to turn it off for that app"
+                        false -> "Off: apps draw without the GPU, slower but always right"
+                    },
+                    action = gpuEnabled?.let { on -> { androidx.compose.material3.Switch(checked = on, onCheckedChange = onGpuEnabled) } },
+                )
+                Row(Icons.Rounded.Settings, "Size and resolution", "How big Linux windows draw, and more display options", onClick = onDisplaySettings)
+            }
+
+            Group("Touch in Linux windows") {
+                Note("What a finger does in apps that haven't been given their own mode. An app's own is set from its window's panel.")
+                Column(Modifier.padding(horizontal = 16.dp)) {
+                    InputChoices(
+                        mode = X11Input.defaultMode(context),
+                        onMode = { X11Input.setDefaultMode(context, it) },
+                        longPress = X11Input.longPressRightClick(context),
+                        onLongPress = { X11Input.setLongPressRightClick(context, it) },
+                    )
+                }
+            }
+
+            Group("Linux and Android") {
+                Row(
+                    LauncherIcons.Apps, "Open links on the phone",
+                    if (androidLinks) "A web link tapped in a Linux app opens Android's Open with: the phone's browsers, or Open in Linux for a Linux one. Applies to apps opened from now on"
+                    else "Off: links open in a Linux browser, if one is installed",
+                    action = { androidx.compose.material3.Switch(checked = androidLinks, onCheckedChange = onAndroidLinks) },
+                )
+                Note("Either way, Linux apps list Open in Android among the apps a file or link can be opened with, and phone numbers, mail addresses and map links go to the phone.")
+            }
+
+            Group("Tessera's screens") {
+                Row(
+                    LauncherIcons.Monitor, "Low power mode",
+                    if (lowPower) "On: no blur behind Tessera's bars, simpler transitions"
+                    else "For slow phones and tablets: turns off blur and other costly effects in Tessera. Linux apps aren't changed",
+                    action = { androidx.compose.material3.Switch(checked = lowPower, onCheckedChange = onLowPower) },
+                )
+                customTabs.forEach { tab ->
+                    Row(LauncherIcons.Apps, "Tab: ${tab.name}", "${tab.appIds.size} apps", action = {
+                        IconButton(onClick = { onRemoveTab(tab.name) }) { Icon(Icons.Rounded.Delete, "Remove tab") }
+                    })
+                }
+                Row(Icons.Rounded.Add, "New tab", "Your own group of apps, next to the category tabs", onClick = onAddTab)
+            }
+
+            Group("Store and installs") {
+                Row(LauncherIcons.Store, "Installs", if (activeInstalls == 0) "Nothing installing. Tap for what was installed and removed" else "$activeInstalls installing or waiting", onClick = onOpenQueue)
+                Row(
+                    LauncherIcons.Store, "Debian's app list",
+                    when (catalog) {
+                        is CatalogState.Ready -> "${catalog.apps.size} apps · updated ${DateUtils.getRelativeTimeSpanString(catalog.updated)}"
+                        is CatalogState.Loading -> catalog.step
+                        is CatalogState.Failed -> "Couldn't load: ${catalog.message}"
+                        CatalogState.Empty -> "Not downloaded yet (about 20 MB)"
+                    },
+                    action = { IconButton(onClick = onRefreshCatalog) { Icon(Icons.Rounded.Refresh, "Refresh the list") } },
+                )
+                Row(
+                    LauncherIcons.Store, "Faster Flathub installs",
+                    if (flathubFsync) "Off: safe and slow, most of all without root"
+                    else "On. If the phone loses power during an install, install that app again",
+                    action = { androidx.compose.material3.Switch(checked = !flathubFsync, onCheckedChange = { onFlathubFsync(!it) }) },
+                )
+            }
+
+            Group("Linux system") {
                 Row(
                     LauncherIcons.Terminal, "Running apps", if (runningSessions == 0) "Nothing running" else "$runningSessions running",
                     action = if (runningSessions > 0) ({ TextButton(onClick = onStopAll) { Text("Stop all") } }) else null,
                 )
+                // Eight rows few people need: folded away until asked for.
+                var showFiles by rememberSaveable { mutableStateOf(false) }
+                Row(
+                    LauncherIcons.Code, "System files",
+                    filesUnavailable ?: if (showFiles) "Tap one to edit it. The first save keeps a backup" else ".bashrc, apt sources, DNS, hosts and more, for editing",
+                    onClick = if (filesUnavailable == null) ({ showFiles = !showFiles }) else null,
+                )
+                if (showFiles && filesUnavailable == null) {
+                    ConfigCatalog.files.forEach { f -> Row(LauncherIcons.Folder, f.title, f.path, onClick = { onOpenFile(f) }) }
+                }
             }
 
-
             Group("Tessera") {
+                val release = updates.available
+                Row(
+                    Icons.Rounded.Refresh,
+                    if (release != null) "Tessera ${release.version} is out" else "Updates",
+                    when {
+                        updates.checking -> "Checking…"
+                        release != null -> "You have $currentVersion. Tap to see what's new and get it"
+                        updates.error != null -> "Couldn't check: ${updates.error}. Tap to try again"
+                        updates.checkedAt > 0 -> "$currentVersion is the latest · checked ${DateUtils.getRelativeTimeSpanString(updates.checkedAt)}. Tap to check now"
+                        else -> "You have $currentVersion. Tap to check now"
+                    },
+                    onClick = if (release != null) onOpenUpdate else onCheckUpdates,
+                )
+                Row(
+                    Icons.Rounded.Refresh, "Tell me about new versions",
+                    if (updates.enabled) "Tessera looks once a day and tells you. Nothing is downloaded or installed by itself"
+                    else "Off: Tessera only looks when you tap Updates",
+                    action = { androidx.compose.material3.Switch(checked = updates.enabled, onCheckedChange = onUpdateChecks) },
+                )
+                Row(Icons.Rounded.PlayArrow, "Introduction", "The tour from the first run", onClick = onIntro)
                 Row(Icons.Rounded.Info, "About", "Version, creator and licenses", onClick = onAbout)
             }
         }

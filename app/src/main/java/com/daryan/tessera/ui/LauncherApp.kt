@@ -70,8 +70,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
@@ -115,7 +113,18 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val containerBusy by vm.containerBusy.collectAsStateWithLifecycle()
     val apps by vm.apps.collectAsStateWithLifecycle()
     // Apps installed from a terminal while the launcher was away show up when it's back.
-    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.scanSystemApps() }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        vm.scanSystemApps()
+        // At most once a day, however often the launcher comes back.
+        vm.updates.check()
+    }
+    val context = LocalContext.current
+    val updates by vm.updates.state.collectAsStateWithLifecycle()
+    /** The update notice, put off until the launcher is opened again. */
+    var updateLater by remember { mutableStateOf(false) }
+    val openLink: (String) -> Unit = { url ->
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    }
     val pinned by vm.tabStore.pinned.collectAsStateWithLifecycle()
     val permissionOverrides by vm.permissionOverrides.collectAsStateWithLifecycle()
     val gpuEnabled by vm.gpuEnabled.collectAsStateWithLifecycle()
@@ -138,7 +147,6 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     var addingTab by remember { mutableStateOf(false) }
     var removingTab by remember { mutableStateOf<String?>(null) }
 
-    val context = LocalContext.current
     var openConfig by remember { mutableStateOf<ConfigFile?>(null) }
     var openStoreApp by remember { mutableStateOf<StoreApp?>(null) }
     var showQueue by remember { mutableStateOf(false) }
@@ -180,6 +188,14 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val themePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(vm::importTheme)
     }
+    // The Linux system's backup: saved and picked through Android's own file screens.
+    val backupProgress by vm.backup.collectAsStateWithLifecycle()
+    val backupSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gzip")) { uri ->
+        uri?.let(vm::backupLinux)
+    }
+    val backupPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(vm::restoreLinux)
+    }
     val storageRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         pendingLaunch?.let(launchApp)
         pendingLaunch = null
@@ -187,13 +203,19 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val startApp: (PermissionManifest) -> Unit = { app ->
         val storage = app.permissions.drives ||
             app.permissions.filesystem.any { it.path.startsWith("/storage") || it.path.startsWith("/sdcard") }
-        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
-            PackageManager.PERMISSION_GRANTED
-        if (storage && !granted) {
+        fun has(permission: String) = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+        // Android's own permissions the app's need, asked together: storage for shared folders,
+        // the microphone for apps that may record.
+        val wanted = buildList {
+            if (storage && !has(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+                add(Manifest.permission.READ_EXTERNAL_STORAGE)
+                add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+            if (app.permissions.microphone && app.permissions.audio && !has(Manifest.permission.RECORD_AUDIO)) add(Manifest.permission.RECORD_AUDIO)
+        }
+        if (wanted.isNotEmpty()) {
             pendingLaunch = app
-            storageRequest.launch(
-                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE),
-            )
+            storageRequest.launch(wanted.toTypedArray())
         } else {
             launchApp(app)
         }
@@ -266,6 +288,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     }
 
     val hazeState = rememberHazeState()
+    val lowPower by vm.lowPower.collectAsStateWithLifecycle()
+    val androidLinks by vm.androidLinks.collectAsStateWithLifecycle()
     val glass = HazeMaterials.thin(MaterialTheme.colorScheme.surfaceContainer)
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val pagerState = rememberPagerState { tabs.size }
@@ -281,6 +305,15 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val shortScreen = config.screenHeightDp < 480
 
     val store = vm.configStore(status, mode)
+    // "Install from a file": to the Files tab's Downloads, where tapping a .deb, a .flatpak or
+    // an AppImage offers to install it.
+    val installFromFile: () -> Unit = {
+        showQueue = false
+        showSettings = false
+        destination = Destination.Files
+        filesUi.goTo = com.daryan.tessera.files.FileBrowser.DOWNLOADS
+        scope.launch { snackbar.showSnackbar("Tap a .deb, .flatpak or AppImage file to install it", duration = SnackbarDuration.Long) }
+    }
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -296,21 +329,15 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     blocker = blocker.takeIf { status != null },
                     running = running,
                     activeInstalls = queue.count { it.active },
-                    rootAvailable = status?.su != null,
-                    destination = destination,
-                    container = if (mode == BackendMode.DROIDSPACES) {
-                        status?.droidspacesSelected?.let { "${it.name}, ${if (it.running) "running" else "stopped"}" } ?: "none picked"
-                    } else null,
+                    update = updates.available?.version,
                 ),
                 actions = MenuActions(
-                    go = { d -> scope.launch { drawerState.close() }; destination = d },
                     terminal = closing { launchById("bash") },
                     rootShell = closing { launchById("root-shell") },
-                    newShortcut = closing { destination = Destination.Apps; editingShortcut = Shortcut(id = "", name = "", command = "") },
+                    installFile = closing { installFromFile() },
                     trackpad = closing { showTrackpad = true },
                     installs = closing { showQueue = true },
-                    systemFiles = closing { showSettings = true },
-                    displaySettings = closing { context.startActivity(Intent().setClassName(context, "com.termux.x11.LoriePreferences")) },
+                    update = closing { updates.available?.let { openLink(it.url) } },
                     copyDiagnostics = closing {
                         scope.launch {
                             val report = vm.diagnosticsReport()
@@ -319,10 +346,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                             snackbar.showSnackbar("Diagnostics copied, ready to paste")
                         }
                     },
-                    setMode = vm::setMode,
                     settings = closing { showSettings = true },
                     about = closing { showAbout = true },
-                    intro = closing { vm.setIntroSeen(false) },
                 ),
             )
         },
@@ -336,7 +361,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = topBar@{
             if (destination == Destination.Files) {
-                Column(Modifier.hazeBlur(HazeInput.Sources(hazeState), glass, performanceMode = BLUR_MODE)) {
+                Column(Modifier.frosted(lowPower, hazeState, glass, MaterialTheme.colorScheme.surface)) {
                     FilesTopBar(
                         b = vm.files,
                         ui = filesUi,
@@ -355,7 +380,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 }
                 return@topBar
             }
-            Column(Modifier.hazeBlur(HazeInput.Sources(hazeState), glass, performanceMode = BLUR_MODE)) {
+            Column(Modifier.frosted(lowPower, hazeState, glass, MaterialTheme.colorScheme.surface)) {
                 val title = @Composable { Text(destination.title) }
                 val subtitle = @Composable {
                     Text(
@@ -450,6 +475,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 onSelect = { destination = it },
                 hazeState = hazeState,
                 glass = HazeMaterials.regular(MaterialTheme.colorScheme.surfaceContainerHigh),
+                lowPower = lowPower,
                 badge = { d ->
                     if (d == Destination.Sessions && running > 0) Badge { Text("$running") }
                     if (d == Destination.Setup && blocker != null && status != null) Badge()
@@ -459,9 +485,11 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     ) { padding ->
         AnimatedContent(
             targetState = destination,
-            modifier = Modifier.fillMaxSize().hazeSource(hazeState),
+            // Nothing blurs in low power mode, so nothing needs recording to blur from.
+            modifier = if (lowPower) Modifier.fillMaxSize() else Modifier.fillMaxSize().hazeSource(hazeState),
             transitionSpec = {
-                (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.94f))
+                if (lowPower) fadeIn(motion.fastEffectsSpec()).togetherWith(fadeOut(motion.fastEffectsSpec()))
+                else (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.94f))
                     .togetherWith(fadeOut(motion.fastEffectsSpec()))
             },
             label = "destination",
@@ -487,14 +515,17 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                                 if (undo == SnackbarResult.ActionPerformed) vm.saveShortcut(shortcut)
                             }
                         // Flathub apps have no Debian packages, and were turned away here as part of the system.
-                        } else if (app.packages.isEmpty() && app.flatpak == null && !SystemApps.isSystemApp(app)) {
+                        } else if (app.packages.isEmpty() && app.flatpak == null && !SystemApps.isSystemApp(app) &&
+                            !com.daryan.tessera.container.AppImages.isAppImage(app)
+                        ) {
                             scope.launch { snackbar.showSnackbar("${app.name} is part of the Linux system and can't be uninstalled") }
                         } else {
                             uninstallApp = app
                         }
                     },
                     onEditExec = { execApp = it },
-                    graphics = gpuGraphics || appearance.enabled,
+                    // Every windowed app has something there: compositing at the least.
+                    graphics = true,
                     onGraphics = { graphicsApp = it },
                     layout = homeLayout,
                     editing = editingHome,
@@ -543,6 +574,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                     loadIcon = vm::loadStoreIcon,
                     onRetry = { vm.openStore(refresh = true) },
                     onOpenApp = { openStoreApp = it },
+                    onInstallFile = installFromFile,
                 )
                 Destination.Sessions -> SessionsScreen(
                     sessions,
@@ -588,6 +620,12 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                         }
                     },
                     onShowIntro = { vm.setIntroSeen(false) },
+                    backup = backupProgress,
+                    onBackup = {
+                        val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())
+                        backupSaver.launch("tessera-linux-${mode.short.lowercase()}-$day.tar.gz")
+                    },
+                    onRestore = { backupPicker.launch(arrayOf("*/*")) },
                     droidspaces = DroidspacesActions(
                         select = vm::selectContainer,
                         start = vm::startContainer,
@@ -634,6 +672,16 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onDeleteTheme = vm::deleteTheme,
             runningSessions = running,
             onStopAll = vm.sessions::stopAll,
+            androidLinks = androidLinks,
+            onAndroidLinks = vm::setAndroidLinks,
+            lowPower = lowPower,
+            onLowPower = vm::setLowPower,
+            updates = updates,
+            currentVersion = vm.updates.current,
+            onUpdateChecks = vm.updates::setEnabled,
+            onCheckUpdates = { vm.updates.check(force = true) },
+            onOpenUpdate = { updates.available?.let { openLink(it.url) } },
+            onIntro = { showSettings = false; vm.setIntroSeen(false) },
             onAbout = { showAbout = true },
             onClose = { showSettings = false },
         )
@@ -675,13 +723,24 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         )
     }
 
+    updates.available?.takeIf { updates.announce && !updateLater }?.let { release ->
+        UpdateDialog(
+            release = release,
+            current = vm.updates.current,
+            onGet = { updateLater = true; openLink(release.url) },
+            onLater = { updateLater = true },
+            onSkip = { vm.updates.skip(release.version) },
+        )
+    }
+
     graphicsApp?.let { app ->
         // Read again whenever a switch changes (gpuApps), so the dialog follows them.
         val gpu = remember(app.id, gpuApps, gpuEnabled, mode) { vm.gpuFor(app) }
         val fixes = remember(app.id, gpuApps) { vm.gpuFixesFor(app) }
         val unthemed by vm.unthemed.collectAsStateWithLifecycle()
         val themed = (app.id !in unthemed).takeIf { appearance.enabled }
-        if (gpu == null && themed == null) graphicsApp = null
+        val compositing = remember(app.id, gpuApps) { vm.compositingFor(app) }
+        if (gpu == null && themed == null && compositing == null) graphicsApp = null
         else GraphicsFixesDialog(
             appName = app.name,
             themed = themed,
@@ -690,6 +749,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onGpu = { vm.setGpuFor(app, it) },
             fixes = fixes,
             onFix = { fix, on -> vm.setGpuFix(app, fix, on) },
+            compositing = compositing,
+            onCompositing = { vm.setCompositing(app, it) },
             onDismiss = { graphicsApp = null },
         )
     }
@@ -736,7 +797,11 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             title = { Text("Uninstall ${app.name}?") },
             text = {
                 Text(
-                    "Removes ${app.flatpak?.let { "${it.app} and the runtimes only it used" } ?: app.packages.joinToString()} from Linux. " +
+                    "Removes ${
+                        app.flatpak?.let { "${it.app} and the runtimes only it used" }
+                            ?: com.daryan.tessera.container.AppImages.dirOf(app)?.let { "the unpacked AppImage ($it)" }
+                            ?: app.packages.joinToString()
+                    } from Linux. " +
                         "Its settings in your home folder stay, in case you install it again.",
                 )
             },
@@ -773,6 +838,7 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onCancel = vm::cancelJob,
             onRetry = vm::retryJob,
             onClearFinished = vm::clearFinishedJobs,
+            onInstallFile = installFromFile,
             onClose = { showQueue = false },
         )
     } }
@@ -897,6 +963,8 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
             onEdit = { done(); filesUi.editing = entry },
             onExtract = { done(); filesUi.dialog = FilesDialog.Extract(entry) },
             onInstallDeb = { info -> done(); vm.installDeb(entry, info) },
+            onInstallFlatpak = { info -> done(); vm.installFlatpakBundle(entry, info) },
+            onInstallAppImage = { done(); vm.installAppImage(entry) },
             onOpenLinux = { opener ->
                 done()
                 openWith(vm.appFor(opener), listOf(entry.path))

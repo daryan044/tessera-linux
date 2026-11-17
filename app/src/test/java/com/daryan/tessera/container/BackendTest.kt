@@ -89,6 +89,33 @@ class BackendTest {
         assertTrue(failure.message!!, "each engine has its own" in failure.message!!)
     }
 
+    @Test fun `chroot hands the Flatpak root its flatpak-info, for cobalt's browsers`() {
+        val chrome = firefox.copy(
+            flatpak = FlatpakRef(
+                app = "com.google.Chrome",
+                appDir = "/var/lib/flatpak/app/com.google.Chrome/current/active/files",
+                runtimeDir = "/var/lib/flatpak/runtime/org.freedesktop.Platform/aarch64/25.08/active/files",
+                command = "chrome",
+            ),
+        )
+        val line = ChrootBackend(paths, "su", appUid = 10123).buildFlatpakLaunch(chrome, session, emptyMap()).argv[2]
+        assertTrue(line, "export FP_INFO='[Application]\nname=com.google.Chrome\n" in line)
+    }
+
+    @Test fun `GPUs the bundled Turnip doesn't know get software drawing`() {
+        // #20: a moto g57 power's Adreno 710 gave every GL app a black window.
+        assertFalse(GpuDriver.supports("Adreno (TM) 710"))
+        assertFalse(GpuDriver.supports("Adreno (TM) 720"))
+        assertTrue(GpuDriver.supports("Adreno (TM) 740"))
+        assertTrue(GpuDriver.supports("Adreno (TM) 750"))
+        assertTrue(GpuDriver.supports("Adreno (TM) 830"))
+        // Older series and anything unreadable stay as they were.
+        assertTrue(GpuDriver.supports("Adreno (TM) 642L"))
+        assertTrue(GpuDriver.supports("Adreno (TM) 619"))
+        assertTrue(GpuDriver.supports(null))
+        assertTrue(GpuDriver.supports("Mali-G715"))
+    }
+
     @Test fun `proot cannot withhold network and says so`() {
         val proot = ProotBackend(paths, exists = { true })
         assertEquals(Enforcement.UNAVAILABLE, proot.enforcement(Capability.NETWORK, offline))
@@ -189,7 +216,8 @@ class BackendTest {
     @Test fun `themed sessions get the theme's directory and data dirs`() {
         val env = guestEnv(firefox, session.copy(theme = true))
         assertEquals(ThemeFiles.GUEST_DIR, env["TESSERA_THEME"])
-        assertEquals("${ThemeFiles.GUEST_DIR}/share:/usr/local/share:/usr/share", env["XDG_DATA_DIRS"])
+        // "Open in Android" (AndroidHandoff) first, then the theme, then the system's own.
+        assertEquals("${AndroidHandoff.SHARE}:${ThemeFiles.GUEST_DIR}/share:/usr/local/share:/usr/share", env["XDG_DATA_DIRS"])
         assertFalse("TESSERA_THEME" in guestEnv(firefox, session))
         assertEquals(File("/app/cache/sessions/s3/tmp/.X11-unix/tessera-theme"), paths.sessionTheme(session))
     }
@@ -206,7 +234,7 @@ class BackendTest {
         assertTrue("org.freedesktop.portal.Settings" in gui[8])
         assertEquals("app", gui[9])
         assertTrue("org.freedesktop.Notifications" in gui[10])
-        assertEquals(firefox.exec, gui.drop(11))
+        assertEquals(firefox.exec, gui.drop(12))
         assertEquals(offline.exec, guestCommand(offline))
     }
 
@@ -234,8 +262,8 @@ class BackendTest {
         assertEquals(guestCommand(firefox).take(9), cmd.take(9))
         assertEquals("desktop", cmd[9])
         assertEquals(guestCommand(firefox)[10], cmd[10])
-        assertEquals(listOf("/bin/sh", "-c", DESKTOP_SESSION, "desktop", DESKTOP_HELPER), cmd.subList(11, 16))
-        assertEquals(listOf("/usr/bin/xfwm4"), cmd.drop(16))
+        assertEquals(listOf("/bin/sh", "-c", DESKTOP_SESSION, "desktop", DESKTOP_HELPER), cmd.subList(12, 17))
+        assertEquals(listOf("/usr/bin/xfwm4"), cmd.drop(17))
         assertTrue(desktop.validate().isEmpty())
         assertEquals(listOf("a desktop needs gui"), offline.copy(desktop = true).validate())
     }

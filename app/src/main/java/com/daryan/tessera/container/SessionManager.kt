@@ -112,6 +112,15 @@ class SessionManager(
         sendLine(File(paths.x11SocketDir(running.session), NOTIFY_COMMANDS_NAME), "action $id ${action.filterNot { it.isWhitespace() }}")
     }
 
+    /** Linux media players on the phone's media controls. */
+    private val mediaControls by lazy { LinuxMediaControls(context, ::mediaCommand) }
+
+    /** [command] ("play", "pause", "next"...) for the player of [sessionId]'s app. */
+    fun mediaCommand(sessionId: String, command: String) {
+        val running = byId(sessionId) ?: return
+        if (command in LinuxMediaControls.COMMANDS) sendLine(File(paths.x11SocketDir(running.session), MEDIA_COMMANDS_NAME), command)
+    }
+
     fun notificationDismissed(sessionId: String, id: Int) {
         val running = byId(sessionId) ?: return
         sendLine(File(paths.x11SocketDir(running.session), NOTIFY_COMMANDS_NAME), "dismissed $id")
@@ -152,7 +161,22 @@ class SessionManager(
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putStringSet(KEY_GPU_FIXES + appId, fixes.map { it.name }.toSet()).apply()
 
-    /** Must be called on the main thread: TerminalSession binds to the caller's Looper. */
+    /** Whether web links Linux apps open go to Android's apps ([AndroidHandoff]); on unless turned off. */
+    fun androidLinks() = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ANDROID_LINKS, true)
+
+    fun setAndroidLinks(on: Boolean) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_ANDROID_LINKS, on).apply()
+
+    /** Hands what Linux apps open on the phone to Android's apps. */
+    private val androidOpener by lazy { AndroidOpener(context, paths) }
+
+    /** Whether [appId] runs with a compositor ([Session.composite]); off unless the user turned it on. */
+    fun compositeFor(appId: String): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_COMPOSITE + appId, false)
+
+    fun setCompositeFor(appId: String, on: Boolean) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_COMPOSITE + appId, on).apply()
+
     /** USB devices open for running sessions, closed when they end. */
     private val usbDevices = ConcurrentHashMap<String, UsbBridge.Opened>()
 
@@ -160,6 +184,7 @@ class SessionManager(
      * [usb]: the app's USB devices, opened for it when it runs in PRoot ([UsbBridge]). [adb]:
      * where it reaches this phone's adbd ([PhoneAdb]).
      */
+    /** Must be called on the main thread: TerminalSession binds to the caller's Looper. */
     @Throws(IOException::class)
     fun launch(app: PermissionManifest, backend: ContainerBackend, usb: UsbBridge.Opened? = null, adb: String? = null): RunningSession {
         // An id whose leftovers can be cleared: a chroot session's files are root's, which the app
@@ -189,6 +214,8 @@ class SessionManager(
             uiScale = if (app.gui && !app.desktop) {
                 nextUiScale.remove(app.id) ?: com.daryan.tessera.X11Scale.uiScaleFor(context, app.id)
             } else null,
+            composite = app.gui && !app.desktop && compositeFor(app.id),
+            androidLinks = app.gui && androidLinks(),
         )
         // Ids restart with the process, so a previous run's s1 may have left a dead X socket here.
         paths.sessionTmp(session).apply {
@@ -203,8 +230,14 @@ class SessionManager(
         // The helpers' command pipes are made here, not by the helpers: in chroot mode a pipe
         // the guest makes carries su's SELinux label, and Android refuses the app writing to it.
         if (app.gui) {
-            val pipes = listOf(WINDOW_COMMANDS_NAME, NOTIFY_COMMANDS_NAME) + if (app.desktop) listOf(DESKTOP_COMMANDS_NAME) else emptyList()
+            val pipes = listOf(WINDOW_COMMANDS_NAME, NOTIFY_COMMANDS_NAME, MEDIA_COMMANDS_NAME) +
+                (if (app.desktop) listOf(DESKTOP_COMMANDS_NAME) else emptyList()) +
+                (if (app.permissions.audio && app.permissions.microphone) listOf(MIC_FIFO_NAME) else emptyList())
             pipes.forEach { makeFifo(File(paths.x11SocketDir(session), it)) }
+        }
+        if (app.gui) {
+            runCatching { AndroidHandoff.write(paths.x11SocketDir(session), session.androidLinks) }
+                .onFailure { Log.w(TAG, "couldn't write the Android hand-off for ${session.id}", it) }
         }
         if (session.theme) writeTheme(app, session, backend.name)
         if (session.usbFds.isNotEmpty()) UsbBridge.makeTree(paths.sessionUsb(session), session.usbFds)
@@ -243,11 +276,13 @@ class SessionManager(
      */
     private fun launchGui(app: PermissionManifest, backend: ContainerBackend, session: Session, spec: LaunchSpec): RunningSession {
         val audio = if (app.permissions.audio) AudioPipe(File(paths.x11SocketDir(session), AUDIO_FIFO_NAME)) else null
+        val mic = if (app.permissions.audio && app.permissions.microphone) MicPipe(context, File(paths.x11SocketDir(session), MIC_FIFO_NAME)) else null
         scope.launch(Dispatchers.IO) {
             try {
                 servers[session.id] = x11.start(session)
                 followWindows(session, ownTasks = !app.desktop)
                 audio?.let { launch { it.run() } }
+                mic?.let { launch { it.run() } }
                 withContext(Dispatchers.Main) { x11.showWindow(session) }
                 awaitWindow(session)
                 val pid = IntArray(1)
@@ -271,10 +306,12 @@ class SessionManager(
                 diagnostics?.recordSession(app, session, backend.name, -1, "Couldn't start: ${e.stackTraceToString()}")
             } finally {
                 windowReports.remove(session.id)?.stopWatching()
+                mediaControls.clear(session.id)
                 notifier.clear(session.id)
                 desktopBackends.remove(session.id)
                 windowTasks.remove(session.id)
                 audio?.stop()
+                mic?.stop()
                 // The app is gone; its session's detached daemons go with it.
                 killDetached(session.id, done = true)
                 servers.remove(session.id)?.destroy()
@@ -489,6 +526,12 @@ class SessionManager(
             onDesktopItems = if (ownTasks) null else ({ items -> update(session.id) { it.copy(desktopItems = items) } }),
             // Tessera targets API 28, so Android 13 and later ask for notifications by themselves.
             onNotify = { n -> byId(session.id)?.let { notifier.handle(it, n) } },
+            onMedia = { m -> byId(session.id)?.let { mediaControls.handle(it, m) } },
+            onOpen = { request ->
+                byId(session.id)?.let { running ->
+                    scope.launch(Dispatchers.IO) { androidOpener.open(running, request, rootKill[session.id]) }
+                }
+            },
         ) { windows ->
             update(session.id) { it.copy(windows = windows) }
             if (!ownTasks) return@SessionFiles
@@ -668,6 +711,8 @@ class SessionManager(
         const val KEY_GPU = "gpu_acceleration"
         const val KEY_GPU_APP = "gpu_acceleration_"
         const val KEY_GPU_FIXES = "gpu_fixes_"
+        const val KEY_COMPOSITE = "composite_"
+        const val KEY_ANDROID_LINKS = "android_links"
         const val MAX_OUTPUT = 16 * 1024
         const val TRANSCRIPT_ROWS = 5000
     }

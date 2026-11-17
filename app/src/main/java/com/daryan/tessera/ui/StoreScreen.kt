@@ -48,6 +48,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -100,6 +101,8 @@ fun StoreScreen(
     loadIcon: suspend (StoreApp) -> File?,
     onRetry: () -> Unit,
     onOpenApp: (StoreApp) -> Unit,
+    /** To the Files tab, to install a .deb, a .flatpak or an AppImage that was downloaded. */
+    onInstallFile: () -> Unit = {},
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("All") }
@@ -108,7 +111,10 @@ fun StoreScreen(
         top = padding.calculateTopPadding() + 8.dp,
         bottom = padding.calculateBottomPadding() + 24.dp,
     )
-    val switch: @Composable () -> Unit = { SourceSwitch(source, onSource) }
+    val switch: @Composable () -> Unit = {
+        SourceSwitch(source, onSource)
+        InstallFromFile(onInstallFile)
+    }
 
     if (source == StoreSource.FLATHUB && flathubReady != true) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding)) {
@@ -228,6 +234,16 @@ private fun CommandLineHint() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+/** For an app that's in neither store: a file the user downloaded, picked in the Files tab. */
+@Composable
+private fun InstallFromFile(onClick: () -> Unit) {
+    OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Icon(LauncherIcons.Folder, null, Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("Install from a file (.deb, .flatpak, AppImage)", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
 

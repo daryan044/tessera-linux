@@ -163,9 +163,26 @@ class RootfsInstaller(
                 feeder.join()
             }
         }
-        if (code != 0) throw InstallFailure("extract failed ($code): ${prootErrors(output)}", output.joinToString("\n"))
+        if (code != 0) {
+            val message = if (ptraceRefused(output)) PTRACE_REFUSED else "extract failed ($code): ${prootErrors(output)}"
+            throw InstallFailure(message, output.joinToString("\n"))
+        }
     }
 }
+
+/**
+ * The kernel refused PRoot's PTRACE_TRACEME, so nothing at all can run under PRoot. Stock
+ * Android 17 still allows it (its policy grants untrusted_app_all ptrace on itself, and GKI
+ * has no Yama); ROMs can block it per app, GrapheneOS among them (#14). PRoot then also
+ * reports an execve EPERM with advice about seccomp, which doesn't apply.
+ */
+internal fun ptraceRefused(output: List<String>): Boolean =
+    output.any { "ptrace(TRACEME)" in it && "Operation not permitted" in it }
+
+internal const val PTRACE_REFUSED =
+    "This phone doesn't let Tessera trace its own processes (ptrace), which PRoot mode needs to run anything. " +
+        "Some systems block it per app: on GrapheneOS, turn on Native code debugging for Tessera in its app info " +
+        "(Android may also have shown a notification that leads there), then try again. With root, chroot mode doesn't need it."
 
 /** A failed install step, with all it printed: the message keeps only the lines that matter. */
 class InstallFailure(message: String, val output: String) : IOException(message)

@@ -148,6 +148,19 @@ class RootfsSetupTest {
         assertEquals("a / b / c", prootErrors(listOf("x", "a", "b", "c")))
     }
 
+    @Test fun `a refused ptrace is told apart from other PRoot failures`() {
+        // #14, a Pixel Tablet on Android 17 that blocks ptrace for the app.
+        val refused = listOf(
+            "proot error: ptrace(TRACEME): Operation not permitted",
+            "proot error: execve(\"/data/user/0/com.daryan.tessera/cache/host-tools/tar\"): Operation not permitted",
+            "proot info: It seems your kernel contains this bug: https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1202161",
+            "To workaround it, set the env. variable PROOT_NO_SECCOMP to 1.",
+            "fatal error: see `libproot.so --help`.",
+        )
+        assertTrue(ptraceRefused(refused))
+        assertFalse(ptraceRefused(listOf("proot error: execve(\"/system/bin/tar\"): Permission denied")))
+    }
+
     @Test fun `PRoot runs with seccomp, whatever an earlier build left behind`() {
         val files = tmp.newFolder("files")
         val paths = ContainerPaths(

@@ -62,6 +62,14 @@ data class Session(
      * being stretched. Null for the stretched kind.
      */
     val uiScale: Int? = null,
+    /**
+     * Run a compositor beside the app's window manager ([COMPOSITOR_PACKAGE]): without one,
+     * see-through parts of GTK 4 windows (text selection handles, popovers' shadows) are drawn
+     * over black (#23). Not for a desktop, whose window manager composites itself.
+     */
+    val composite: Boolean = false,
+    /** Web links the app opens go to Android's apps ([AndroidHandoff]) rather than to a Linux browser. */
+    val androidLinks: Boolean = false,
 )
 
 /** Host-side locations a backend needs. Built from a Context in the app, by hand in tests. */
@@ -169,6 +177,9 @@ val BASE_LIBRARIES = listOf(
 fun missingPackages(packages: List<String>, installed: Set<String>): List<String> =
     packages.filterNot { p -> p.split('|').any { it in installed } }
 
+/** The compositor of sessions that ask for one ([Session.composite]); installed when the option is first turned on. */
+const val COMPOSITOR_PACKAGE = "picom"
+
 /** Packages every GUI app gets with it; see [guestCommand]. */
 val GUI_HELPER_PACKAGES = listOf("matchbox-window-manager", "dbus-x11", "at-spi2-core", "python3-pyatspi", "pulseaudio", "python3-xlib", "xsettingsd")
 
@@ -192,7 +203,11 @@ const val AUDIO_RATE = 48000
  * - [WINDOW_WATCHER], which reports the app's windows so each can have its own Android task;
  * - in themed sessions, [THEME_DAEMON]: the settings portal and xsettingsd, with the phone's
  *   colors and light or dark;
- * - [NOTIFY_DAEMON], whose notifications the launcher shows as Android's.
+ * - [NOTIFY_DAEMON], whose notifications the launcher shows as Android's;
+ * - with the audio permission, [MEDIA_DAEMON], which follows the app's MPRIS players so the
+ *   phone's media controls show and drive them;
+ * - with [Session.composite], a compositor (picom, drawing with XRender: no GL needed), so
+ *   windows with see-through parts are drawn over what's behind them rather than over black.
  * The helpers are stopped when the app exits so the session (and its window) ends with it.
  * A desktop ([PermissionManifest.desktop]) gets the same helpers but no matchbox: its own
  * window manager runs in [DESKTOP_SESSION], next to [DESKTOP_HELPER].
@@ -205,10 +220,10 @@ internal fun guestCommand(app: PermissionManifest): List<String> = when {
 
 /** [GUI_WRAPPER] and its helpers; [wm] is "app" (matchbox keeps it fullscreen) or "desktop". */
 private fun guiWrapper(wm: String) =
-    listOf("/bin/sh", "-c", GUI_WRAPPER, "launch", FOCUS_WATCHER, FOCUS_FILE_GUEST, WINDOW_WATCHER, WINDOWS_FILE_GUEST, THEME_DAEMON, wm, NOTIFY_DAEMON)
+    listOf("/bin/sh", "-c", GUI_WRAPPER, "launch", FOCUS_WATCHER, FOCUS_FILE_GUEST, WINDOW_WATCHER, WINDOWS_FILE_GUEST, THEME_DAEMON, wm, NOTIFY_DAEMON, MEDIA_DAEMON)
 
 private const val GUI_WRAPPER = """
-watcher=${'$'}1; out=${'$'}2; windows=${'$'}3; windows_out=${'$'}4; theme=${'$'}5; wm_mode=${'$'}6; notify=${'$'}7; wm_pid=; shift 7
+watcher=${'$'}1; out=${'$'}2; windows=${'$'}3; windows_out=${'$'}4; theme=${'$'}5; wm_mode=${'$'}6; notify=${'$'}7; media=${'$'}8; wm_pid=; cm=; shift 8
 if { [ -n "${'$'}TESSERA_FLATPAK" ] || [ "${'$'}wm_mode" = desktop ]; } && [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-daemon >/dev/null 2>&1; then
   # A Flathub app runs in a root of its own, which shares only the X11 directory with this
   # one: the bus lives there. So does a desktop's, which Flathub apps open in it share.
@@ -260,15 +275,30 @@ done
 if [ -n "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && [ -d /usr/lib/python3/dist-packages/gi ]; then
   python3 -c "${'$'}notify" /tmp/.X11-unix & nd=${'$'}!
 fi
+# What the app's players are playing, for the phone's media controls: only where there's sound.
+if [ -n "${'$'}LAUNCHER_AUDIO" ] && [ -n "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && [ -d /usr/lib/python3/dist-packages/gi ]; then
+  python3 -c "${'$'}media" /tmp/.X11-unix & md=${'$'}!
+fi
 if [ -n "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && [ -d /usr/lib/python3/dist-packages/pyatspi ]; then
   python3 -c "${'$'}watcher" "${'$'}out" & fw=${'$'}!
 fi
 if [ -n "${'$'}LAUNCHER_AUDIO" ] && command -v pulseaudio >/dev/null 2>&1; then
   mkdir -p "${'$'}PULSE_RUNTIME_PATH"
-  pulseaudio -n --daemonize=no --exit-idle-time=-1 --disable-shm=yes \
-    --load="module-native-protocol-unix auth-anonymous=1" \
-    --load="module-pipe-sink file=/tmp/.X11-unix/$AUDIO_FIFO_NAME format=s16le rate=$AUDIO_RATE channels=2 sink_name=android use_system_clock_for_timing=yes" \
-    --load="module-suspend-on-idle timeout=2" >/dev/null 2>&1 & pa=${'$'}!
+  # With the microphone permission, a source too, which the launcher feeds what Android records.
+  # It's only read while an app records from it (suspend-on-idle), which is what tells the
+  # launcher when to open the microphone.
+  start_pulse() {
+    pulseaudio -n --daemonize=no --exit-idle-time=-1 --disable-shm=yes \
+      --load="module-native-protocol-unix auth-anonymous=1" \
+      --load="module-pipe-sink file=/tmp/.X11-unix/$AUDIO_FIFO_NAME format=s16le rate=$AUDIO_RATE channels=2 sink_name=android use_system_clock_for_timing=yes" \
+      "${'$'}@" \
+      --load="module-suspend-on-idle timeout=2" >/dev/null 2>&1 & pa=${'$'}!
+  }
+  if [ -n "${'$'}LAUNCHER_MIC" ] && [ -p /tmp/.X11-unix/$MIC_FIFO_NAME ]; then
+    start_pulse --load="module-pipe-source file=/tmp/.X11-unix/$MIC_FIFO_NAME format=s16le rate=$AUDIO_RATE channels=2 source_name=$MIC_SOURCE_NAME"
+  else
+    start_pulse
+  fi
   # Apps that find no server at startup stay silent, so give it a moment.
   for i in 1 2 3 4 5 6 7 8 9 10; do [ -S "${'$'}PULSE_RUNTIME_PATH/native" ] && break; sleep 0.2; done
 fi
@@ -282,6 +312,16 @@ elif command -v matchbox-window-manager >/dev/null 2>&1; then
   # With a cursor of its own on the screen: "-use_cursor no" blanks it, and apps that don't
   # set one (most outside GTK and Qt) then showed no pointer, even in the touchpad modes.
   matchbox-window-manager -use_titlebar no -use_cursor yes & wm_pid=${'$'}!
+  if [ -n "${'$'}TESSERA_COMPOSITE" ]; then
+    # No shadows or fading (picom's defaults without a config): only what transparency needs.
+    if command -v picom >/dev/null 2>&1; then
+      picom --config /dev/null --backend xrender >/dev/null 2>&1 & cm=${'$'}!
+    elif command -v xcompmgr >/dev/null 2>&1; then
+      xcompmgr >/dev/null 2>&1 & cm=${'$'}!
+    else
+      echo "Compositing is on for this app, but picom isn't installed (apt install picom)" >&2
+    fi
+  fi
   if [ -d /usr/lib/python3/dist-packages/Xlib ]; then
     # Once the manager owns the screen, or the window list it keeps isn't there yet.
     ( sleep 0.5; exec python3 -c "${'$'}windows" "${'$'}windows_out" ) & ww=${'$'}!
@@ -296,7 +336,7 @@ if [ "${'$'}wm_mode" = app ] && [ "${'$'}status" = 0 ] && [ -n "${'$'}ww" ] && [
   while [ ${'$'}i -lt 30 ] && ! grep -q '"id"' "${'$'}windows_out" 2>/dev/null; do sleep 0.5; i=${'$'}((i + 1)); done
   while grep -q '"id"' "${'$'}windows_out" 2>/dev/null; do sleep 1; done
 fi
-kill ${'$'}ww ${'$'}wm_pid ${'$'}fw ${'$'}pa ${'$'}td ${'$'}nd ${'$'}bus 2>/dev/null
+kill ${'$'}md ${'$'}cm ${'$'}ww ${'$'}wm_pid ${'$'}fw ${'$'}pa ${'$'}td ${'$'}nd ${'$'}bus 2>/dev/null
 exit ${'$'}status
 """
 

@@ -40,6 +40,12 @@ data class FileEntry(
 /** What a .deb file installs. */
 data class DebInfo(val pkg: String, val version: String, val summary: String)
 
+/** The app in a .flatpak file (a bundle): its id, and the processor and branch it was built for. */
+data class FlatpakBundleInfo(val id: String, val arch: String, val branch: String)
+
+/** An AppImage: the processor it's for ([com.daryan.tessera.container.AppImages.abi]), or null when it isn't a program. */
+data class AppImageInfo(val abi: String?)
+
 /** What a folder holds, for Properties. */
 data class Usage(val bytes: Long, val files: Int, val folders: Int)
 
@@ -298,6 +304,47 @@ class GuestFiles private constructor(
         return target
     }
 
+    /**
+     * The app a .flatpak bundle holds. `flatpak` has no command that reads one without installing
+     * it; the file begins with its description, the app's ref ("app/<id>/<arch>/<branch>") in it
+     * as plain text.
+     */
+    suspend fun flatpakBundleInfo(path: String): FlatpakBundleInfo? {
+        val r = shell.run("head -c 4194304 -- ${q(path)} | grep -a -o -m 1 -E 'app/[A-Za-z0-9_.-]+/[A-Za-z0-9_]+/[A-Za-z0-9_.-]+' | head -n 1")
+        return parseBundleRef(r.text)
+    }
+
+    /** The first bytes of the AppImage at [path], read as a program's header. */
+    suspend fun appImageInfo(path: String): AppImageInfo {
+        val hex = shell.run("head -c 20 -- ${q(path)} | od -An -v -tx1").text
+        val header = hex.split(Regex("\\s+")).filter { it.length == 2 }.mapNotNull { it.toIntOrNull(16)?.toByte() }.toByteArray()
+        return AppImageInfo(com.daryan.tessera.container.AppImages.abi(header))
+    }
+
+    /**
+     * Copies a file to where the install queue's session can see it (it shares none of Android's
+     * folders), as [name]; returns its path there.
+     */
+    suspend fun stage(path: String, name: String): String {
+        val target = "$DEB_STAGING/${name.replace(Regex("[^A-Za-z0-9._+-]"), "_")}"
+        shell.run("mkdir -p $DEB_STAGING && chmod 1777 $DEB_STAGING 2>/dev/null; cp -- ${q(path)} $target && chmod 644 $target")
+            .check("Getting the file ready")
+        return target
+    }
+
+    /** The text of the small file at [path], or null when it isn't there. */
+    suspend fun readSmall(path: String): String? =
+        shell.run("[ -f ${q(path)} ] && head -c 262144 -- ${q(path)}").takeIf { it.ok }?.text
+
+    /** The first of [paths] that is a PNG, as its bytes; null when none is. */
+    suspend fun firstPng(paths: List<String>): ByteArray? {
+        val r = shell.run(
+            "for c in ${paths.joinToString(" ") { q(it) }}; do " +
+                "if [ -f \"\$c\" ] && [ \"\$(head -c 4 \"\$c\" | od -An -tx1 | tr -d ' \\n')\" = 89504e47 ]; then cat -- \"\$c\"; exit 0; fi; done; exit 1",
+        )
+        return r.out.takeIf { r.ok && it.size in 8..MAX_ICON }
+    }
+
     suspend fun removeStaged(path: String) {
         if (path.startsWith("$DEB_STAGING/")) shell.run("rm -f -- ${q(path)}")
     }
@@ -333,6 +380,14 @@ class GuestFiles private constructor(
         const val MAX_TEXT = 2L * 1024 * 1024
         /** Where .deb files wait for apt; inside the rootfs, so every session sees it. */
         const val DEB_STAGING = "/var/tmp/tessera-debs"
+        private const val MAX_ICON = 2 * 1024 * 1024
+
+        /** "app/org.gnome.Loupe/aarch64/stable" as a [FlatpakBundleInfo]; null for anything else. */
+        internal fun parseBundleRef(text: String): FlatpakBundleInfo? {
+            val parts = text.trim().lineSequence().firstOrNull()?.trim()?.split('/') ?: return null
+            if (parts.size != 4 || parts[0] != "app" || !com.daryan.tessera.container.Flatpak.validId(parts[1])) return null
+            return FlatpakBundleInfo(parts[1], parts[2], parts[3])
+        }
         private val MIME = Regex("[a-z0-9.+-]+/[A-Za-z0-9.+_-]+")
 
         /** find's -printf: type, type behind a link, size, mtime, mode, owner, group, path, link. */

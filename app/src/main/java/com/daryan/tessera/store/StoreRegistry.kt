@@ -87,6 +87,66 @@ class StoreRegistry(private val appsDir: File, private val catalog: StoreCatalog
     }
 
     /**
+     * Adds the launcher entry for an app installed from a .flatpak file, which no catalog
+     * describes: its name and categories come from its own desktop file ([desktopText]), its
+     * icon from [icon] (a PNG). False when the app's files aren't there.
+     */
+    suspend fun registerFlatpakBundle(id: String, store: ConfigStore, desktopText: String?, icon: ByteArray?): Boolean =
+        withContext(Dispatchers.IO) {
+            val entry = desktopText?.let { runCatching { DesktopEntry.parse(it) }.getOrNull() }
+            val app = StoreApp(
+                id = id, pkg = id, name = entry?.name?.takeIf { it.isNotBlank() } ?: id.substringAfterLast('.'),
+                summary = entry?.comment.orEmpty(), description = "", categories = entry?.categories.orEmpty(),
+                component = "flatpak-file", desktopId = "$id.desktop", source = StoreSource.FLATHUB,
+            )
+            val file = icon?.let { bytes ->
+                File(appsDir, "icons/bundle-${idFor(app)}.png").also { it.parentFile?.mkdirs(); it.writeBytes(bytes) }
+            }
+            val ok = registerFlatpak(app, store, file)
+            // The store's own read of the desktop file can miss (PRoot's stand-ins for hard links
+            // point into the container); what the caller read through Linux is the one to trust.
+            if (ok && entry != null) {
+                val saved = _userApps.value.firstOrNull { it.id == idFor(app) }
+                if (saved != null && saved.exec != entry.exec) save(saved.copy(exec = entry.exec, gui = !entry.terminal))
+            }
+            file?.delete()
+            ok
+        }
+
+    /**
+     * Adds the launcher entry for the AppImage unpacked under [slug]
+     * ([com.daryan.tessera.container.AppImages]): its name, categories and icon from what
+     * install.sh left in its folder, [title] when it has no desktop file.
+     */
+    suspend fun registerAppImage(slug: String, title: String, store: ConfigStore): PermissionManifest = withContext(Dispatchers.IO) {
+        val images = com.daryan.tessera.container.AppImages
+        val dir = images.dir(slug)
+        val entry = runCatching { store.read("$dir/${images.DESKTOP}") }.getOrNull()?.let { runCatching { DesktopEntry.parse(it) }.getOrNull() }
+        val id = images.ID_PREFIX + slug
+        val icon = runCatching { store.read("$dir/${images.ICON}") }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.let { b64 ->
+            runCatching {
+                @OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+                val bytes = kotlin.io.encoding.Base64.decode(b64)
+                File(appsDir, "icons/$id.png").also { it.parentFile?.mkdirs(); it.writeBytes(bytes) }
+            }.getOrNull()
+        }
+        val app = StoreApp(
+            id = slug, pkg = slug, name = entry?.name?.takeIf { it.isNotBlank() } ?: title,
+            summary = entry?.comment.orEmpty(), description = "", categories = entry?.categories.orEmpty(), component = "appimage",
+        )
+        // Its AppRun, whatever its desktop file's Exec names: that is a program inside the AppImage.
+        val manifest = manifestFor(app, entry, icon?.path).copy(id = id, exec = images.exec(slug), packages = emptyList())
+        save(manifest)
+        manifest
+    }
+
+    private fun save(manifest: PermissionManifest) {
+        File(appsDir, "${manifest.id}.json").apply { parentFile?.mkdirs() }
+            .writeText(json.encodeToString(PermissionManifest.serializer(), manifest))
+        _userApps.update { list -> list.filterNot { it.id == manifest.id } + manifest }
+    }
+
+    /**
      * Updates a Flathub launcher entry after its app was installed again (in the other engine's
      * system, whose runtime may differ). False when its files aren't there.
      */

@@ -60,6 +60,8 @@ class ChrootBackend(
             "FP_APP" to ref.appDir,
             "FP_GL" to ref.glDir.orEmpty(),
             "FP_GL_MOUNT" to ref.glMount.orEmpty(),
+            // Written at /.flatpak-info only for apps cobalt starts; see Flatpak.info.
+            "FP_INFO" to Flatpak.info(ref),
             "BINDS" to p.filesystem.joinToString("\n") { "${it.path}:${it.mountAt}:${if (it.readOnly) "ro" else "rw"}" },
             "GPU_DEVICE" to if (session.gpu) GpuDriver.KGSL else "",
             "X11_DIR" to paths.x11SocketDir(session).invariantSeparatorsPath,

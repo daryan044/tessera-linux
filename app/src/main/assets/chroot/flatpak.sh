@@ -7,7 +7,7 @@
 # runtime at /usr, the app at /app, the runtime's GL extension, the session's X11 directory (its
 # bus and sound live there too), the user's home, then runs the app there as APP_UID.
 #
-# Inputs (env): R, FP_RUNTIME, FP_APP, FP_GL, FP_GL_MOUNT, BINDS, GPU_DEVICE, X11_DIR, APP_UID, DNS,
+# Inputs (env): R, FP_RUNTIME, FP_APP, FP_GL, FP_GL_MOUNT, FP_INFO, BINDS, GPU_DEVICE, X11_DIR, APP_UID, DNS,
 #   NET_GROUPS, GUEST_ENV, CMD (paths are the container's, without $R)
 # Mounts made here vanish with the namespace; never mount in the global namespace.
 set -e
@@ -55,12 +55,31 @@ mount -o remount,bind,ro app
 # zypak (Flathub's Electron apps: VS Code, Discord, Obsidian) sandboxes Electron through
 # Flatpak's own services, which aren't here: it aborts ("Assertion failed: bus"). A stand-in runs
 # the app straight; Electron's own sandbox needs user namespaces, so it's off too.
+# A Chromium browser (Flathub's Chrome, started by cobalt) reads no variable for that, only
+# --no-sandbox, and cobalt needs /.flatpak-info for the app's id (#25); only those get the file,
+# as GLib takes it to mean "use portals", and only the settings portal is here.
 ZYPAK=
+if [ -e app/bin/cobalt ]; then
+  printf '#!/bin/sh\np=$1\nshift\nexec "$p" --no-sandbox "$@"\n' > run/host/tessera-zypak-chromium
+  chmod 755 run/host/tessera-zypak-chromium
+  [ -n "$FP_INFO" ] && printf '%s' "$FP_INFO" > .flatpak-info
+fi
 for z in zypak-wrapper.sh zypak-wrapper; do
   [ -e "app/bin/$z" ] || continue
-  [ -n "$ZYPAK" ] || { ZYPAK=run/host/tessera-zypak; printf '#!/bin/sh\nexec "$@"\n' > "$ZYPAK"; chmod 755 "$ZYPAK"; }
+  if [ -z "$ZYPAK" ]; then
+    ZYPAK=run/host/tessera-zypak
+    if [ -e app/bin/cobalt ]; then ZYPAK=run/host/tessera-zypak-chromium
+    else printf '#!/bin/sh\nexec "$@"\n' > "$ZYPAK"; chmod 755 "$ZYPAK"; fi
+  fi
   mount --bind "$ZYPAK" "app/bin/$z"
 done
+# Some call zypak's helper straight, "zypak-helper host - <program> <args>" (VSCodium, #18).
+if [ -e app/bin/zypak-helper ]; then
+  printf '#!/bin/sh\nshift\nwhile [ $# -gt 0 ] && [ "$1" != - ]; do shift; done\n[ $# -gt 0 ] && shift\nexec "$@"\n' > run/host/tessera-zypak-helper
+  chmod 755 run/host/tessera-zypak-helper
+  mount --bind run/host/tessera-zypak-helper app/bin/zypak-helper
+  ZYPAK=${ZYPAK:-run/host/tessera-zypak-helper}
+fi
 if [ -n "$FP_GL" ] && [ -d "$R$FP_GL" ]; then
   # The extension's folder doesn't exist in the read-only runtime; a tmpfs over its parent
   # makes room for it.

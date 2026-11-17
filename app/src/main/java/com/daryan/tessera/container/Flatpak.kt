@@ -63,6 +63,26 @@ object Flatpak {
             "test -e $ROOT/app/$id/current/active/metadata"
     }
 
+    /**
+     * Installs the app [id] from the .flatpak file at [path] (a bundle, as developers hand out
+     * builds that aren't on Flathub, #24), then deletes the file. Its runtime comes from Flathub,
+     * which must be set up. As with [installScript], success is the app's deployed files.
+     */
+    fun bundleInstallScript(path: String, id: String, fsync: Boolean = true, bwrap: String? = null): String {
+        require(validId(id)) { "not a Flatpak app id: $id" }
+        return fsyncScript(fsync) + bwrap?.let(::bwrapScript).orEmpty() +
+            "flatpak install -y --or-update --bundle ${shellQuote(path)}; rm -f -- ${shellQuote(path)}; " +
+            "test -e $ROOT/app/$id/current/active/metadata"
+    }
+
+    /** Where an installed app's own desktop file and icons are, for its launcher entry. */
+    fun desktopFile(id: String) = "$ROOT/app/$id/current/active/files/share/applications/$id.desktop"
+
+    fun iconCandidates(id: String): List<String> =
+        listOf("128x128", "256x256", "96x96", "64x64", "512x512", "48x48").map {
+            "$ROOT/app/$id/current/active/files/share/icons/hicolor/$it/apps/$id.png"
+        }
+
     /** Where the install's own /tmp gets the bubblewrap stand-in. */
     const val BWRAP = "/tmp/.tessera-bwrap"
 
@@ -140,6 +160,20 @@ object Flatpak {
             env = env,
         )
     }
+
+    /**
+     * What `flatpak run` puts at /.flatpak-info, for apps that read it: cobalt, which starts
+     * Flathub's Chromium browsers, takes the app's id from it and stopped without one ("Failed
+     * to find app ID", #25). Only for those: GLib and GTK take the file to mean "in Flatpak" and
+     * then open links and file pickers through portals, which only exist here for settings.
+     * The version is one cobalt counts as sharing /tmp, which these roots do.
+     */
+    fun info(ref: FlatpakRef): String {
+        val runtime = ref.runtimeDir.removePrefix("$ROOT/runtime/").removeSuffix("/active/files")
+        return "[Application]\nname=${ref.app}\nruntime=runtime/$runtime\n\n[Instance]\nflatpak-version=$INFO_VERSION\n"
+    }
+
+    private const val INFO_VERSION = "1.16.0"
 
     /** Says what to do about [ref]'s runtime having lost its files, following "Couldn't start the app:". */
     fun damagedRuntime(ref: FlatpakRef): String {

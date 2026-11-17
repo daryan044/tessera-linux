@@ -106,4 +106,27 @@ class FlatpakTest {
         assertFalse(Flatpak.validId("io.mpv.Mpv; rm -rf /"))
         assertFalse(Flatpak.validId("mpv"))
     }
+
+    @Test fun `flatpak-info names the app and a version that shares tmp, for cobalt`() {
+        // #25: cobalt reads [Application] name, and [Instance] flatpak-version for TMPDIR.
+        val ref = FlatpakRef(
+            app = "com.google.Chrome",
+            appDir = "/var/lib/flatpak/app/com.google.Chrome/current/active/files",
+            runtimeDir = "/var/lib/flatpak/runtime/org.freedesktop.Platform/aarch64/25.08/active/files",
+            command = "chrome",
+        )
+        val info = Ini.parse(Flatpak.info(ref))
+        assertEquals("com.google.Chrome", info["Application"]?.get("name"))
+        assertEquals("runtime/org.freedesktop.Platform/aarch64/25.08", info["Application"]?.get("runtime"))
+        val (major, minor) = info["Instance"]!!["flatpak-version"]!!.split('.').map { it.toInt() }
+        assertTrue(major > 1 || minor >= 12)
+    }
+
+    @Test fun `the zypak stand-ins pass the program and its arguments on`() {
+        // `zypak-helper host - <program> <args>` (VSCodium, #18): the mode and fd list go.
+        assertTrue("shift\nwhile [ \$# -gt 0 ] && [ \"\$1\" != - ]; do shift; done" in FlatpakSkeleton.ZYPAK_HELPER_SCRIPT)
+        assertTrue(FlatpakSkeleton.ZYPAK_HELPER_SCRIPT.endsWith("exec \"\$@\"\n"))
+        // Chrome takes --no-sandbox right after its program, before cobalt's flags.
+        assertTrue(FlatpakSkeleton.CHROMIUM_SCRIPT.endsWith("exec \"\$p\" --no-sandbox \"\$@\"\n"))
+    }
 }

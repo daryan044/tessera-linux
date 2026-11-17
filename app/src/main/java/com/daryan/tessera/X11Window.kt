@@ -24,6 +24,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.Display
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.PixelCopy
@@ -128,22 +129,26 @@ class X11Window : MainActivity.MainActivityTagged() {
         val container = (application as LauncherApplication).container
         // Behind everything, a pixel wide: only there to take the keyboard while casting.
         addContentView(keyboardProxy, ViewGroup.LayoutParams(1, 1))
-        addContentView(
-            ComposeView(this).also { shell = it }.apply {
-                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-                setContent {
-                    LauncherTheme {
-                        val session = intent?.data?.let { container.sessions.forWindowTag(it.host ?: it.toString()) }
-                        Box(Modifier.fillMaxSize()) {
-                            // A desktop has its own taskbar under the window panel.
-                            if (session?.app?.desktop == true) DesktopShell(desktopActions)
-                            X11Overlay(session = session, actions = actions)
-                        }
+        val compose = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                LauncherTheme {
+                    val session = intent?.data?.let { container.sessions.forWindowTag(it.host ?: it.toString()) }
+                    Box(Modifier.fillMaxSize()) {
+                        // A desktop has its own taskbar under the window panel.
+                        if (session?.app?.desktop == true) DesktopShell(desktopActions)
+                        X11Overlay(session = session, actions = actions)
                     }
                 }
+            }
+        }
+        addContentView(
+            ShellFrame(this).also { shell = it }.apply {
+                addView(compose, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             },
             ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
+        showCursorOnTop()
         applyScale()
         followSession()
         followFocus()
@@ -350,6 +355,7 @@ class X11Window : MainActivity.MainActivityTagged() {
         super.onResume()
         sessionTag?.let { container.sessions.forWindowTag(it) } ?: return
         showOwnXWindow()
+        X11Input.apply(this, appId)
         // Termux:X11 focuses its own view on resume; while casting, typing goes to the cast.
         if (cast != null) keyboardProxy.requestFocus()
         usbDevices.value = currentUsb()
@@ -358,7 +364,162 @@ class X11Window : MainActivity.MainActivityTagged() {
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_UP) lastTouch = SystemClock.uptimeMillis()
+        if (ev.isFromSource(InputDevice.SOURCE_MOUSE)) {
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) mouseOnShell = shellHas(ev)
+            if (mouseOnShell) {
+                toShell(ev) { s, e -> s.dispatchTouchEvent(e) }
+                pointerFollows(ev)
+                if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) mouseOnShell = false
+                return true
+            }
+        }
         return super.dispatchTouchEvent(ev)
+    }
+
+    /**
+     * A mouse over the desktop's dock (or over the Start menu or the overview) is the dock's
+     * alone. Android hands the X view the same mouse as well, and its button press, which comes
+     * apart from the touch, clicked what lay under the dock, or the dock a second time through
+     * the desktop helper's taps in the dock's room (#22). The X screen only hears where the
+     * pointer is, so its cursor, drawn above the dock ([CursorLayer]), goes on following.
+     */
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        if (ev.isFromSource(InputDevice.SOURCE_MOUSE) && shellMouse) {
+            if (mouseOnShell || shellHas(ev)) {
+                hoverOnShell = true
+                toShell(ev) { s, e -> s.dispatchGenericMotionEvent(e) }
+                pointerFollows(ev)
+                return true
+            }
+            if (hoverOnShell) {
+                // Out of the dock: let it know, so nothing there stays hovered.
+                hoverOnShell = false
+                toShell(ev) { s, e ->
+                    e.action = MotionEvent.ACTION_HOVER_EXIT
+                    s.dispatchGenericMotionEvent(e)
+                }
+            }
+        }
+        return super.dispatchGenericMotionEvent(ev)
+    }
+
+    /** The desktop shell's part of a mouse, from [DesktopActions.mouseArea], in [shell]'s pixels. */
+    @Volatile private var shellMouse = false
+    @Volatile private var mouseDock = androidx.compose.ui.geometry.Rect.Zero
+    @Volatile private var mouseEverywhere = false
+    /** A mouse press began over the shell, which gets the rest of it. */
+    private var mouseOnShell = false
+    private var hoverOnShell = false
+    private val shellAt = IntArray(2)
+
+    private fun shellHasAt(x: Float, y: Float) =
+        shellMouse && (mouseEverywhere || mouseDock.contains(androidx.compose.ui.geometry.Offset(x, y)))
+
+    /** Whether [ev] (in the window's pixels) is over the shell's part. */
+    private fun shellHas(ev: MotionEvent): Boolean {
+        val view = shell ?: return false
+        view.getLocationInWindow(shellAt)
+        return shellHasAt(ev.x - shellAt[0], ev.y - shellAt[1])
+    }
+
+    /** Moves the X pointer to where [ev] (in the window's pixels) is, and nothing else. */
+    private fun pointerFollows(ev: MotionEvent) {
+        if (cast != null) return
+        lorieView.getLocationInWindow(shellAt)
+        lorieView.movePointerToView(ev.x - shellAt[0], ev.y - shellAt[1])
+    }
+
+    /** Hands [send] a copy of [ev] in [shell]'s pixels. */
+    private inline fun toShell(ev: MotionEvent, send: (android.view.View, MotionEvent) -> Unit) {
+        val view = shell ?: return
+        view.getLocationInWindow(shellAt)
+        val e = MotionEvent.obtain(ev)
+        e.offsetLocation(-shellAt[0].toFloat(), -shellAt[1].toFloat())
+        send(view, e)
+        e.recycle()
+    }
+
+    /**
+     * Holds the shell's views. In a desktop it asks for no pointer icon anywhere: the X screen's
+     * own cursor is the one pointer, over the windows and over the dock alike ([CursorLayer]),
+     * and Android's arrow beside it made two (#22).
+     */
+    private inner class ShellFrame(context: Context) : android.widget.FrameLayout(context) {
+        override fun onResolvePointerIcon(event: MotionEvent, pointerIndex: Int): android.view.PointerIcon? =
+            if (cursorLayer != null) android.view.PointerIcon.getSystemIcon(context, android.view.PointerIcon.TYPE_NULL)
+            else super.onResolvePointerIcon(event, pointerIndex)
+    }
+
+    /** The X cursor of a desktop, above everything in the window; null for a single app, whose X screen draws its own. */
+    private var cursorLayer: CursorLayer? = null
+
+    /**
+     * A desktop's X cursor is drawn here, in a layer over the whole window, instead of into the
+     * X screen under the dock, the Start menu and the overview: it stays in sight wherever it
+     * goes, in its real shape, without anything having to tell where it is.
+     */
+    private fun showCursorOnTop() {
+        if (cursorLayer != null || !isDesktop) return
+        val layer = CursorLayer(this).also { cursorLayer = it }
+        addContentView(layer, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        lorieView.setCursorOverlay(object : com.termux.x11.LorieView.CursorListener {
+            private val at = IntArray(2)
+            private val own = IntArray(2)
+
+            override fun onCursorMoved(x: Float, y: Float, scale: Float, visible: Boolean) {
+                lorieView.getLocationInWindow(at)
+                layer.getLocationInWindow(own)
+                // Hidden while the app is cast: the X screen is on the other display then.
+                layer.place(x + at[0] - own[0], y + at[1] - own[1], scale, visible && cast == null)
+            }
+
+            override fun onCursorImage(image: android.graphics.Bitmap?, hotX: Int, hotY: Int) = layer.image(image, hotX, hotY)
+        })
+    }
+
+    /** Draws one picture, the X cursor, where it was last put. Takes no input: touches go through to what's under it. */
+    private class CursorLayer(context: Context) : android.view.View(context) {
+        private var image: android.graphics.Bitmap? = null
+        private var hotX = 0
+        private var hotY = 0
+        private var x = 0f
+        private var y = 0f
+        private var scale = 1f
+        private var shown = false
+        private val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+        private val to = android.graphics.RectF()
+
+        init {
+            isClickable = false
+            isFocusable = false
+            importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+
+        fun image(bitmap: android.graphics.Bitmap?, hotX: Int, hotY: Int) {
+            image = bitmap
+            this.hotX = hotX
+            this.hotY = hotY
+            invalidate()
+        }
+
+        fun place(x: Float, y: Float, scale: Float, visible: Boolean) {
+            if (x == this.x && y == this.y && scale == this.scale && visible == shown) return
+            this.x = x
+            this.y = y
+            this.scale = scale
+            shown = visible
+            invalidate()
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean = false
+
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            val bitmap = image?.takeIf { shown } ?: return
+            val left = x - hotX * scale
+            val top = y - hotY * scale
+            to.set(left, top, left + bitmap.width * scale, top + bitmap.height * scale)
+            canvas.drawBitmap(bitmap, null, to, paint)
+        }
     }
 
     /**
@@ -457,6 +618,13 @@ class X11Window : MainActivity.MainActivityTagged() {
             override fun showWorkspace(n: Int) { id?.let { container.sessions.showWorkspace(it, n) } }
             override fun moveToWorkspace(windowId: Long, n: Int) { id?.let { container.sessions.moveToWorkspace(it, windowId, n) } }
             override fun reserve(left: Boolean, px: Int): Boolean = desktop?.reserve(left, px) ?: false
+
+            override fun mouseArea(dock: androidx.compose.ui.geometry.Rect, everything: Boolean) {
+                mouseDock = dock
+                if (everything != mouseEverywhere || !shellMouse) desktop?.cover(everything)
+                mouseEverywhere = everything
+                shellMouse = true
+            }
 
             override val customWallpaper: StateFlow<Boolean> get() = this@X11Window.customWallpaper
             override val wallpaperVersion: StateFlow<Int> get() = this@X11Window.wallpaperVersion
@@ -715,7 +883,15 @@ class X11Window : MainActivity.MainActivityTagged() {
 
         override val usbDevices: StateFlow<List<UsbEntry>> get() = this@X11Window.usbDevices
 
-        override fun setTouchMode(mode: TouchMode) = X11Input.setMode(this@X11Window, mode)
+        override fun setTouchMode(mode: TouchMode) {
+            appId?.let { X11Input.setForApp(this@X11Window, it, mode) } ?: X11Input.setMode(this@X11Window, mode)
+        }
+
+        override fun ownTouchMode(): Boolean = appId?.let { X11Input.forApp(this@X11Window, it) } != null
+
+        override fun resetTouchMode() {
+            appId?.let { X11Input.setForApp(this@X11Window, it, null) }
+        }
 
         override fun touchMode(): TouchMode = X11Input.mode(this@X11Window)
 
@@ -879,6 +1055,42 @@ object X11Input {
 
     fun setMode(c: android.content.Context, mode: TouchMode) = prefs(c).edit().putString("touchMode", mode.pref).apply()
 
+    // Termux:X11 has one mode for every window. Apps differ (GTK 4 apps take touch, an old game
+    // only clicks), so each may keep its own, put in force as its window comes to the front (#22).
+    private fun own(c: android.content.Context) = c.getSharedPreferences("x11_input", android.content.Context.MODE_PRIVATE)
+
+    private fun named(name: String?) = TouchMode.entries.firstOrNull { it.name == name }
+
+    /** The mode of apps without their own: the side menu's choice. */
+    fun defaultMode(c: android.content.Context): TouchMode = named(own(c).getString(DEFAULT, null)) ?: mode(c)
+
+    fun setDefaultMode(c: android.content.Context, mode: TouchMode) {
+        own(c).edit().putString(DEFAULT, mode.name).apply()
+        setMode(c, mode)
+    }
+
+    /** [appId]'s own mode, or null when it follows the default. */
+    fun forApp(c: android.content.Context, appId: String): TouchMode? = named(own(c).getString(APP + appId, null))
+
+    /** Gives [appId] its own mode, in force at once; null goes back to the default. */
+    fun setForApp(c: android.content.Context, appId: String, mode: TouchMode?) {
+        val edit = own(c).edit()
+        // What's in force now is the default, until an app's own replaces it there.
+        if (!own(c).contains(DEFAULT)) edit.putString(DEFAULT, mode(c).name)
+        if (mode == null) edit.remove(APP + appId) else edit.putString(APP + appId, mode.name)
+        edit.apply()
+        apply(c, appId)
+    }
+
+    /** Puts [appId]'s mode in force, as its window comes to the front. */
+    fun apply(c: android.content.Context, appId: String?) {
+        val wanted = appId?.let { forApp(c, it) } ?: defaultMode(c)
+        if (wanted != mode(c)) setMode(c, wanted)
+    }
+
+    private const val DEFAULT = "default"
+    private const val APP = "app/"
+
     /** Touch and hold right-clicks in the pointer modes (Termux:X11's longPressRightClick). */
     fun longPressRightClick(c: android.content.Context) = prefs(c).getBoolean("longPressRightClick", true)
 
@@ -973,8 +1185,13 @@ interface X11Actions : com.daryan.tessera.input.InputSink {
     fun windows(): List<XWindow>
     fun showWindow(id: Long)
     val usbDevices: StateFlow<List<UsbEntry>>
+    /** Sets how fingers drive this app, which keeps it as its own ([X11Input.forApp]). */
     fun setTouchMode(mode: TouchMode)
     fun touchMode(): TouchMode
+    /** Whether this app has a mode of its own, rather than the one every app starts with. */
+    fun ownTouchMode(): Boolean
+    /** Back to the mode of apps without their own. */
+    fun resetTouchMode()
     fun setLongPressRightClick(on: Boolean)
     fun longPressRightClick(): Boolean
     /** Whether the app shows [com.daryan.tessera.ui.GameControls]; kept per app. */

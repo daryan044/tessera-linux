@@ -60,11 +60,17 @@ class SessionFiles(
     private val onDesktopItems: ((List<DesktopItem>) -> Unit)? = null,
     /** The session's Linux notifications, as [NOTIFY_DAEMON] reports them. */
     private val onNotify: ((LinuxNotification) -> Unit)? = null,
+    /** What the session's media player is doing, as [MEDIA_DAEMON] reports it. */
+    private val onMedia: ((LinuxMedia) -> Unit)? = null,
+    /** What the session's apps asked to open on the phone ([AndroidHandoff]). */
+    private val onOpen: ((AndroidHandoff.Request) -> Unit)? = null,
     private val onWindows: (XWindows) -> Unit,
 ) : FileObserver(dir.path, CREATE or MODIFY or MOVED_TO or CLOSE_WRITE) {
     private val focus = FocusReports(dir)
     private val desktop = DesktopFiles.Events(dir)
     private val notifications = NotifyReports(dir)
+    private val opens = OpenReports(dir)
+    private val media = MediaReports(dir)
 
     override fun onEvent(event: Int, path: String?) {
         when (path) {
@@ -73,6 +79,8 @@ class SessionFiles(
             DESKTOP_EVENTS_NAME -> if (event and (CREATE or MODIFY) != 0) onDesktop?.let { desktop.poll().forEach(it) }
             DESKTOP_ITEMS_NAME -> if (event and MOVED_TO != 0) onDesktopItems?.invoke(DesktopFiles.readItems(dir))
             NOTIFY_FILE_NAME -> if (event and (CREATE or MODIFY) != 0) onNotify?.let { notifications.poll().forEach(it) }
+            MEDIA_FILE_NAME -> if (event and (CREATE or MODIFY) != 0) onMedia?.let { media.poll()?.let(it) }
+            AndroidHandoff.REPORT_NAME -> if (event and (CREATE or MODIFY) != 0) onOpen?.let { opens.poll().forEach(it) }
         }
     }
 

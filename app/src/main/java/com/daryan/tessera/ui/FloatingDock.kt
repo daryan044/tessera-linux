@@ -49,6 +49,13 @@ import dev.chrisbanes.haze.blur.hazeBlur
 internal val BLUR_MODE = HazePerformanceMode.Performance
 
 /**
+ * The frosted look of the bars, or with [lowPower] (Settings, Low power mode) a plain [solid]
+ * color: on slow chips the blur alone cost most of a frame, whatever it was blurred from (#21).
+ */
+internal fun Modifier.frosted(lowPower: Boolean, hazeState: HazeState, glass: HazeBlurStyle, solid: Color): Modifier =
+    if (lowPower) background(solid) else hazeBlur(HazeInput.Sources(hazeState), glass, performanceMode = BLUR_MODE)
+
+/**
  * Google Photos-style navigation: a frosted pill floating over the content. The selected
  * destination grows to show its label; the rest stay as icons.
  */
@@ -58,6 +65,8 @@ fun FloatingDock(
     onSelect: (Destination) -> Unit,
     hazeState: HazeState,
     glass: HazeBlurStyle,
+    /** No blur and no shadow under the pill; see [frosted]. */
+    lowPower: Boolean = false,
     badge: @Composable (Destination) -> Unit,
 ) {
     Box(
@@ -71,9 +80,9 @@ fun FloatingDock(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .shadow(16.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.4f))
+                .then(if (lowPower) Modifier else Modifier.shadow(16.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.4f)))
                 .clip(CircleShape)
-                .hazeBlur(HazeInput.Sources(hazeState), glass, performanceMode = BLUR_MODE)
+                .frosted(lowPower, hazeState, glass, MaterialTheme.colorScheme.surfaceContainerHigh)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), CircleShape)
                 .padding(6.dp)
                 .selectableGroup(),

@@ -18,7 +18,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -27,19 +26,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.daryan.tessera.BackendMode
-import com.daryan.tessera.X11Input
 
 /** What the side menu's header and badges show. */
 data class MenuStatus(
@@ -48,116 +42,58 @@ data class MenuStatus(
     val blocker: String?,
     val running: Int,
     val activeInstalls: Int,
-    /** Root was found, so chroot and Droidspaces modes are on offer. */
-    val rootAvailable: Boolean,
-    val destination: Destination,
-    /** In Droidspaces mode, the picked container and how it is ("web, running"); null otherwise. */
-    val container: String? = null,
+    /** A newer Tessera's version, when one is out. */
+    val update: String? = null,
 )
 
 /** Everything the side menu can do; each closes the menu first. */
 class MenuActions(
-    val go: (Destination) -> Unit,
     val terminal: () -> Unit,
     val rootShell: () -> Unit,
-    val newShortcut: () -> Unit,
-    val trackpad: () -> Unit,
+    val installFile: () -> Unit,
     val installs: () -> Unit,
-    val systemFiles: () -> Unit,
-    val displaySettings: () -> Unit,
+    val trackpad: () -> Unit,
     val copyDiagnostics: () -> Unit,
-    val setMode: (BackendMode) -> Unit,
     val settings: () -> Unit,
     val about: () -> Unit,
-    val intro: () -> Unit,
+    /** Opens the newer version's page; only shown with [MenuStatus.update]. */
+    val update: () -> Unit,
 )
 
 /**
- * The hamburger menu: how Linux is doing, quick launches, every tab, the tools that live
- * elsewhere, the engine, how Linux windows take touch, and the rest.
+ * The hamburger menu, kept to what isn't a tap away already: how Linux is doing, a shell, the
+ * things that have no tab of their own, and the way to Settings, where everything that is set
+ * once lives (the engine is Setup's, the tabs are the dock's).
  */
 @Composable
 fun SideMenu(status: MenuStatus, actions: MenuActions) {
-    val context = LocalContext.current
     ModalDrawerSheet {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Header(status)
 
-            Heading("Quick launch")
-            Item("Terminal", "A Debian shell", LauncherIcons.Terminal, enabled = status.blocker == null, onClick = actions.terminal)
-            Item("Root shell", "For apt and system changes", LauncherIcons.Shield, enabled = status.blocker == null, onClick = actions.rootShell)
-            Item("New shortcut", "A command as an icon", Icons.Rounded.Add, onClick = actions.newShortcut)
-
-            Divider()
-            Heading("Go to")
-            Destination.entries.forEach { d ->
-                NavigationDrawerItem(
-                    label = { Text(d.label) },
-                    icon = { Icon(d.icon, null) },
-                    selected = status.destination == d,
-                    onClick = { actions.go(d) },
-                    badge = {
-                        when {
-                            d == Destination.Sessions && status.running > 0 -> Badge { Text("${status.running}") }
-                            d == Destination.Setup && status.blocker != null -> Badge()
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                )
+            status.update?.let { version ->
+                Item("Tessera $version is out", "See what's new and get it", LauncherIcons.History, onClick = actions.update)
             }
 
+            Heading("Open")
+            Item("Terminal", "A Linux command line", LauncherIcons.Terminal, enabled = status.blocker == null, onClick = actions.terminal)
+            Item("Root shell", "For apt and changes to the system", LauncherIcons.Shield, enabled = status.blocker == null, onClick = actions.rootShell)
+            Item("PC trackpad", "Use this phone as a computer's mouse and keyboard", LauncherIcons.Mouse, onClick = actions.trackpad)
+
             Divider()
-            Heading("Tools")
-            Item("PC trackpad", "Drive a computer over USB or Bluetooth", LauncherIcons.Mouse, onClick = actions.trackpad)
+            Heading("Install")
+            Item("Install from a file", "A .deb, a .flatpak or an AppImage you downloaded", Icons.Rounded.Add, enabled = status.blocker == null, onClick = actions.installFile)
             Item(
                 "Installs",
-                if (status.activeInstalls > 0) "${status.activeInstalls} going now" else "What apt installed and removed",
+                if (status.activeInstalls > 0) "${status.activeInstalls} going now" else "What was installed and removed, with its output",
                 LauncherIcons.History,
                 badge = status.activeInstalls.takeIf { it > 0 },
                 onClick = actions.installs,
             )
-            Item("System files", "bashrc, apt sources, DNS, hosts", LauncherIcons.Code, onClick = actions.systemFiles)
-            Item("Display", "Resolution and scaling of Linux windows", LauncherIcons.Monitor, onClick = actions.displaySettings)
-            Item("Copy diagnostics", "Everything a helper needs, to paste", LauncherIcons.TextFile, onClick = actions.copyDiagnostics)
 
             Divider()
-            Heading("Engine")
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 4.dp)) {
-                BackendMode.entries.forEachIndexed { i, m ->
-                    SegmentedButton(
-                        selected = status.mode == m,
-                        onClick = { actions.setMode(m) },
-                        enabled = m == BackendMode.PROOT || status.rootAvailable,
-                        shape = SegmentedButtonDefaults.itemShape(i, BackendMode.entries.size),
-                    ) { Text(m.short, maxLines = 1) }
-                }
-            }
-            Text(
-                when {
-                    status.container != null -> "Container: ${status.container}. Change it under Setup, " +
-                        "which also says why this mode is less secure than chroot."
-                    status.rootAvailable -> "Each engine has its own Linux system."
-                    else -> "Chroot and Droidspaces need root (Magisk, KernelSU or APatch)."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 28.dp, vertical = 4.dp),
-            )
-
-            Divider()
-            Heading("Touch in Linux windows")
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                InputChoices(
-                    mode = X11Input.mode(context),
-                    onMode = { X11Input.setMode(context, it) },
-                    longPress = X11Input.longPressRightClick(context),
-                    onLongPress = { X11Input.setLongPressRightClick(context, it) },
-                )
-            }
-
-            Divider()
-            Item("Settings", "Tabs, store, graphics and more", Icons.Rounded.Settings, onClick = actions.settings)
-            Item("Introduction", "The tour from the first run", Icons.Rounded.PlayArrow, onClick = actions.intro)
+            Item("Settings", "Look, display, touch, store, system files", Icons.Rounded.Settings, onClick = actions.settings)
+            Item("Copy diagnostics", "For reporting a problem: paste it where you ask for help", LauncherIcons.TextFile, onClick = actions.copyDiagnostics)
             Item("About", "Version, creator and licenses", Icons.Rounded.Info, onClick = actions.about)
         }
     }

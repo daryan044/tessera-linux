@@ -105,6 +105,12 @@ class DesktopFiles(private val dir: File) {
     /** Keeps [px] X pixels along the bottom, or the [left] edge, clear of maximized windows. */
     fun reserve(left: Boolean, px: Int): Boolean = send("strut ${if (left) "left" else "bottom"} $px")
 
+    /**
+     * Whether the launcher's shell covers the whole screen for now (its Start menu or overview is
+     * open) rather than only the dock's room: the X pointer's clicks are the shell's wherever it does.
+     */
+    fun cover(everything: Boolean): Boolean = send("shield ${if (everything) "full" else "dock"}")
+
     /** Makes a folder on the desktop named [name], or a name like it not taken yet. */
     fun makeFolder(name: String): Boolean = send("mkdir " + Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(name)))
 
@@ -398,6 +404,8 @@ exit ${'$'}status
  * - "launch <JSON argv>" starts an app in the desktop, in a session of its own;
  * - "strut left|bottom <px>" keeps that much of the edge for the dock, as a dock window's strut,
  *   so maximized windows stop at it;
+ * - "shield full|dock": whether the launcher's shell is over the whole screen for now (its Start
+ *   menu, its overview) or only over the dock's room; the X pointer's clicks there go to it;
  * - "paper <file> <width> <height>" keeps the file's B, G, R, x pixels as the background, and
  *   "patch <file> <x> <y> <width> <height>" lays a smaller picture over it (the icons, as the
  *   launcher drew them over that background): both shown behind the windows, on a window of
@@ -406,7 +414,8 @@ exit ${'$'}status
  *   "open <JSON path>", a right click or a long press as "menu <JSON {path, x, y}>" (path ""
  *   on the empty desktop), one per line appended to [DESKTOP_EVENTS_NAME]. A tap in the dock's
  *   room (a mouse or touchpad pointer the X screen has, rather than Android) is "dock <JSON
- *   {x, y}>", for the launcher to pass on to its dock;
+ *   {x, y}>", for the launcher to pass on to its dock: an invisible window over the room
+ *   takes them, so the windows under the dock get none;
  * - "mkdir <JSON name>" makes a folder on the desktop, under a name not taken yet;
  * - "open <JSON path>" opens a file or folder on the desktop with its app (a .desktop file runs);
  * - "shortcut <JSON {id, name, argv}>" puts an app on the desktop as a .desktop file;
@@ -621,7 +630,45 @@ def strut(side, px):
         dock.configure(x=0, y=g.height - 1)
     dock.change_property(A("_NET_WM_STRUT_PARTIAL"), Xatom.CARDINAL, 32, values)
     dock.change_property(A("_NET_WM_STRUT"), Xatom.CARDINAL, 32, values[:4])
+    place_shield(side, px, g)
     d.flush()
+
+shield = None
+shield_full = False
+def cover(full):
+    global shield_full
+    shield_full = full
+    if d is not None and shield is not None:
+        place_shield(dock_room[0], dock_room[1], root.get_geometry())
+        d.flush()
+
+def place_shield(side, px, g):
+    # Over every window in the dock's room, and invisible: the X pointer's clicks there are the
+    # launcher's dock's alone, not the window's under it as well (#22).
+    global shield
+    if shield is None:
+        shield = root.create_window(0, 0, 1, 1, 0, 0, X.InputOnly, X.CopyFromParent, override_redirect=True,
+                                    event_mask=X.ButtonPressMask | X.ButtonReleaseMask)
+        shield.set_wm_name("Tessera dock input")
+        shield.map()
+    px = max(1, px)
+    if shield_full:
+        shield.configure(x=0, y=0, width=g.width, height=g.height, stack_mode=X.Above)
+    elif side == "left":
+        shield.configure(x=0, y=0, width=px, height=g.height, stack_mode=X.Above)
+    else:
+        shield.configure(x=0, y=g.height - px, width=g.width, height=px, stack_mode=X.Above)
+
+shield_press = None
+def on_shield(e):
+    global shield_press
+    if e.type == X.ButtonPress and e.detail == 1:
+        shield_press = (e.root_x, e.root_y)
+    elif e.type == X.ButtonRelease and e.detail == 1 and shield_press:
+        x0, y0 = shield_press
+        shield_press = None
+        if abs(e.root_x - x0) <= 24 and abs(e.root_y - y0) <= 24:
+            emit("dock " + json.dumps({"x": e.root_x, "y": e.root_y}))
 
 desk = None
 def ensure_desk(w, h):
@@ -802,7 +849,13 @@ def on_event(e):
     if e.type == X.PropertyNotify and e.window.id == root.id:
         if e.atom == A("_NET_CLIENT_LIST"):
             clients_changed = True
+        elif e.atom == A("_NET_CLIENT_LIST_STACKING") and shield is not None:
+            # xfwm4 restacked its windows, perhaps over the shield: back on top.
+            shield.configure(stack_mode=X.Above)
+            d.flush()
         return
+    if shield is not None and getattr(e, "window", None) is not None and e.window.id == shield.id:
+        return on_shield(e)
     if desk is None or getattr(e, "window", None) is None or e.window.id != desk.id:
         return
     if e.type == X.ClientMessage:
@@ -966,6 +1019,8 @@ def run(line):
     elif parts[0] == "strut" and len(parts) == 2:
         side, px = parts[1].split()
         strut(side, max(0, int(px)))
+    elif parts[0] == "shield" and len(parts) == 2:
+        cover(parts[1] == "full")
     elif parts[0] == "paper" and len(parts) == 2:
         path, w, h = parts[1].split()
         return set_paper(path, int(w), int(h))

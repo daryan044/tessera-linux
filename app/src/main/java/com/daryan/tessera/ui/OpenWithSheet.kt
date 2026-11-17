@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ResolveInfo
 import android.net.Uri
+import android.os.Build
 import android.text.format.Formatter
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
@@ -70,6 +71,35 @@ import kotlinx.coroutines.withContext
 /** A Linux app that opens a file: its launcher entry when it has one, for the icon. */
 data class LinuxOpener(val desktopFile: String, val entry: DesktopEntry, val app: PermissionManifest?)
 
+/** Flatpak's name for this phone's processor. */
+private fun flatpakArch(): String = when (Build.SUPPORTED_ABIS.firstOrNull()) {
+    "arm64-v8a" -> "aarch64"
+    "armeabi-v7a" -> "arm"
+    "x86" -> "i386"
+    else -> "x86_64"
+}
+
+/** A file that installs an app: what it is, and the button that does it (null: why it can't, in [note]). */
+@Composable
+private fun InstallCard(title: String, detail: String, button: String, note: String, onInstall: (() -> Unit)?) {
+    Spacer(Modifier.height(16.dp))
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondaryContainer) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(detail, style = MaterialTheme.typography.bodySmall)
+            if (onInstall != null) {
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = onInstall, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.Add, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(button)
+                }
+            }
+            Text(note, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+        }
+    }
+}
+
 /**
  * Tapping a file: what it is, then the ways to open it. Quick actions first (edit as text,
  * extract, install a .deb), then the Linux apps for its type, then Android's.
@@ -86,6 +116,8 @@ fun OpenWithSheet(
     onEdit: () -> Unit,
     onExtract: () -> Unit,
     onInstallDeb: (DebInfo) -> Unit,
+    onInstallFlatpak: (com.daryan.tessera.files.FlatpakBundleInfo) -> Unit,
+    onInstallAppImage: () -> Unit,
     onOpenLinux: (LinuxOpener) -> Unit,
     onOpenApp: (PermissionManifest) -> Unit,
     onMessage: (String) -> Unit,
@@ -168,6 +200,42 @@ fun OpenWithSheet(
                         )
                     }
                 }
+            }
+            o.flatpak?.let { bundle ->
+                val here = bundle.arch == flatpakArch()
+                InstallCard(
+                    title = bundle.id,
+                    detail = "A Flatpak app (${bundle.arch}, ${bundle.branch})",
+                    button = "Install app",
+                    note = if (here) "flatpak installs it, with its runtime from Flathub, in the background; follow it under Installs. It then opens from Tessera's apps."
+                    else "This file is for ${bundle.arch} processors; this phone needs the ${flatpakArch()} one.",
+                    onInstall = if (here) ({ onInstallFlatpak(bundle) }) else null,
+                )
+            }
+            if (entry.extension == "flatpak" && o.flatpak == null) {
+                Text(
+                    "This .flatpak file doesn't name an app, so it can't be installed.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+            o.appImage?.let { image ->
+                val abi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
+                // A 64-bit ARM phone runs 32-bit ARM programs only where its ABIs say so.
+                val runs = image.abi != null && image.abi in Build.SUPPORTED_ABIS
+                InstallCard(
+                    title = com.daryan.tessera.container.AppImages.title(entry.name),
+                    detail = "An AppImage",
+                    button = "Add to my apps",
+                    note = when {
+                        runs -> "Tessera unpacks it into Linux once, in the background (follow it under Installs), and adds it to your apps with its own icon. The file isn't needed afterwards."
+                        image.abi == null -> "This file isn't a program, so it can't be an AppImage that runs."
+                        else -> "This AppImage is for ${com.daryan.tessera.container.AppImages.machineName(image.abi)} processors. " +
+                            "Look for its ${com.daryan.tessera.container.AppImages.machineName(abi)} download."
+                    },
+                    onInstall = if (runs) onInstallAppImage else null,
+                )
             }
             if (entry.extension == "deb" && o.deb == null) {
                 Text(

@@ -80,6 +80,10 @@ data class OpenOptions(
     val archive: Boolean,
     /** Set for a .deb: what installing it would put on the system. */
     val deb: DebInfo?,
+    /** Set for a .flatpak file that names its app. */
+    val flatpak: FlatpakBundleInfo? = null,
+    /** Set for an .AppImage. */
+    val appImage: AppImageInfo? = null,
 )
 
 /**
@@ -242,7 +246,7 @@ class FileBrowser(
 
     fun places(): List<Place> = buildList {
         add(Place("Phone storage", PHONE, PlaceKind.PHONE, true))
-        add(Place("Downloads", "$PHONE/Download", PlaceKind.DOWNLOADS, true))
+        add(Place("Downloads", DOWNLOADS, PlaceKind.DOWNLOADS, true))
         add(Place("Camera", "$PHONE/DCIM", PlaceKind.CAMERA, true))
         add(Place("Pictures", "$PHONE/Pictures", PlaceKind.PICTURES, true))
         add(Place("Documents", "$PHONE/Documents", PlaceKind.DOCUMENTS, true))
@@ -611,8 +615,19 @@ class FileBrowser(
                 (entry.extension.isEmpty() && mimes.none { !it.startsWith("text/") && it != "application/octet-stream" } && looksLikeText(entry))
             )
         val deb = if (entry.extension == "deb") runCatching { withShell { it.debInfo(entry.path) } }.getOrNull() else null
-        return OpenOptions(listOfNotNull(hint) + (mimes - setOfNotNull(hint)), linux, text, archive, deb)
+        val flatpak = if (entry.extension == "flatpak") runCatching { withShell { it.flatpakBundleInfo(entry.path) } }.getOrNull() else null
+        val appImage = if (entry.extension == "appimage") runCatching { withShell { it.appImageInfo(entry.path) } }.getOrNull() else null
+        return OpenOptions(listOfNotNull(hint) + (mimes - setOfNotNull(hint)), linux, text, archive, deb, flatpak, appImage)
     }
+
+    /** Puts [entry] where the install queue can reach it, as [name]; returns its path there. */
+    suspend fun stage(entry: FileEntry, name: String): String = withShell { it.stage(entry.path, name) }
+
+    /** The text of a small file in Linux, links followed as Linux follows them; null when it isn't there. */
+    suspend fun readSmall(path: String): String? = runCatching { withShell { it.readSmall(path) } }.getOrNull()
+
+    /** The first of [paths] in Linux that is a PNG. */
+    suspend fun firstPng(paths: List<String>): ByteArray? = runCatching { withShell { it.firstPng(paths) } }.getOrNull()
 
     /** Copies [entry] out for an Android app. */
     suspend fun exportFile(entry: FileEntry): File = withShell { it.export(entry.path) }
@@ -814,6 +829,7 @@ class FileBrowser(
         const val PLACES = ""
         const val PHONE = "/storage/emulated/0"
         const val HOME = "/home/user"
+        const val DOWNLOADS = "$PHONE/Download"
 
         /**
          * Where files other apps share with Linux go. Not Downloads, Pictures or the like: apps

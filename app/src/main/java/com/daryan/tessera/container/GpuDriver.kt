@@ -4,6 +4,9 @@
 package com.daryan.tessera.container
 
 import android.content.Context
+import android.opengl.EGL14
+import android.opengl.EGLConfig
+import android.opengl.GLES20
 import java.io.File
 
 /**
@@ -44,8 +47,85 @@ object GpuDriver {
 
     private val bundle = OptBundle(GUEST_DIR, "gpu/mesa-turnip.tgz", "gpu/VERSION", TAG)
 
-    /** Whether this build carries the driver and the phone has an Adreno GPU the app can open. */
-    fun available(context: Context): Boolean = File(KGSL).canRead() && bundle.available(context)
+    /**
+     * Whether this build carries the driver and the phone has an Adreno GPU the app can open, of
+     * a model Turnip knows. One it doesn't (an Adreno 710, #20) gets no Vulkan device, so Zink
+     * has nothing to draw with and every GL app shows a black window; software drawing works.
+     */
+    fun available(context: Context): Boolean =
+        File(KGSL).canRead() && bundle.available(context) && supports(renderer(context))
+
+    /**
+     * The Adreno models with 700 and 800 numbers that the bundled Mesa's Turnip has (Mesa 26.2:
+     * src/freedreno/common/freedreno_devices.py); others in those series are newer than it.
+     * Older series are left alone: Turnip has nearly all of them, under names that don't always
+     * match Android's (Android's 662 is Mesa's 644).
+     */
+    private val TURNIP_7XX_8XX = setOf(702, 704, 725, 730, 735, 740, 750, 810, 829, 830, 840)
+
+    /** Whether Turnip drives the GPU Android names [renderer] ("Adreno (TM) 740"); true when unknown. */
+    internal fun supports(renderer: String?): Boolean {
+        val model = renderer?.let { Regex("""Adreno\D{0,8}?(\d{3})(?!\d)""").find(it) }?.groupValues?.get(1)?.toInt() ?: return true
+        return model !in 700..899 || model in TURNIP_7XX_8XX
+    }
+
+    /** What the diagnostics say about the GPU. */
+    fun describe(context: Context): String {
+        if (!File(KGSL).canRead()) return "not an Adreno GPU (no ${KGSL.substringAfterLast('/')})"
+        val name = renderer(context) ?: return "Adreno, model unknown"
+        return if (supports(name)) name else "$name, which this build's GPU driver doesn't support yet"
+    }
+
+    @Volatile private var cachedRenderer: String? = null
+
+    /**
+     * The GPU's name, from Android's OpenGL ES ("Adreno (TM) 710"), or null if it can't be read.
+     * Asked once per system build: it takes an EGL context.
+     */
+    fun renderer(context: Context): String? {
+        cachedRenderer?.let { return it.ifEmpty { null } }
+        val prefs = context.getSharedPreferences(TAG, Context.MODE_PRIVATE)
+        val key = "renderer:${android.os.Build.FINGERPRINT}"
+        val name = prefs.getString(key, null) ?: (probeRenderer() ?: "").also { prefs.edit().putString(key, it).apply() }
+        cachedRenderer = name
+        return name.ifEmpty { null }
+    }
+
+    /** On a thread of its own, so no context current on the caller's (Termux:X11's) is touched. */
+    private fun probeRenderer(): String? {
+        var name: String? = null
+        val t = Thread({ name = runCatching(::eglRenderer).onFailure { android.util.Log.w(TAG, "reading the GPU's name", it) }.getOrNull() }, "gpu-probe")
+        t.start()
+        t.join(5000)
+        return name
+    }
+
+    private fun eglRenderer(): String? {
+        val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+        val version = IntArray(2)
+        if (display == EGL14.EGL_NO_DISPLAY || !EGL14.eglInitialize(display, version, 0, version, 1)) return null
+        val configs = arrayOfNulls<EGLConfig>(1)
+        val count = IntArray(1)
+        val attrs = intArrayOf(
+            EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+            EGL14.EGL_SURFACE_TYPE, EGL14.EGL_PBUFFER_BIT,
+            EGL14.EGL_NONE,
+        )
+        if (!EGL14.eglChooseConfig(display, attrs, 0, configs, 0, 1, count, 0) || count[0] == 0) return null
+        val config = configs[0] ?: return null
+        val context = EGL14.eglCreateContext(display, config, EGL14.EGL_NO_CONTEXT, intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE), 0)
+        if (context == EGL14.EGL_NO_CONTEXT) return null
+        val surface = EGL14.eglCreatePbufferSurface(display, config, intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE), 0)
+        try {
+            if (surface == EGL14.EGL_NO_SURFACE || !EGL14.eglMakeCurrent(display, surface, surface, context)) return null
+            return GLES20.glGetString(GLES20.GL_RENDERER)
+        } finally {
+            EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
+            if (surface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, surface)
+            EGL14.eglDestroyContext(display, context)
+            // Not eglTerminate: the display is the whole process's, and Termux:X11 draws with it.
+        }
+    }
 
     /** Whether this build's driver is unpacked in [rootfs], ready to use. */
     fun installed(context: Context, rootfs: File): Boolean = available(context) && bundle.installed(context, rootfs)

@@ -79,6 +79,10 @@ at startup, often with no useful message:
   PRoot's fake-root (`--root-id`) answers that syscall with 0, so the check trips even though no
   real privilege was gained. **Turn "Run as root" off** for GUI apps; it is almost never wanted.
 
+- **Qt apps with a web view (Angelfish, anything on QtWebEngine)** die with
+  `terminated with signal 5`, often after `Failed to create Vulkan instance`, which is not the
+  cause. Tessera sets `QTWEBENGINE_DISABLE_SANDBOX=1` for PRoot apps from 0.8.0.
+
 Chroot mode keeps the real sandbox and does not need any of this.
 
 ## Changing what an app runs
@@ -119,6 +123,12 @@ Tessera tells the user which of the two it is.
 | `mbpixbuf: unable to use XShm` | Harmless noise from the window manager. Not the cause of anything |
 | `apt` refuses, lock held / dpkg interrupted | A previous install was killed: `dpkg --configure -a`, and remove stale `/var/lib/dpkg/lock*` only if nothing is running |
 | GUI app starts but nothing appears | A missing GUI helper (`matchbox-window-manager`, `dbus-x11`, `pulseaudio`); install it with apt |
+| Black boxes where something should be see-through (GTK 4 selection handles, shadows) | No compositor in a single-app session: hold the icon → Look and graphics → Compositing (installs `picom`) |
+| An app can't record, or its ALSA device list is empty | Recording goes through PulseAudio: turn on the app's Microphone permission (and Sound), pick PulseAudio in the app. Raw ALSA devices aren't available |
+| A link opens Android's "Open with" instead of a Linux browser | Settings → Open links on the phone. `BROWSER` and the default for http(s) point at `/tmp/.X11-unix/tessera-open/open` while it's on; the user's own `~/.config/mimeapps.list` wins |
+| An AppImage won't start from a terminal | No FUSE here. Tap it in the Files tab to add it to the apps (unpacked into `/opt/appimages`), or run it with `--appimage-extract-and-run` |
+| `flatpak install` of a .flatpak file fails in a terminal | It needs root and Tessera's stand-in for bubblewrap: tap the file in the Files tab instead |
+| On an Adreno 710 or another new GPU, GPU acceleration is off | The bundled Turnip driver doesn't know that GPU yet; apps draw in software. Diagnostics name the GPU |
 
 GPU acceleration is Mesa's **Turnip** (Vulkan on Adreno) plus **Zink** (OpenGL on top), and only on
 Snapdragon/Adreno phones. `LIBGL_DRI3_DISABLE=1` is set deliberately: Mesa's DRI3 path waits forever
