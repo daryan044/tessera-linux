@@ -630,11 +630,14 @@ private fun AppTile(
     val scale by animateFloatAsState(if (pressed) 0.88f else 1f, motion.fastSpatialSpec(), label = "press")
     val spin by animateFloatAsState(if (pressed) 30f else 0f, motion.defaultSpatialSpec(), label = "spin")
 
-    // Staggered entrance: tiles rise and fade in one after another.
+    // Staggered entrance: tiles rise and fade in one after another. The index stops coming a
+    // second after the tab opens, so the place is kept from the first composition: an effect that
+    // left with the index would strand a tile still waiting its turn, invisible but tappable.
     val appear = remember { Animatable(if (index == null) 1f else 0f) }
-    if (index != null) {
-        LaunchedEffect(Unit) {
-            delay(index * 40L)
+    val stagger = remember { index }
+    LaunchedEffect(Unit) {
+        if (stagger != null) {
+            delay(stagger * 40L)
             appear.animateTo(1f, motion.slowSpatialSpec())
         }
     }
