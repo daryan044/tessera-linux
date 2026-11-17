@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
@@ -321,7 +323,8 @@ private fun DeviceDialog(taken: List<String>, onDismiss: () -> Unit, onAdd: (Str
         onDismissRequest = onDismiss,
         title = { Text("Add a device") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            // Scrollable, so the path field stays reachable when many devices are listed.
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (devices.isEmpty()) {
                     Text("No USB devices plugged in.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
