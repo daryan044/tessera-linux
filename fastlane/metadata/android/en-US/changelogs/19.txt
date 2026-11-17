@@ -1,0 +1,8 @@
+0.8.0 (alpha)
+- Install from a file: .flatpak files and AppImages, next to .deb.
+- Back up and restore the Linux system.
+- Open in Android: links and files from Linux apps go to the phone's apps.
+- Linux players on the phone's media controls; a Microphone permission.
+- Desktop: one pointer, above the dock. Per-app compositing and input mode. Low power mode.
+- Notice of new versions. Simpler menu and Settings.
+- Fixes for Flathub's Chrome and VSCodium, Qt web apps, Adreno 710.
