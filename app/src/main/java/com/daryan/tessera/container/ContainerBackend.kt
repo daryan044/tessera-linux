@@ -225,6 +225,13 @@ private fun guiWrapper(wm: String) =
 
 private const val GUI_WRAPPER = """
 watcher=${'$'}1; out=${'$'}2; windows=${'$'}3; windows_out=${'$'}4; theme=${'$'}5; wm_mode=${'$'}6; notify=${'$'}7; media=${'$'}8; wm_pid=; cm=; shift 8
+# The phone's time zone and language (GuestLocale). Without tzdata (Debian's slim image) glibc
+# reads a zone name as UTC, so the same rules as a POSIX string. The language only when the
+# guest has its locale: glibc would otherwise fall back to C and gettext ignore LANGUAGE.
+case "${'$'}TZ" in */*) [ -e "/usr/share/zoneinfo/${'$'}TZ" ] || [ -z "${'$'}TESSERA_TZ_POSIX" ] || export TZ="${'$'}TESSERA_TZ_POSIX" ;; esac
+if [ -n "${'$'}TESSERA_LANG" ] && locale -a 2>/dev/null | grep -qix "${'$'}(echo "${'$'}TESSERA_LANG" | sed 's/UTF-8/utf8/')"; then
+  export LANG="${'$'}TESSERA_LANG" LANGUAGE="${'$'}TESSERA_LANGUAGE"
+fi
 if { [ -n "${'$'}TESSERA_FLATPAK" ] || [ "${'$'}wm_mode" = desktop ]; } && [ -z "${'$'}DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-daemon >/dev/null 2>&1; then
   # A Flathub app runs in a root of its own, which shares only the X11 directory with this
   # one: the bus lives there. So does a desktop's, which Flathub apps open in it share.

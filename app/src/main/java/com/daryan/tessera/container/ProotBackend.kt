@@ -208,7 +208,9 @@ internal fun guestEnv(app: PermissionManifest, session: Session): Map<String, St
     put("HOME", if (p.root) "/root" else "/home/user")
     put("USER", if (p.root) "root" else "user")
     put("PATH", ContainerPaths.GUEST_PATH)
+    // The GUI wrapper switches to the phone's language when the guest has its locale.
     put("LANG", "C.UTF-8")
+    putAll(GuestLocale.env())
     put("TERM", session.term)
     put("TMPDIR", "/tmp")
     // Inherited by everything the session starts, daemons that detach from its process tree
