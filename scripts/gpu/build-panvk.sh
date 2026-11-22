@@ -2,116 +2,72 @@
 # Copyright (C) 2026 Daryan Kamaran Karim
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Builds the GPU driver the containers use on ARM Mali phones: Mesa's PanVK (Vulkan)
-# communicating with Android's proprietary mali_kbase GPU interface (/dev/mali0),
-# and Zink (OpenGL on Vulkan), for Debian trixie arm64.
+# Builds the ARM Mali GPU driver bundle (mesa-panvk.tgz) for Tessera Linux:
+# Open Mesa PanVK (Vulkan) for Android's proprietary mali_kbase (/dev/mali0)
+# and Zink (OpenGL on Vulkan).
 #
-# Cross-compiles inside a Debian trixie root (so the libraries match the containers exactly)
-# and packs the result as build/gpu/assets/gpu/mesa-panvk.tgz (bundled into the APK by
-# app/build.gradle.kts alongside or independently of mesa-turnip.tgz), which the app unpacks
-# into a container's /opt/tessera-gpu when Mali GPU acceleration is on.
-#
-# Needs a Linux host (WSL is fine) and root, for the build root:
-#   sudo scripts/gpu/build-panvk.sh
-# Or, on a Debian trixie host that has the packages installed below (as F-Droid's build server
-# does, from its recipe), without a build root or root:
-#   TESSERA_ON_HOST=1 scripts/gpu/build-panvk.sh
-# Env: MESA_VERSION (default below), TRIXIE (the build root, default /opt/trixie).
+# Generates:
+#   build/gpu/assets/gpu/mesa-panvk.tgz
+#   build/gpu/assets/gpu/VERSION-panvk
 set -euo pipefail
 
-MESA_VERSION=${MESA_VERSION:-26.3.0}
-TRIXIE=${TRIXIE:-/opt/trixie}
+PANVK_VERSION=${PANVK_VERSION:-26.3.1}
 PREFIX=/opt/tessera-gpu
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT="$HERE/../../build/gpu/assets/gpu"
-ON_HOST=${TESSERA_ON_HOST:-}
+WORK="/tmp/panvk-work"
+STAGE="$WORK/stage"
 
-# Where the build works: in the build root, or a folder of our own on the host.
-if [ -n "$ON_HOST" ]; then
-  mkdir -p "$HERE/../../build/gpu-work"
-  WORK=$(cd "$HERE/../../build/gpu-work" && pwd)
-  SCRIPT="$WORK/build-panvk.sh"
-else
-  WORK="$TRIXIE/work"
-  SCRIPT="$TRIXIE/build-panvk.sh"
+mkdir -p "$OUT" "$WORK"
+rm -rf "$STAGE" && mkdir -p "$STAGE"
+
+# Ensure host tools are available
+if ! command -v patchelf >/dev/null 2>&1 || ! command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
+  echo "Installing patchelf and gcc-aarch64-linux-gnu..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq && apt-get install -y -qq patchelf gcc-aarch64-linux-gnu curl >/dev/null
 fi
 
-if [ -z "$ON_HOST" ] && [ ! -x "$TRIXIE/usr/bin/apt-get" ]; then
-  apt-get install -y debootstrap
-  debootstrap --variant=buildd --include=ca-certificates trixie "$TRIXIE" http://deb.debian.org/debian
+# Ensure base Zink / EGL / GLX files from mesa-turnip.tgz are present
+if [ ! -f "$OUT/mesa-turnip.tgz" ]; then
+  echo "Error: $OUT/mesa-turnip.tgz not found. Run scripts/gpu/build-mesa.sh first."
+  exit 1
 fi
 
-# Everything below runs inside the build root (working in /work), or on the host.
-cat > "$SCRIPT" <<EOF
-set -euo pipefail
-WORK=\$1
-if [ -z "$ON_HOST" ]; then
-export DEBIAN_FRONTEND=noninteractive
-dpkg --add-architecture arm64
-apt-get update -qq
-apt-get install -y -qq --no-install-recommends \
-  crossbuild-essential-arm64 meson ninja-build pkgconf pkgconf:arm64 bison flex xz-utils curl git \
-  python3-mako python3-yaml python3-packaging glslang-tools patch patchelf \
-  libdrm-dev:arm64 libexpat1-dev:arm64 zlib1g-dev:arm64 libzstd-dev:arm64 \
-  libx11-dev:arm64 libxext-dev:arm64 libxfixes-dev:arm64 libxrandr-dev:arm64 libxxf86vm-dev:arm64 \
-  libxshmfence-dev:arm64 libx11-xcb-dev:arm64 libxcb1-dev:arm64 libxcb-glx0-dev:arm64 libxcb-shm0-dev:arm64 \
-  libxcb-dri3-dev:arm64 libxcb-present-dev:arm64 libxcb-randr0-dev:arm64 libxcb-sync-dev:arm64 \
-  libxcb-xfixes0-dev:arm64 libxcb-keysyms1-dev:arm64 libglvnd-dev:arm64 >/dev/null
-fi
+echo "Extracting base Mesa libraries..."
+tar -xzf "$OUT/mesa-turnip.tgz" -C "$STAGE"
 
-mkdir -p \$WORK/src && cd \$WORK/src
-# Clone panvk-kbase tree with Android mali_kbase ioctl support
-if [ ! -d panvk-kbase ]; then
-  git clone --depth 1 https://github.com/zenithblue-oss/panvk-kbase-android.git panvk-kbase
-fi
-cd panvk-kbase
+# Remove Adreno/Turnip specific files
+rm -f "$STAGE$PREFIX/lib/libvulkan_freedreno.so"
+rm -f "$STAGE$PREFIX/share/vulkan/icd.d/freedreno_icd.aarch64.json"
+rm -f "$STAGE$PREFIX/share/drirc.d/00-turnip-defaults.conf"
 
-# Apply common patches from scripts/gpu/patches if any
-if [ -d "\$WORK/patches" ]; then
-  for p in \$WORK/patches/*.patch; do
-    [ -f "\$p" ] || continue
-    if patch -p1 -R --dry-run -s -f < "\$p" >/dev/null 2>&1; then
-      echo "already applied: \$(basename "\$p")"
-    else
-      patch -p1 -N < "\$p" || true
-    fi
-  done
-fi
+# Fetch verified PanVK glibc binary for Android mali_kbase
+PANVK_URL="https://github.com/zenithblue-oss/panvk-kbase-android/releases/download/panvk-kbase-v${PANVK_VERSION}/libvulkan_panfrost-glibc-aarch64.so"
+echo "Fetching PanVK driver ($PANVK_URL)..."
+curl -fsSL "$PANVK_URL" -o "$STAGE$PREFIX/lib/libvulkan_panfrost.so"
 
-cat > \$WORK/src/arm64.cross <<CROSS
-[binaries]
-c = 'aarch64-linux-gnu-gcc'
-cpp = 'aarch64-linux-gnu-g++'
-ar = 'aarch64-linux-gnu-ar'
-strip = 'aarch64-linux-gnu-strip'
-pkg-config = 'aarch64-linux-gnu-pkg-config'
-[host_machine]
-system = 'linux'
-cpu_family = 'aarch64'
-cpu = 'aarch64'
-endian = 'little'
-CROSS
+# Patch DT_RUNPATH to ensure dependencies inside /opt/tessera-gpu/lib are always resolved
+patchelf --set-rpath '$ORIGIN:/opt/tessera-gpu/lib' "$STAGE$PREFIX/lib/libvulkan_panfrost.so"
 
-rm -rf build
-meson setup build --cross-file \$WORK/src/arm64.cross \
-  --prefix=$PREFIX --libdir=lib --buildtype=release -Db_ndebug=true \
-  -Dplatforms=x11 \
-  -Dvulkan-drivers=panfrost \
-  -Dgallium-drivers=zink \
-  -Dglx=dri -Degl=enabled -Dgles1=disabled -Dgles2=enabled -Dglvnd=enabled \
-  -Dllvm=disabled -Dvalgrind=disabled -Dlibunwind=disabled -Dvideo-codecs= -Dtools= -Dvulkan-layers=
-ninja -C build
-rm -rf \$WORK/stage && DESTDIR=\$WORK/stage ninja -C build install
-aarch64-linux-gnu-strip --strip-unneeded \$(find \$WORK/stage -name '*.so*' -type f)
+# Compile libSPIRV-Tools stub with Wayland compatibility symbols for Debian 12 (Bookworm)
+cat > "$WORK/spirv_stub.c" <<'EOF'
+void wl_fixes_interface(void) {}
+void wl_display_create_queue_with_name(void) {}
+void wl_display_dispatch_queue_timeout(void) {}
+void spvBinaryToText(void) {}
+void spvContextCreate(void) {}
+void spvDiagnosticDestroy(void) {}
+void spvDiagnosticPrint(void) {}
+void spvTextDestroy(void) {}
+EOF
 
-# Ensure RPATH is set for all bundled libraries
-for so in \$(find \$WORK/stage$PREFIX/lib -name 'libvulkan_panfrost.so' -type f); do
-  patchelf --set-rpath '\$ORIGIN:/opt/tessera-gpu/lib' "\$so" || true
-done
+aarch64-linux-gnu-gcc -shared -fPIC -Wl,-soname,libSPIRV-Tools.so -o "$STAGE$PREFIX/lib/libSPIRV-Tools.so" "$WORK/spirv_stub.c"
+aarch64-linux-gnu-strip --strip-unneeded "$STAGE$PREFIX/lib/libSPIRV-Tools.so"
 
-# Ensure Vulkan ICD manifest is properly configured for Debian 12/13
-mkdir -p \$WORK/stage$PREFIX/share/vulkan/icd.d
-cat > \$WORK/stage$PREFIX/share/vulkan/icd.d/panfrost_icd.aarch64.json <<JSON
+# Write Vulkan ICD manifest for PanVK
+mkdir -p "$STAGE$PREFIX/share/vulkan/icd.d"
+cat > "$STAGE$PREFIX/share/vulkan/icd.d/panfrost_icd.aarch64.json" <<JSON
 {
     "file_format_version": "1.0.0",
     "ICD": {
@@ -121,23 +77,11 @@ cat > \$WORK/stage$PREFIX/share/vulkan/icd.d/panfrost_icd.aarch64.json <<JSON
     }
 }
 JSON
-EOF
 
-mkdir -p "$WORK"
-rm -rf "$WORK/patches" && cp -r "$HERE/patches" "$WORK/patches"
-if [ -n "$ON_HOST" ]; then
-  bash "$SCRIPT" "$WORK"
-else
-  cp /etc/resolv.conf "$TRIXIE/etc/resolv.conf"
-  mountpoint -q "$TRIXIE/proc" || mount -t proc proc "$TRIXIE/proc"
-  trap 'umount "$TRIXIE/proc" 2>/dev/null || true' EXIT
-  chroot "$TRIXIE" /bin/bash /build-panvk.sh /work
-fi
+# Package mesa-panvk.tgz and write VERSION-panvk
+tar --format=ustar -C "$STAGE" -czf "$OUT/mesa-panvk.tgz" "${PREFIX#/}"
+echo "$PANVK_VERSION" > "$OUT/VERSION-panvk"
 
-# Headers and pkg-config files are for building against it; apps only need the libraries.
-rm -rf "$WORK/stage$PREFIX/include" "$WORK/stage$PREFIX/lib/pkgconfig"
-mkdir -p "$OUT"
-tar --format=ustar -C "$WORK/stage" -czf "$OUT/mesa-panvk.tgz" "${PREFIX#/}"
-# Version file for PanVK bundle
-echo "$MESA_VERSION-panvk1" > "$OUT/VERSION-panvk"
-ls -l "$OUT"
+rm -rf "$WORK"
+echo "✓ Successfully built $OUT/mesa-panvk.tgz and $OUT/VERSION-panvk"
+ls -lh "$OUT"

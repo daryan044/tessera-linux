@@ -114,4 +114,10 @@ mkdir -p "$OUT"
 tar --format=ustar -C "$WORK/stage" -czf "$OUT/mesa-turnip.tgz" "${PREFIX#/}"
 # Bump the suffix when the patches change, so phones unpack the new build.
 echo "$MESA_VERSION-t5" > "$OUT/VERSION"
+
+# Build the ARM Mali PanVK bundle alongside Turnip
+if [ -x "$HERE/build-panvk.sh" ]; then
+  "$HERE/build-panvk.sh"
+fi
+
 ls -l "$OUT"
