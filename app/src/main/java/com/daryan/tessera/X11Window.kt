@@ -792,7 +792,44 @@ class X11Window : MainActivity.MainActivityTagged() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (isDesktop && desktopKey(event)) return true
+        if (backKey(event)) return true
         return super.dispatchKeyEvent(event)
+    }
+
+    /** What the press of Back now held was sent as, so its release goes the same way. */
+    private var backSent: BackAction? = null
+
+    /**
+     * The phone's Back as a key for the app, when the app has asked for one (#40). A keyboard
+     * that's up takes Back before this sees it, and closes; so does a panel or menu over the app
+     * (a BackHandler). A mouse's Back stays the right-click Termux:X11 makes it.
+     */
+    private fun backKey(e: KeyEvent): Boolean {
+        if (e.keyCode != KeyEvent.KEYCODE_BACK) return false
+        if (e.action == KeyEvent.ACTION_UP) {
+            val sent = backSent ?: return false
+            backSent = null
+            sendBack(sent, false)
+            return true
+        }
+        if (e.action != KeyEvent.ACTION_DOWN) return false
+        if (e.repeatCount > 0) return backSent != null
+        if (e.isFromSource(InputDevice.SOURCE_MOUSE) || cast != null || !lorieView.connected()) return false
+        if (onBackPressedDispatcher.hasEnabledCallbacks()) return false
+        val action = appId?.let { X11Back.forApp(this, it) } ?: return false
+        if (action == BackAction.KEYBOARD) return false
+        backSent = action
+        sendBack(action, true)
+        return true
+    }
+
+    private fun sendBack(action: BackAction, down: Boolean) {
+        when (action) {
+            BackAction.ESCAPE -> lorieView.sendKeyEvent(0, KeyEvent.KEYCODE_ESCAPE, down)
+            // Linux's KEY_BACK (158), which X knows as XF86Back.
+            BackAction.BROWSER_BACK -> lorieView.sendKeyEvent(158, 0, down)
+            BackAction.KEYBOARD -> Unit
+        }
     }
 
     private fun desktopKey(e: KeyEvent): Boolean {
@@ -861,6 +898,12 @@ class X11Window : MainActivity.MainActivityTagged() {
 
         override fun key(keyCode: Int, down: Boolean) {
             input.sendKeyEvent(0, keyCode, down)
+        }
+
+        override fun backAction(): BackAction = appId?.let { X11Back.forApp(this@X11Window, it) } ?: BackAction.KEYBOARD
+
+        override fun setBackAction(action: BackAction) {
+            appId?.let { X11Back.set(this@X11Window, it, action) }
         }
 
         override fun gameControls(): Boolean = appId?.let { GameControlsPrefs.on(this@X11Window, it) } ?: false
@@ -1105,6 +1148,27 @@ object X11Input {
         prefs(c).edit().putBoolean("longPressRightClick", on).apply()
 }
 
+/** What the phone's Back button does in an app's window (#40). */
+enum class BackAction(val label: String, val detail: String) {
+    KEYBOARD("Show the keyboard", "Opens the phone's keyboard; Back closes it again"),
+    ESCAPE("Esc", "Closes menus, dialogs and popups in most apps"),
+    BROWSER_BACK("Back key", "A keyboard's Back key: goes back in browsers, file managers and Steam"),
+}
+
+/** Each app's [BackAction]; the keyboard unless it has its own. */
+object X11Back {
+    private const val PREFS = "x11_back"
+
+    private fun prefs(c: android.content.Context) = c.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+
+    fun forApp(c: android.content.Context, appId: String): BackAction =
+        BackAction.entries.firstOrNull { it.name == prefs(c).getString(appId, null) } ?: BackAction.KEYBOARD
+
+    fun set(c: android.content.Context, appId: String, action: BackAction) = prefs(c).edit().apply {
+        if (action == BackAction.KEYBOARD) remove(appId) else putString(appId, action.name)
+    }.apply()
+}
+
 /**
  * How big each app draws: the X screen is the window's size divided by a scale, in percent (250
  * makes a 1440-pixel-wide window a 576-pixel screen, so everything is 2.5 times as big). Each
@@ -1201,6 +1265,9 @@ interface X11Actions : com.daryan.tessera.input.InputSink {
     fun resetTouchMode()
     fun setLongPressRightClick(on: Boolean)
     fun longPressRightClick(): Boolean
+    /** What the phone's Back button does in this app ([X11Back]); kept per app. */
+    fun backAction(): BackAction
+    fun setBackAction(action: BackAction)
     /** Whether the app shows [com.daryan.tessera.ui.GameControls]; kept per app. */
     fun gameControls(): Boolean
     fun setGameControls(on: Boolean)
