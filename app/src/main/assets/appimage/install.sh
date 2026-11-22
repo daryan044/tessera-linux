@@ -27,13 +27,21 @@ echo 'Unpacking the AppImage'
   exit 1
 }
 rm -f app.AppImage
-[ -e squashfs-root/AppRun ] || {
+# Newer runtimes (uruntime) unpack into AppDir and leave squashfs-root as a link to it (#41):
+# move the folder itself, not the link, which would dangle once $t is removed. Only a folder
+# inside $t, so an AppImage can't point this at anything else in the container.
+src=squashfs-root
+if [ -L "$src" ]; then
+  src=$(readlink -f "$src") || src=
+  case "$src" in "$(pwd -P)"/?*) ;; *) src= ;; esac
+fi
+[ -n "$src" ] && [ -d "$src" ] && [ -e "$src/AppRun" ] || {
   echo 'error: this AppImage has no AppRun to start'
   cd /; rm -rf "$t"
   exit 1
 }
 rm -rf "$d"
-mv squashfs-root "$d"
+mv "$src" "$d"
 cd /
 rm -rf "$t"
 rm -f -- "$STAGED"
