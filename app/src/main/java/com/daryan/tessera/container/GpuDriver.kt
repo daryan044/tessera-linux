@@ -19,21 +19,22 @@ object GpuDriver {
     const val GUEST_DIR = "/opt/tessera-gpu"
     /** Adreno's GPU device; world-readable and writable, so apps need no group for it. */
     const val KGSL = "/dev/kgsl-3d0"
+    const val MALI = "/dev/mali0"
     private const val TAG = "GpuDriver"
 
-    /**
-     * What makes apps use it. Frames reach the X server as plain images: Termux:X11's DRI3
-     * hangs Mesa (see LIBGL_DRI3_DISABLE), so GLX goes through Zink's Kopper "DRI2" path and
-     * Vulkan presents in software ("sw"), without SysV shared memory, which Android doesn't
-     * have ("noshm": with it, presenting dies of SIGBUS). Checked on an Adreno 740: glxgears
-     * at ~240 fps, Firefox and HandBrake (GTK 4, EGL) drawing. Turnip's own options come from
-     * the app's [GpuFix]es; see [env].
-     */
-    private val ENV = mapOf(
+    fun isMali(): Boolean = File(MALI).exists() || File(MALI).canRead()
+    fun isAdreno(): Boolean = File(KGSL).exists() || File(KGSL).canRead()
+
+    fun deviceNode(): String = when {
+        isMali() -> MALI
+        isAdreno() -> KGSL
+        else -> KGSL
+    }
+
+    private val BASE_ENV = mapOf(
         "LD_LIBRARY_PATH" to "$GUEST_DIR/lib",
         "__GLX_VENDOR_LIBRARY_NAME" to "mesa",
         "__EGL_VENDOR_LIBRARY_FILENAMES" to "$GUEST_DIR/share/glvnd/egl_vendor.d/50_mesa.json",
-        "VK_ICD_FILENAMES" to "$GUEST_DIR/share/vulkan/icd.d/freedreno_icd.aarch64.json",
         "LIBGL_DRIVERS_PATH" to "$GUEST_DIR/lib/dri",
         "MESA_LOADER_DRIVER_OVERRIDE" to "zink",
         "GALLIUM_DRIVER" to "zink",
@@ -42,18 +43,33 @@ object GpuDriver {
     )
 
     /** What makes an app use the driver, with [fixes] for its drawing bugs. */
-    fun env(fixes: Set<GpuFix>): Map<String, String> =
-        ENV + ("TU_DEBUG" to (listOf("noconform") + fixes.map { it.tuDebug }).joinToString(","))
+    fun env(fixes: Set<GpuFix>): Map<String, String> {
+        val isMaliGpu = isMali()
+        val icd = if (isMaliGpu) {
+            "$GUEST_DIR/share/vulkan/icd.d/panfrost_icd.aarch64.json"
+        } else {
+            "$GUEST_DIR/share/vulkan/icd.d/freedreno_icd.aarch64.json"
+        }
+        val extra = if (isMaliGpu) {
+            mapOf(
+                "PAN_I_WANT_A_BROKEN_VULKAN_DRIVER" to "1",
+                "PAN_MESA_DEBUG" to "sync",
+            )
+        } else {
+            mapOf("TU_DEBUG" to (listOf("noconform") + fixes.map { it.tuDebug }).joinToString(","))
+        }
+        return BASE_ENV + ("VK_ICD_FILENAMES" to icd) + extra
+    }
 
-    private val bundle = OptBundle(GUEST_DIR, "gpu/mesa-turnip.tgz", "gpu/VERSION", TAG)
+    private val turnipBundle = OptBundle(GUEST_DIR, "gpu/mesa-turnip.tgz", "gpu/VERSION", TAG)
+    private val panvkBundle = OptBundle(GUEST_DIR, "gpu/mesa-panvk.tgz", "gpu/VERSION-panvk", TAG)
+    private val bundle get() = if (isMali()) panvkBundle else turnipBundle
 
     /**
-     * Whether this build carries the driver and the phone has an Adreno GPU the app can open, of
-     * a model Turnip knows. One it doesn't (an Adreno 710, #20) gets no Vulkan device, so Zink
-     * has nothing to draw with and every GL app shows a black window; software drawing works.
+     * Whether this build carries the driver and the phone has an Adreno or Mali GPU the app can open.
      */
     fun available(context: Context): Boolean =
-        File(KGSL).canRead() && bundle.available(context) && supports(renderer(context))
+        (isAdreno() || isMali()) && bundle.available(context) && supports(renderer(context))
 
     /**
      * The Adreno models with 700 and 800 numbers that the bundled Mesa's Turnip has (Mesa 26.2:
@@ -63,15 +79,20 @@ object GpuDriver {
      */
     private val TURNIP_7XX_8XX = setOf(702, 704, 725, 730, 735, 740, 750, 810, 829, 830, 840)
 
-    /** Whether Turnip drives the GPU Android names [renderer] ("Adreno (TM) 740"); true when unknown. */
+    /** Whether the driver drives the GPU Android names [renderer]; true when unknown or Mali. */
     internal fun supports(renderer: String?): Boolean {
+        if (isMali()) return true
         val model = renderer?.let { Regex("""Adreno\D{0,8}?(\d{3})(?!\d)""").find(it) }?.groupValues?.get(1)?.toInt() ?: return true
         return model !in 700..899 || model in TURNIP_7XX_8XX
     }
 
     /** What the diagnostics say about the GPU. */
     fun describe(context: Context): String {
-        if (!File(KGSL).canRead()) return "not an Adreno GPU (no ${KGSL.substringAfterLast('/')})"
+        if (isMali()) {
+            val name = renderer(context) ?: "Mali GPU"
+            return "$name (PanVK kbase)"
+        }
+        if (!isAdreno()) return "not a supported GPU (no kgsl-3d0 or mali0)"
         val name = renderer(context) ?: return "Adreno, model unknown"
         return if (supports(name)) name else "$name, which this build's GPU driver doesn't support yet"
     }

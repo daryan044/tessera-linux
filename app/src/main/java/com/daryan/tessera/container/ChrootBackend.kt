@@ -38,7 +38,7 @@ class ChrootBackend(
             "DEVICES" to p.devices.joinToString("\n"),
             "USB_ALL" to if (p.usb) "1" else "",
             // Bound like a device, but its group (Android's "system") isn't handed over.
-            "GPU_DEVICE" to if (session.gpu) GpuDriver.KGSL else "",
+            "GPU_DEVICE" to if (session.gpu) GpuDriver.deviceNode() else "",
             "X11_DIR" to if (p.display) paths.x11SocketDir(session).invariantSeparatorsPath else "",
             "RUN_AS_ROOT" to if (p.root) "1" else "0",
             "APP_UID" to appUid.toString(),
@@ -63,7 +63,7 @@ class ChrootBackend(
             // Written at /.flatpak-info only for apps cobalt starts; see Flatpak.info.
             "FP_INFO" to Flatpak.info(ref),
             "BINDS" to p.filesystem.joinToString("\n") { "${it.path}:${it.mountAt}:${if (it.readOnly) "ro" else "rw"}" },
-            "GPU_DEVICE" to if (session.gpu) GpuDriver.KGSL else "",
+            "GPU_DEVICE" to if (session.gpu) GpuDriver.deviceNode() else "",
             "X11_DIR" to paths.x11SocketDir(session).invariantSeparatorsPath,
             "APP_UID" to appUid.toString(),
             "NET_GROUPS" to if (p.network) "3003,3004" else "",
