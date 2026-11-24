@@ -440,12 +440,16 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             var lastRoot: String? = null
             // Not while a check runs (status null): the menu would blink back to dpkg's view.
-            combine(_mode, _status.filterNotNull(), entries, container.registry.installed) { mode, s, list, _ ->
+            combine(_mode, _status.filterNotNull(), entries, container.registry.installed) { mode, s, list, installed ->
                 val su = s.su
                 val root = s.droidspacesSelected?.hostRoot
-                if (mode != BackendMode.DROIDSPACES || su == null || root == null) null
+                val query = if (mode != BackendMode.DROIDSPACES || su == null || root == null) null
                 else Triple(su, root, ContainerMenu.programsOf(list))
-            }.distinctUntilChanged().collectLatest { q ->
+                // With the packages, so an install asks again: the same programs in the same
+                // container was no change, and an app just installed stayed out of the menu.
+                query?.let { it to installed }
+            }.distinctUntilChanged().collectLatest { asked ->
+                val q = asked?.first
                 // Only the programs of this container count; another's would show what isn't here.
                 if (q?.second != lastRoot) _containerPrograms.value = null
                 lastRoot = q?.second
