@@ -540,8 +540,25 @@ def fit_new_windows():
     now = time.time()
     for gone in set(fitted) - set(clients.value):
         del fitted[gone]
+        refit.pop(gone, None)
+        shrunk.pop(gone, None)
     due = None
+    for wid, at in list(refit.items()):
+        if now < at:
+            due = min(due or 1, at - now)
+            continue
+        del refit[wid]
+        try:
+            keep_in_screen(wid, ax, ay, aw, ah)
+        except Exception:
+            pass
     for wid in clients.value:
+        if wid not in fitted:
+            try:
+                # To hear when it leaves its maximized state: see on_event.
+                d.create_resource_object("window", wid).change_attributes(event_mask=X.PropertyChangeMask)
+            except Exception:
+                pass
         first = fitted.setdefault(wid, now)
         if first is not None and now - first < 0.5:
             due = min(due or 1, 0.5 - (now - first))
@@ -567,6 +584,37 @@ def fit_new_windows():
         except Exception:
             pass
     return due
+
+refit = {}
+shrunk = {}
+def keep_in_screen(wid, ax, ay, aw, ah):
+    # A window let out of its maximized state goes back to the size its app gave it, which a
+    # phone's screen is often narrower than: its right edge and buttons off the screen again.
+    # Made to fit, where it was as far as that fits. Asked once for a size: an app whose own
+    # smallest size is larger keeps that.
+    w = d.create_resource_object("window", wid)
+    state = w.get_full_property(A("_NET_WM_STATE"), X.AnyPropertyType)
+    state = set(state.value) if state else set()
+    if state & {A("_NET_WM_STATE_MAXIMIZED_VERT"), A("_NET_WM_STATE_MAXIMIZED_HORZ"),
+                A("_NET_WM_STATE_FULLSCREEN"), A("_NET_WM_STATE_HIDDEN")}:
+        shrunk.pop(wid, None)
+        return
+    types = w.get_full_property(A("_NET_WM_WINDOW_TYPE"), X.AnyPropertyType)
+    types = list(types.value) if types else []
+    if types and A("_NET_WM_WINDOW_TYPE_NORMAL") not in types and A("_NET_WM_WINDOW_TYPE_DIALOG") not in types:
+        return
+    g = w.get_geometry()
+    ext = w.get_full_property(A("_NET_FRAME_EXTENTS"), X.AnyPropertyType)
+    l, r, t, b = (list(ext.value) + [0, 0, 0, 0])[:4] if ext else (0, 0, 0, 0)
+    nw, nh = min(g.width, aw - l - r), min(g.height, ah - t - b)
+    if nw < 1 or nh < 1 or (nw, nh) == (g.width, g.height) or shrunk.get(wid) == (nw, nh):
+        return
+    shrunk[wid] = (nw, nh)
+    at = w.translate_coords(root, 0, 0)
+    fx = max(ax, min(-at.x - l, ax + aw - nw - l - r))
+    fy = max(ay, min(-at.y - t, ay + ah - nh - t - b))
+    # The place is the frame's corner, the size the window's own.
+    message(wid, A("_NET_MOVERESIZE_WINDOW"), [1 | 0xF00 | 0x2000, fx, fy, nw, nh])
 
 def message(wid, atom, data):
     w = d.create_resource_object("window", wid)
@@ -853,6 +901,13 @@ def on_event(e):
             # xfwm4 restacked its windows, perhaps over the shield: back on top.
             shield.configure(stack_mode=X.Above)
             d.flush()
+        return
+    if e.type == X.PropertyNotify:
+        # A window's state changed: out of maximized, it may not fit. Looked at once the window
+        # manager has given it its size back.
+        if e.atom == A("_NET_WM_STATE") and e.window.id in fitted:
+            refit[e.window.id] = time.time() + 0.15
+            clients_changed = True
         return
     if shield is not None and getattr(e, "window", None) is not None and e.window.id == shield.id:
         return on_shield(e)
