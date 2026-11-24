@@ -22,6 +22,13 @@ object ThemeFiles {
     const val GUEST_DIR = "/tmp/.X11-unix/tessera-theme"
     const val PORTAL_FILE = "portal"
     const val XSETTINGS_FILE = "xsettingsd.conf"
+
+    /**
+     * How far apart, in X pixels, two clicks may land and still be a double click. GTK's own 5
+     * is for a mouse: on a phone that is well under a millimetre, and a finger's two taps in the
+     * pointer modes (Touchpad, Touchscreen mouse) seldom come that close, so nothing opened.
+     */
+    const val DOUBLE_CLICK_DISTANCE = 24
     private const val THEME_PREFIX = "Tessera-"
 
     /** What a themed session's environment gets on top of the usual. */
@@ -146,6 +153,7 @@ object ThemeFiles {
         Gtk/CursorThemeName "${ThemePack.CURSOR}"
         Gtk/CursorThemeSize ${ThemePack.CURSOR_SIZE}
         Net/EnableEventSounds 0
+        Net/DoubleClickDistance $DOUBLE_CLICK_DISTANCE
         Gtk/DecorationLayout "${if (desktop) "menu:minimize,maximize,close" else "menu:"}"
     """.trimIndent() + "\n"
 

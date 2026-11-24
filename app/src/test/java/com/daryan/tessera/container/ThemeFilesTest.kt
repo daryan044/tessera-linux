@@ -44,6 +44,8 @@ class ThemeFilesTest {
     @Test fun `xsettings names the generation's theme and the portal says dark with the accent`() {
         val files = ThemeFiles.files(dark, 7, pack = true)
         assertTrue("Net/ThemeName \"Tessera-7\"" in files.getValue(ThemeFiles.XSETTINGS_FILE))
+        // Wide enough for a finger's two taps: GTK's own limit is a mouse's.
+        assertTrue("\nNet/DoubleClickDistance 24\n" in files.getValue(ThemeFiles.XSETTINGS_FILE))
         assertEquals("color-scheme=1\naccent=0.6588,0.7804,0.9804\n", files.getValue(ThemeFiles.PORTAL_FILE))
         assertTrue("color-scheme=2" in ThemeFiles.files(light, 7, pack = true).getValue(ThemeFiles.PORTAL_FILE))
     }
