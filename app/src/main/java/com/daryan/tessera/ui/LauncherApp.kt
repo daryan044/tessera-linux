@@ -20,6 +20,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.rememberPagerState
@@ -357,34 +358,34 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 val app = apps.firstOrNull { it.id == id }
                 if (app != null) startApp(app) else scope.launch { snackbar.showSnackbar("That app isn't installed") }
             }
-            androidx.compose.foundation.layout.Box(Modifier.onGloballyPositioned { menuBox = it }) {
-            SideMenu(
-                status = MenuStatus(
-                    mode = mode,
-                    blocker = blocker.takeIf { status != null },
-                    running = running,
-                    activeInstalls = queue.count { it.active },
-                    update = updates.available?.version,
-                ),
-                actions = MenuActions(
-                    terminal = closing { launchById("bash") },
-                    rootShell = closing { launchById("root-shell") },
-                    installFile = closing { installFromFile() },
-                    trackpad = closing { showTrackpad = true },
-                    installs = closing { showQueue = true },
-                    update = closing { updates.available?.let { openLink(it.url) } },
-                    copyDiagnostics = closing {
-                        scope.launch {
-                            val report = vm.diagnosticsReport()
-                            context.getSystemService(android.content.ClipboardManager::class.java)
-                                .setPrimaryClip(android.content.ClipData.newPlainText("Tessera diagnostics", report))
-                            snackbar.showSnackbar("Diagnostics copied, ready to paste")
-                        }
-                    },
-                    settings = closing { showSettings = true },
-                    about = closing { showAbout = true },
-                ),
-            )
+            Box(Modifier.onGloballyPositioned { menuBox = it }) {
+                SideMenu(
+                    status = MenuStatus(
+                        mode = mode,
+                        blocker = blocker.takeIf { status != null },
+                        running = running,
+                        activeInstalls = queue.count { it.active },
+                        update = updates.available?.version,
+                    ),
+                    actions = MenuActions(
+                        terminal = closing { launchById("bash") },
+                        rootShell = closing { launchById("root-shell") },
+                        installFile = closing { installFromFile() },
+                        trackpad = closing { showTrackpad = true },
+                        installs = closing { showQueue = true },
+                        update = closing { updates.available?.let { openLink(it.url) } },
+                        copyDiagnostics = closing {
+                            scope.launch {
+                                val report = vm.diagnosticsReport()
+                                context.getSystemService(android.content.ClipboardManager::class.java)
+                                    .setPrimaryClip(android.content.ClipData.newPlainText("Tessera diagnostics", report))
+                                snackbar.showSnackbar("Diagnostics copied, ready to paste")
+                            }
+                        },
+                        settings = closing { showSettings = true },
+                        about = closing { showAbout = true },
+                    ),
+                )
             }
         },
     ) {
