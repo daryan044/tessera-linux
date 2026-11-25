@@ -20,6 +20,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.rememberPagerState
@@ -63,6 +64,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.changedToDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -173,6 +180,12 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
     val flathubFsync by vm.flathubFsync.collectAsStateWithLifecycle()
     val installedPackages by vm.installedPackages.collectAsStateWithLifecycle()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
+    // A mouse's press that moves at all is a drag, where a finger's has to travel first: the
+    // menu's drag then took every click that wasn't perfectly still, anywhere in the launcher.
+    // The drag is a finger's; a mouse opens the menu by its button.
+    var mousePointer by remember { mutableStateOf(false) }
+    var drawerBox by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var menuBox by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val launchApp: (PermissionManifest) -> Unit = { app ->
         vm.launch(app) { started ->
             openApp = null
@@ -315,6 +328,28 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
         scope.launch { snackbar.showSnackbar("Tap a .deb, .flatpak or AppImage file to install it", duration = SnackbarDuration.Long) }
     }
     ModalNavigationDrawer(
+        modifier = Modifier
+            .onGloballyPositioned { drawerBox = it }
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val mouse = event.changes.any { it.type == PointerType.Mouse }
+                        if (mouse != mousePointer) mousePointer = mouse
+                        // Without its drag the menu no longer closes for a click beside it.
+                        if (mouse && drawerState.isOpen) {
+                            val down = event.changes.firstOrNull { it.changedToDown() } ?: continue
+                            val box = drawerBox?.takeIf { it.isAttached } ?: continue
+                            val menu = menuBox?.takeIf { it.isAttached } ?: continue
+                            if (!box.localBoundingBoxOf(menu).contains(down.position)) {
+                                down.consume()
+                                scope.launch { drawerState.close() }
+                            }
+                        }
+                    }
+                }
+            },
+        gesturesEnabled = !mousePointer,
         drawerState = drawerState,
         drawerContent = {
             // Every action closes the menu first, then does its thing.
@@ -323,33 +358,35 @@ fun LauncherApp(vm: LauncherViewModel = viewModel()) {
                 val app = apps.firstOrNull { it.id == id }
                 if (app != null) startApp(app) else scope.launch { snackbar.showSnackbar("That app isn't installed") }
             }
-            SideMenu(
-                status = MenuStatus(
-                    mode = mode,
-                    blocker = blocker.takeIf { status != null },
-                    running = running,
-                    activeInstalls = queue.count { it.active },
-                    update = updates.available?.version,
-                ),
-                actions = MenuActions(
-                    terminal = closing { launchById("bash") },
-                    rootShell = closing { launchById("root-shell") },
-                    installFile = closing { installFromFile() },
-                    trackpad = closing { showTrackpad = true },
-                    installs = closing { showQueue = true },
-                    update = closing { updates.available?.let { openLink(it.url) } },
-                    copyDiagnostics = closing {
-                        scope.launch {
-                            val report = vm.diagnosticsReport()
-                            context.getSystemService(android.content.ClipboardManager::class.java)
-                                .setPrimaryClip(android.content.ClipData.newPlainText("Tessera diagnostics", report))
-                            snackbar.showSnackbar("Diagnostics copied, ready to paste")
-                        }
-                    },
-                    settings = closing { showSettings = true },
-                    about = closing { showAbout = true },
-                ),
-            )
+            Box(Modifier.onGloballyPositioned { menuBox = it }) {
+                SideMenu(
+                    status = MenuStatus(
+                        mode = mode,
+                        blocker = blocker.takeIf { status != null },
+                        running = running,
+                        activeInstalls = queue.count { it.active },
+                        update = updates.available?.version,
+                    ),
+                    actions = MenuActions(
+                        terminal = closing { launchById("bash") },
+                        rootShell = closing { launchById("root-shell") },
+                        installFile = closing { installFromFile() },
+                        trackpad = closing { showTrackpad = true },
+                        installs = closing { showQueue = true },
+                        update = closing { updates.available?.let { openLink(it.url) } },
+                        copyDiagnostics = closing {
+                            scope.launch {
+                                val report = vm.diagnosticsReport()
+                                context.getSystemService(android.content.ClipboardManager::class.java)
+                                    .setPrimaryClip(android.content.ClipData.newPlainText("Tessera diagnostics", report))
+                                snackbar.showSnackbar("Diagnostics copied, ready to paste")
+                            }
+                        },
+                        settings = closing { showSettings = true },
+                        about = closing { showAbout = true },
+                    ),
+                )
+            }
         },
     ) {
     // Only where the large title bar is there to collapse: without it the scroll behavior never
